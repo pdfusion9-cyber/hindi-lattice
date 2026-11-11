@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""pack_banao.py -- सब कुछ एक फ़ाइल में: शब्दकोश + पाथ (varint) + रिंगें।
+"""pack_banao.py -- सब कुछ एक फ़ाइल में: शब्दकोश + पाथ (varint) + रिंगें (MinHash, तेज़)।
 
-  python3 pack_banao.py --text hi_namuna.txt --out gyaan.pack
+  python3 pack_banao.py --text data/corpus.txt --out store/gyaan.pack
 """
-import argparse, re, struct, time, os
-from collections import defaultdict, Counter
+import argparse, re, struct, time, os, hashlib
+from collections import defaultdict
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--text", default="hi_namuna.txt")
 ap.add_argument("--out", default="gyaan.pack")
 ap.add_argument("--max-paths", type=int, default=10_000_000)
-ap.add_argument("--max-rings", type=int, default=300000)
+ap.add_argument("--max-rings", type=int, default=200000)
+ap.add_argument("--sig", type=int, default=16)
 a = ap.parse_args()
 
 t0 = time.time()
@@ -38,6 +39,7 @@ def vint(n, out):
         if not n:
             break
 
+# --- पाथ: सजाकर, साझा उपसर्ग छोड़कर, varint ---
 t0 = time.time()
 keyed = sorted(tuple(vocab[w] for w in ws) for ws in sents)
 body = bytearray()
@@ -53,21 +55,41 @@ for p in keyed:
     prev = p
 print(f"पाथ-भाग {len(body)/1e6:.2f} MB | {time.time()-t0:.1f}s", flush=True)
 
+# --- रिंगें: MinHash + LSH (तेज़, बिना पूरी सूची छाने) ---
 t0 = time.time()
-idx = defaultdict(list)
-for i, ws in enumerate(sents):
-    for w in set(ws):
-        idx[w].append(i)
+SIG, BANDS = a.sig, 4
+ROWS = max(1, SIG // BANDS)
+
+def h32(w, seed):
+    return int.from_bytes(hashlib.blake2b(f"{seed}:{w}".encode(), digest_size=4).digest(), "little")
+
+sigs = []
+for ws in sents:
+    u = list(set(ws))
+    sigs.append([min(h32(w, s) for w in u) for s in range(SIG)])
+print(f"हस्ताक्षर {time.time()-t0:.1f}s", flush=True)
+
+buckets = defaultdict(list)
+for i, sig in enumerate(sigs):
+    for b in range(BANDS):
+        buckets[(b, tuple(sig[b*ROWS:(b+1)*ROWS]))].append(i)
+
+cand = defaultdict(list)
+for key, ids in buckets.items():
+    if 1 < len(ids) <= 40:
+        for i in ids:
+            cand[i].extend(j for j in ids if j != i)
+print(f"उम्मीदवार {time.time()-t0:.1f}s | औसत {sum(len(v) for v in cand.values())/max(len(cand),1):.1f}", flush=True)
+
+t0 = time.time()
 used, rings = set(), []
 for i in range(len(sents)):
     if i in used:
         continue
-    cnt = Counter()
-    for w in set(sents[i]):
-        for j in idx[w]:
-            if j != i:
-                cnt[j] += 1
-    grp = [i] + [j for j, _ in cnt.most_common(6) if j not in used]
+    grp = [i]
+    for j in cand.get(i, ()):
+        if j not in used and j not in grp and len(grp) < 7:
+            grp.append(j)
     k = 0
     while len(grp) < 7 and k < len(sents):
         if k not in used and k not in grp:
@@ -91,6 +113,7 @@ for w in words:
     vint(len(b), voc)
     voc += b
 
+os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
 with open(a.out, "wb") as f:
     f.write(b"GPACK1")
     f.write(struct.pack("<IIII", len(words), len(keyed), len(rings), 0))
