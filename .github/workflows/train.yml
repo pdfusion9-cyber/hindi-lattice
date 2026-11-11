@@ -1,0 +1,48 @@
+name: train
+on:
+  workflow_dispatch:
+    inputs:
+      dim:
+        description: "आयाम (64-1024)"
+        default: "256"
+      steps:
+        description: "कुल कदम"
+        default: "200000"
+      articles:
+        description: "विकिपीडिया लेख"
+        default: "60000"
+  schedule:
+    - cron: "0 */6 * * *"
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: deps
+        run: pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: data
+        run: |
+          python prep.py --articles ${{ inputs.articles || 60000 }} --out data/corpus.txt
+          wc -c data/corpus.txt
+      - name: restore checkpoint
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ckpt
+          path: ckpt
+      - name: train
+        run: |
+          python train_runner.py --data data/corpus.txt --ckpt ckpt/model.pt \
+            --dim ${{ inputs.dim || 256 }} --steps ${{ inputs.steps || 200000 }} --budget 18000
+      - name: save checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt
+          path: ckpt/
+          retention-days: 90
+          overwrite: true
