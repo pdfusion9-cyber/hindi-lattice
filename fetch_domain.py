@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""fetch_domain.py -- डोमेन-वार हिंदी डेटा: हर शार्ड अलग डेटासेट से।
-
-  python3 fetch_domain.py --domain science --out store
-"""
+"""fetch_domain.py -- डोमेन-वार डेटा। coding के लिए नींव (buniyad.py) पहले चलाएँ।"""
 import argparse, json, os, time, urllib.parse, urllib.request
 
 UA = "HindiLatticeBot/1.0 (https://github.com/pdfusion9-cyber/hindi-lattice)"
@@ -18,9 +15,11 @@ DOMAINS = {
     "translate": [("ai4bharat/samanantar", None, None)],
     "literature": [("ai4bharat/IndicCorpV2", None, None)],
     "general": [("kaifahmad/indian-history-hindi-QA-3.4k", "Question", "Answer")],
+    "coding": [("iamtarun/python_code_instructions_18k_alpaca", "instruction", "output"),
+               ("flytech/python-codes-25k", "instruction", "output")],
 }
-QF = ("Question", "question", "प्रश्न", "question_hi", "input", "instruction", "en", "text")
-AF = ("Answer", "answer", "उत्तर", "answer_hi", "output", "response", "hi")
+QF = ("Question", "question", "प्रश्न", "instruction", "input", "text", "en")
+AF = ("Answer", "answer", "उत्तर", "output", "response", "code", "hi")
 
 
 def rows(ds, offset, length=100):
