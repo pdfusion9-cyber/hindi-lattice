@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""pack_banao.py -- GPACK4: शब्द-जाल एक बार + वाक्य सिर्फ़ कड़ी-क्रम के रूप में।
+"""pack_banao.py -- GPACK5: शब्द-जाल एक बार + वाक्य कड़ी-क्रम में + mmap-योग्य सूचकांक।
 
-  1. शब्द एक ही बार (अक्षर-कोड, बिट-चौड़ाई अक्षर-संख्या से तय)
-  2. जाल (हर शब्द से कड़ियाँ) भी एक ही बार
-  3. वाक्य = शुरू-शब्द + हर कदम की कड़ी-संख्या
+सुधार (2026-11-11):
+  - कड़ियाँ काटी नहीं जातीं (पहले 24 पर काटने से वाक्य बिगड़ते थे)
+  - हर वाक्य में जितनी कड़ियाँ लिखी गईं, उतनी गिनकर सहेजी जाती हैं
+  - शुरू-शब्द uint32 सरणी में (O(1) पहुँच)
+  - हर वाक्य का bit offset (mmap से सीधे पढ़ने के लिए)
 """
 import argparse, math, os, re, struct, time
 from collections import Counter, defaultdict
@@ -12,7 +14,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--text", default="data/corpus.txt")
 ap.add_argument("--out", default="store/gyaan.pack")
 ap.add_argument("--max-paths", type=int, default=3_000_000)
-ap.add_argument("--max-links", type=int, default=24)
+ap.add_argument("--max-links", type=int, default=1000000)
+ap.add_argument("--block", type=int, default=256)
 ap.add_argument("--min-char", type=int, default=3)
 a = ap.parse_args()
 
@@ -23,7 +26,7 @@ for line in open(a.text, encoding="utf-8"):
     if 4 <= len(ws) <= 25:
         sents.append(ws)
 sents = list(dict.fromkeys(sents))[:a.max_paths]
-print(f"वाक्य {len(sents):,} | {time.time()-t0:.1f}s", flush=True)
+print(f"वाक्य {len(sents):,} | {time.time()-t0:.0f}s", flush=True)
 
 vocab = {}
 for ws in sents:
@@ -34,15 +37,13 @@ V = len(vocab)
 words = sorted(vocab, key=vocab.get)
 print(f"शब्द {V:,}", flush=True)
 
-# --- जाल ---
-t0 = time.time()
 edges = defaultdict(Counter)
 for ws in sents:
     for x, y in zip(ws, ws[1:]):
         edges[vocab[x]][vocab[y]] += 1
 order = {k: [b for b, _ in c.most_common(a.max_links)] for k, c in edges.items()}
 width = {k: max(1, math.ceil(math.log2(max(len(l), 2)))) for k, l in order.items()}
-print(f"जाल: {sum(len(c) for c in edges.values()):,} कड़ियाँ | {time.time()-t0:.1f}s", flush=True)
+print(f"कड़ियाँ {sum(len(c) for c in edges.values()):,}", flush=True)
 
 
 def vint(n, out):
@@ -56,10 +57,10 @@ def vint(n, out):
 
 class Bits:
     def __init__(s):
-        s.buf = bytearray(); s.acc = 0; s.n = 0
+        s.buf = bytearray(); s.acc = 0; s.n = 0; s.bits = 0
 
     def put(s, v, b):
-        s.acc |= (v << s.n); s.n += b
+        s.acc |= (v << s.n); s.n += b; s.bits += b
         while s.n >= 8:
             s.buf.append(s.acc & 0xFF); s.acc >>= 8; s.n -= 8
 
@@ -69,61 +70,60 @@ class Bits:
         return bytes(s.buf)
 
 
-# --- वाक्य ---
-t0 = time.time()
-bt = Bits(); starts = bytearray(); missed = 0
-for ws in sents:
+bt = Bits(); starts = []; blocks = []; lens = []; missed = 0
+for i, ws in enumerate(sents):
+    blocks.append(bt.bits)
     ids = [vocab[w] for w in ws]
-    vint(ids[0], starts)
+    starts.append(ids[0])
+    lens.append(0)
+    wrote = 0
     for x, y in zip(ids, ids[1:]):
         lst = order.get(x, [])
         try:
-            i = lst.index(y)
+            k = lst.index(y)
         except ValueError:
             missed += 1
             continue
-        bt.put(i, width.get(x, 1))
+        bt.put(k, width.get(x, 1))
+        wrote += 1
+    lens[-1] = wrote
 body = bt.end()
-print(f"वाक्य-भाग {len(body)/1e6:.2f} MB | छूटे {missed:,} | {time.time()-t0:.1f}s", flush=True)
+starts = b"".join(struct.pack("<I", x) for x in starts)
+blk = b"".join(struct.pack("<I", b) for b in blocks)
+lens = bytes(min(x, 255) for x in lens)
 
-# --- जाल-भाग ---
-lat = bytearray()
+lat = bytearray(); lat_off = []
 for k in range(V):
+    lat_off.append(len(lat))
     lst = order.get(k, [])
     vint(len(lst), lat)
     for x in lst:
         vint(x, lat)
+lat_off.append(len(lat))
+latidx = b"".join(struct.pack("<I", o) for o in lat_off)
 
-# --- शब्दकोश: अक्षर-कोड, चौड़ाई अक्षर-संख्या से ---
 cnt = Counter(c for w in words for c in w)
 chars = sorted([c for c, n in cnt.items() if n >= a.min_char]) or sorted(cnt)
 cmap = {c: i for i, c in enumerate(chars)}
 cbits = max(1, math.ceil(math.log2(len(chars) + 1)))
-STOP = len(chars)                     # शब्द-विराम
-print(f"अक्षर {len(chars)} | {cbits} बिट प्रति अक्षर", flush=True)
-cb = Bits(); dropped = 0
+STOP = len(chars)
+cb = Bits()
 for w in words:
-    ok = True
-    for c in w:
-        if c not in cmap:
-            ok = False; break
-    if not ok:
-        dropped += 1
-        w = "".join(c for c in w if c in cmap) or "?"
     for c in w:
         cb.put(cmap.get(c, 0), cbits)
     cb.put(STOP, cbits)
 voc = cb.end()
-print(f"शब्दकोश {len(voc)/1e6:.2f} MB | दुर्लभ अक्षर वाले शब्द {dropped:,}", flush=True)
 
+parts = [b"".join(c.encode() for c in chars), voc, lat, latidx, starts, body, blk, lens]
 os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
 with open(a.out, "wb") as f:
-    f.write(b"GPACK4")
-    f.write(struct.pack("<IIIIIII", V, len(sents), len(chars), cbits, missed, len(lat), 0))
-    for part in (b"".join(c.encode() for c in chars), voc, lat, starts, body):
-        f.write(struct.pack("<I", len(part)))
-        f.write(part)
-tot = len(voc) + len(lat) + len(starts) + len(body)
-print(f"\nपैक: {a.out} | {os.path.getsize(a.out)/1e6:.2f} MB", flush=True)
-print(f"  वाक्य {len(sents):,} | शब्द {V:,} | {tot/len(sents):.2f} बाइट/वाक्य", flush=True)
-print(f"  250 MB में: {250e6/(tot/len(sents)):,.0f} वाक्य", flush=True)
+    f.write(b"GPACK5")
+    f.write(struct.pack("<IIIIIIII", V, len(sents), len(chars), cbits, missed, len(blocks), a.block, len(lens)))
+    for p in parts:
+        f.write(struct.pack("<I", len(p)))
+        f.write(p)
+
+tot = sum(len(p) for p in parts)
+print(f"\nपैक {a.out} | {os.path.getsize(a.out)/1e6:.2f} MB", flush=True)
+print(f"  वाक्य {len(sents):,} | शब्द {V:,} | कड़ियाँ {sum(len(c) for c in edges.values()):,} | छूटे {missed}", flush=True)
+print(f"  {tot/len(sents):.2f} बाइट/वाक्य | 250 MB में {250e6/(tot/len(sents)):,.0f} वाक्य", flush=True)
