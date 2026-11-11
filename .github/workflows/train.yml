@@ -2,15 +2,18 @@ name: train
 on:
   workflow_dispatch:
     inputs:
+      domain:
+        description: "डोमेन: science / math / reasoning / news / qa / general"
+        default: "science"
       dim:
-        description: "आयाम (64-1024)"
+        description: "आयाम"
         default: "256"
       steps:
         description: "कुल कदम"
         default: "300000"
       articles:
         description: "विकिपीडिया लेख"
-        default: "80000"
+        default: "40000"
   schedule:
     - cron: "0 */6 * * *"
 permissions:
@@ -31,19 +34,19 @@ jobs:
           python -m pip install -q --upgrade pip
           python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
           python -c "import torch; print('torch', torch.__version__)"
+      - name: data (domain)
+        run: |
+          python fetch_domain.py --domain ${{ inputs.domain || 'science' }} --out store --per-dataset 8000
+          wc -l store/baat_*.txt
       - name: data (wikipedia)
         run: |
-          python prep.py --articles ${{ inputs.articles || 80000 }} --out data/corpus.txt
+          python prep.py --articles ${{ inputs.articles || 40000 }} --out data/corpus.txt
           wc -c data/corpus.txt
-      - name: data (hindi QA datasets)
-        run: |
-          python fetch_extra.py --out store/baat_qa.txt --per-dataset 6000
-          wc -l store/baat_qa.txt
-      - name: build lattice store (facts)
+      - name: build store
         run: python build_store.py --data data/corpus.txt --out store
       - name: build pack
         run: |
-          python pack_banao.py --text data/corpus.txt --out store/gyaan.pack --max-paths 3000000
+          python pack_banao.py --text data/corpus.txt --out store/gyaan.pack --max-paths 2000000
           ls -lh store/gyaan.pack
       - name: restore checkpoint
         uses: actions/download-artifact@v4
@@ -55,7 +58,7 @@ jobs:
         run: |
           python train_runner.py --data data/corpus.txt --ckpt ckpt/model.pt \
             --dim ${{ inputs.dim || 256 }} --steps ${{ inputs.steps || 300000 }} \
-            --budget 9000 --threads 4 --max-mb 40
+            --budget 8000 --threads 4 --max-mb 40
       - name: save checkpoint
         uses: actions/upload-artifact@v4
         with:
@@ -63,10 +66,12 @@ jobs:
           path: ckpt/
           retention-days: 90
           overwrite: true
-      - name: commit store
+      - name: commit store to domain branch
         run: |
+          D="${{ inputs.domain || 'science' }}"
           git config user.name "lattice-bot"
           git config user.email "bot@users.noreply.github.com"
+          git checkout -B "shard-$D"
           git add store/ || true
-          git commit -m "store: $(date -u +%F-%H%M) | $(wc -l < store/gyaan.txt 2>/dev/null) facts | $(wc -l < store/baat_qa.txt 2>/dev/null) QA | pack $(du -h store/gyaan.pack 2>/dev/null | cut -f1)" || echo "no change"
-          git push || true
+          git commit -m "shard $D: $(date -u +%F-%H%M) | $(wc -l < store/gyaan.txt 2>/dev/null) facts | $(cat store/baat_*.txt 2>/dev/null | wc -l) QA | pack $(du -h store/gyaan.pack 2>/dev/null | cut -f1)" || echo "no change"
+          git push -f origin "shard-$D" || true
