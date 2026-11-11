@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       domain:
-        description: "डोमेन: science / math / reasoning / news / qa / general"
+        description: "डोमेन: science / math / reasoning / news / qa / general / coding"
         default: "science"
       dim:
         description: "आयाम"
@@ -38,16 +38,24 @@ jobs:
           python -m pip install -q numpy
           python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
           python -c "import numpy, torch; print('numpy', numpy.__version__, '| torch', torch.__version__)"
+      - name: foundation (coding/english)
+        run: |
+          python buniyad.py --out store
+          wc -l store/gyaan_buniyad.txt store/path_buniyad.txt
       - name: data (domain)
         run: |
-          python fetch_domain.py --domain ${{ inputs.domain || 'science' }} --out store --per-dataset 8000
+          python fetch_domain.py --domain ${{ inputs.domain || 'science' }} --out store --per-dataset 8000 || echo "dataset fetch failed -- foundation only"
           wc -l store/baat_*.txt
       - name: data (wikipedia)
         run: |
           python prep.py --articles ${{ inputs.articles || 40000 }} --out data/corpus.txt
           wc -c data/corpus.txt
       - name: build store
-        run: python build_store.py --data data/corpus.txt --out store
+        run: |
+          python build_store.py --data data/corpus.txt --out store
+          cat store/gyaan_buniyad.txt >> store/gyaan.txt 2>/dev/null || true
+          cat store/path_buniyad.txt >> data/corpus.txt 2>/dev/null || true
+          wc -l store/gyaan.txt
       - name: build pack
         run: |
           python pack_banao.py --text data/corpus.txt --out store/gyaan.pack --max-paths 2000000
