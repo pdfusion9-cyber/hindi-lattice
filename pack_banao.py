@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""pack_banao.py -- सब कुछ एक फ़ाइल में: शब्दकोश + पाथ (varint) + रिंगें + बाहरी कड़ियाँ।
+"""pack_banao.py -- GPACK4: शब्द-जाल एक बार + वाक्य सिर्फ़ कड़ी-क्रम के रूप में।
 
-हस्ताक्षर (MinHash) एक बार बनते हैं और दोनों काम में आते हैं: रिंग और जाल।
+तीन सिद्धांत:
+  1. शब्द एक ही बार लिखे जाते हैं (अक्षर-कोड से, 7 बिट प्रति अक्षर)
+  2. जाल (हर शब्द से कड़ियाँ) भी एक ही बार
+  3. वाक्य = शुरू-शब्द + हर कदम की कड़ी-संख्या (शब्द दोबारा नहीं)
 """
-import argparse, re, struct, time, os, hashlib
-from collections import defaultdict
+import argparse, math, os, re, struct, time
+from collections import Counter, defaultdict
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--text", default="hi_namuna.txt")
-ap.add_argument("--out", default="gyaan.pack")
+ap.add_argument("--text", default="data/corpus.txt")
+ap.add_argument("--out", default="store/gyaan.pack")
 ap.add_argument("--max-paths", type=int, default=10_000_000)
-ap.add_argument("--max-rings", type=int, default=200000)
-ap.add_argument("--sig", type=int, default=16)
-ap.add_argument("--links", type=int, default=2)
+ap.add_argument("--max-links", type=int, default=24)
 a = ap.parse_args()
 
 t0 = time.time()
@@ -22,16 +23,27 @@ for line in open(a.text, encoding="utf-8"):
     if 4 <= len(ws) <= 25:
         sents.append(ws)
 sents = list(dict.fromkeys(sents))[:a.max_paths]
-N = len(sents)
-print(f"यूनीक पाथ {N:,} | {time.time()-t0:.1f}s", flush=True)
+print(f"वाक्य {len(sents):,} | {time.time()-t0:.1f}s", flush=True)
 
 vocab = {}
 for ws in sents:
     for w in ws:
         if w not in vocab:
             vocab[w] = len(vocab)
+V = len(vocab)
 words = sorted(vocab, key=vocab.get)
-print(f"शब्दकोश {len(words):,}", flush=True)
+print(f"शब्द {V:,}", flush=True)
+
+# --- जाल ---
+t0 = time.time()
+edges = defaultdict(Counter)
+for ws in sents:
+    for x, y in zip(ws, ws[1:]):
+        edges[vocab[x]][vocab[y]] += 1
+order = {k: [b for b, _ in c.most_common(a.max_links)] for k, c in edges.items()}
+width = {k: max(1, math.ceil(math.log2(max(len(l), 2)))) for k, l in order.items()}
+print(f"जाल: {sum(len(c) for c in edges.values()):,} कड़ियाँ | {time.time()-t0:.1f}s", flush=True)
+
 
 def vint(n, out):
     while True:
@@ -41,103 +53,66 @@ def vint(n, out):
         if not n:
             break
 
+
+class Bits:
+    def __init__(s):
+        s.buf = bytearray(); s.acc = 0; s.n = 0
+
+    def put(s, v, b):
+        s.acc |= (v << s.n); s.n += b
+        while s.n >= 8:
+            s.buf.append(s.acc & 0xFF); s.acc >>= 8; s.n -= 8
+
+    def end(s):
+        if s.n:
+            s.buf.append(s.acc & 0xFF)
+        return bytes(s.buf)
+
+
+# --- वाक्य: शुरू-आईडी + कड़ी-क्रम ---
 t0 = time.time()
-keyed = sorted(tuple(vocab[w] for w in ws) for ws in sents)
-body = bytearray()
-prev = ()
-for p in keyed:
-    k = 0
-    while k < min(len(prev), len(p)) and prev[k] == p[k]:
-        k += 1
-    vint(k, body)
-    vint(len(p) - k, body)
-    for x in p[k:]:
-        vint(x, body)
-    prev = p
-print(f"पाथ-भाग {len(body)/1e6:.2f} MB | {time.time()-t0:.1f}s", flush=True)
-
-# --- हस्ताक्षर एक बार ---
-t0 = time.time()
-SIG, BANDS = a.sig, 4
-ROWS = max(1, SIG // BANDS)
-
-def h32(w, seed):
-    return int.from_bytes(hashlib.blake2b(f"{seed}:{w}".encode(), digest_size=4).digest(), "little")
-
-sigs = []
+bt = Bits(); starts = bytearray(); missed = 0
 for ws in sents:
-    u = list(set(ws))
-    sigs.append([min(h32(w, s) for w in u) for s in range(SIG)])
+    ids = [vocab[w] for w in ws]
+    vint(ids[0], starts)
+    for x, y in zip(ids, ids[1:]):
+        lst = order.get(x, [])
+        try:
+            i = lst.index(y)
+        except ValueError:
+            missed += 1
+            continue
+        bt.put(i, width.get(x, 1))
+body = bt.end()
+print(f"वाक्य-भाग {len(body)/1e6:.2f} MB | छूटे {missed:,} | {time.time()-t0:.1f}s", flush=True)
 
-buckets = defaultdict(list)
-for i, sig in enumerate(sigs):
-    for b in range(BANDS):
-        buckets[(b, tuple(sig[b*ROWS:(b+1)*ROWS]))].append(i)
+# --- जाल-भाग ---
+lat = bytearray()
+for k in range(V):
+    lst = order.get(k, [])
+    vint(len(lst), lat)
+    for x in lst:
+        vint(x, lat)
 
-cand = defaultdict(list)
-for key, ids in buckets.items():
-    if 1 < len(ids) <= 40:
-        for i in ids:
-            cand[i].extend(j for j in ids if j != i)
-print(f"हस्ताक्षर + उम्मीदवार {time.time()-t0:.1f}s", flush=True)
-
-# --- रिंगें ---
-t0 = time.time()
-used, rings = set(), []
-for i in range(N):
-    if i in used:
-        continue
-    grp = [i]
-    for j in cand.get(i, ()):
-        if j not in used and j not in grp and len(grp) < 7:
-            grp.append(j)
-    k = 0
-    while len(grp) < 7 and k < N:
-        if k not in used and k not in grp:
-            grp.append(k)
-        k += 1
-    if len(grp) == 7:
-        rings.append(grp)
-        used.update(grp)
-    if len(rings) >= a.max_rings:
-        break
-ring_of = {}
-for r, g in enumerate(rings):
-    for i in g:
-        ring_of[i] = r
-print(f"रिंगें {len(rings):,} | {time.time()-t0:.1f}s", flush=True)
-
-# --- बाहरी कड़ियाँ (दूसरी रिंग के पाथ) ---
-t0 = time.time()
-link_count = 0
-link_bytes = bytearray()
-for i in range(N):
-    out = [j for j in cand.get(i, ()) if ring_of.get(j) != ring_of.get(i)][:a.links]
-    vint(len(out), link_bytes)
-    for j in out:
-        vint(j, link_bytes)
-    link_count += len(out)
-print(f"बाहरी कड़ियाँ {link_count:,} | {time.time()-t0:.1f}s", flush=True)
-
-ring_bytes = bytearray()
-for g in rings:
-    for j in g:
-        vint(j, ring_bytes)
-
-voc = bytearray()
+# --- शब्दकोश: 7 बिट प्रति अक्षर ---
+chars = sorted({c for w in words for c in w})
+cmap = {c: i for i, c in enumerate(chars)}
+cb = Bits()
 for w in words:
-    b = w.encode("utf-8")
-    vint(len(b), voc)
-    voc += b
+    for c in w:
+        cb.put(cmap[c], 7)
+    cb.put(127, 7)          # शब्द-विराम
+voc = cb.end()
+print(f"शब्दकोश {len(voc)/1e6:.2f} MB | अलग अक्षर {len(chars)} | जाल {len(lat)/1e6:.2f} MB", flush=True)
 
 os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
 with open(a.out, "wb") as f:
-    f.write(b"GPACK2")
-    f.write(struct.pack("<IIIII", len(words), len(keyed), len(rings), link_count, 0))
-    for part in (voc, body, ring_bytes, link_bytes):
+    f.write(b"GPACK4")
+    f.write(struct.pack("<IIIII", V, len(sents), len(chars), missed, 0))
+    for part in (bytes(chars_utf8) if False else b"".join(c.encode() for c in chars), voc, lat, starts, body):
         f.write(struct.pack("<I", len(part)))
-        f.write(bytes(part))
-tot = len(voc) + len(body) + len(ring_bytes) + len(link_bytes)
+        f.write(part)
+tot = len(voc) + len(lat) + len(starts) + len(body)
 print(f"\nपैक: {a.out} | {os.path.getsize(a.out)/1e6:.2f} MB", flush=True)
-print(f"  पाथ {len(keyed):,} | शब्द {len(words):,} | रिंगें {len(rings):,} | कड़ियाँ {link_count:,}", flush=True)
-print(f"  {tot/N:.1f} बाइट/पाथ | 250 MB में {250e6/(tot/N):,.0f} पाथ", flush=True)
+print(f"  वाक्य {len(sents):,} | शब्द {V:,} | {tot/len(sents):.2f} बाइट/वाक्य", flush=True)
+print(f"  250 MB में: {250e6/(tot/len(sents)):,.0f} वाक्य", flush=True)
