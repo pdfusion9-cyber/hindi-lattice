@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """pack_banao.py -- GPACK4: शब्द-जाल एक बार + वाक्य सिर्फ़ कड़ी-क्रम के रूप में।
 
-तीन सिद्धांत:
-  1. शब्द एक ही बार लिखे जाते हैं (अक्षर-कोड से, 7 बिट प्रति अक्षर)
+  1. शब्द एक ही बार (अक्षर-कोड, बिट-चौड़ाई अक्षर-संख्या से तय)
   2. जाल (हर शब्द से कड़ियाँ) भी एक ही बार
-  3. वाक्य = शुरू-शब्द + हर कदम की कड़ी-संख्या (शब्द दोबारा नहीं)
+  3. वाक्य = शुरू-शब्द + हर कदम की कड़ी-संख्या
 """
 import argparse, math, os, re, struct, time
 from collections import Counter, defaultdict
@@ -12,8 +11,9 @@ from collections import Counter, defaultdict
 ap = argparse.ArgumentParser()
 ap.add_argument("--text", default="data/corpus.txt")
 ap.add_argument("--out", default="store/gyaan.pack")
-ap.add_argument("--max-paths", type=int, default=10_000_000)
+ap.add_argument("--max-paths", type=int, default=3_000_000)
 ap.add_argument("--max-links", type=int, default=24)
+ap.add_argument("--min-char", type=int, default=3)
 a = ap.parse_args()
 
 t0 = time.time()
@@ -69,7 +69,7 @@ class Bits:
         return bytes(s.buf)
 
 
-# --- वाक्य: शुरू-आईडी + कड़ी-क्रम ---
+# --- वाक्य ---
 t0 = time.time()
 bt = Bits(); starts = bytearray(); missed = 0
 for ws in sents:
@@ -94,22 +94,33 @@ for k in range(V):
     for x in lst:
         vint(x, lat)
 
-# --- शब्दकोश: 7 बिट प्रति अक्षर ---
-chars = sorted({c for w in words for c in w})
+# --- शब्दकोश: अक्षर-कोड, चौड़ाई अक्षर-संख्या से ---
+cnt = Counter(c for w in words for c in w)
+chars = sorted([c for c, n in cnt.items() if n >= a.min_char]) or sorted(cnt)
 cmap = {c: i for i, c in enumerate(chars)}
-cb = Bits()
+cbits = max(1, math.ceil(math.log2(len(chars) + 1)))
+STOP = len(chars)                     # शब्द-विराम
+print(f"अक्षर {len(chars)} | {cbits} बिट प्रति अक्षर", flush=True)
+cb = Bits(); dropped = 0
 for w in words:
+    ok = True
     for c in w:
-        cb.put(cmap[c], 7)
-    cb.put(127, 7)          # शब्द-विराम
+        if c not in cmap:
+            ok = False; break
+    if not ok:
+        dropped += 1
+        w = "".join(c for c in w if c in cmap) or "?"
+    for c in w:
+        cb.put(cmap.get(c, 0), cbits)
+    cb.put(STOP, cbits)
 voc = cb.end()
-print(f"शब्दकोश {len(voc)/1e6:.2f} MB | अलग अक्षर {len(chars)} | जाल {len(lat)/1e6:.2f} MB", flush=True)
+print(f"शब्दकोश {len(voc)/1e6:.2f} MB | दुर्लभ अक्षर वाले शब्द {dropped:,}", flush=True)
 
 os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
 with open(a.out, "wb") as f:
     f.write(b"GPACK4")
-    f.write(struct.pack("<IIIII", V, len(sents), len(chars), missed, 0))
-    for part in (bytes(chars_utf8) if False else b"".join(c.encode() for c in chars), voc, lat, starts, body):
+    f.write(struct.pack("<IIIIIII", V, len(sents), len(chars), cbits, missed, len(lat), 0))
+    for part in (b"".join(c.encode() for c in chars), voc, lat, starts, body):
         f.write(struct.pack("<I", len(part)))
         f.write(part)
 tot = len(voc) + len(lat) + len(starts) + len(body)
