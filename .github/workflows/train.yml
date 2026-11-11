@@ -18,10 +18,13 @@ on:
     - cron: "0 */6 * * *"
 permissions:
   contents: write
+concurrency:
+  group: shard-${{ github.event.inputs.domain || 'auto' }}
+  cancel-in-progress: false
 jobs:
   train:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,17 +56,17 @@ jobs:
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: ckpt
+          name: ckpt-${{ inputs.domain || 'science' }}
           path: ckpt
       - name: train
         run: |
           python train_runner.py --data data/corpus.txt --ckpt ckpt/model.pt \
             --dim ${{ inputs.dim || 256 }} --steps ${{ inputs.steps || 300000 }} \
-            --budget 8000 --threads 4 --max-mb 40
+            --budget 13200 --threads 4 --max-mb 40
       - name: save checkpoint
         uses: actions/upload-artifact@v4
         with:
-          name: ckpt
+          name: ckpt-${{ inputs.domain || 'science' }}
           path: ckpt/
           retention-days: 90
           overwrite: true
