@@ -7,12 +7,14 @@ on:
         default: "256"
       steps:
         description: "कुल कदम"
-        default: "200000"
+        default: "300000"
       articles:
         description: "विकिपीडिया लेख"
-        default: "60000"
+        default: "80000"
   schedule:
     - cron: "0 */6 * * *"
+permissions:
+  contents: write
 jobs:
   train:
     runs-on: ubuntu-latest
@@ -23,12 +25,16 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: cores
+        run: nproc && free -g | head -2
       - name: deps
         run: pip install -q torch --index-url https://download.pytorch.org/whl/cpu
       - name: data
         run: |
-          python prep.py --articles ${{ inputs.articles || 60000 }} --out data/corpus.txt
+          python prep.py --articles ${{ inputs.articles || 80000 }} --out data/corpus.txt
           wc -c data/corpus.txt
+      - name: build lattice store
+        run: python build_store.py --data data/corpus.txt --out store
       - name: restore checkpoint
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -38,7 +44,8 @@ jobs:
       - name: train
         run: |
           python train_runner.py --data data/corpus.txt --ckpt ckpt/model.pt \
-            --dim ${{ inputs.dim || 256 }} --steps ${{ inputs.steps || 200000 }} --budget 18000
+            --dim ${{ inputs.dim || 256 }} --steps ${{ inputs.steps || 300000 }} \
+            --budget 15000 --threads 4
       - name: save checkpoint
         uses: actions/upload-artifact@v4
         with:
@@ -46,3 +53,10 @@ jobs:
           path: ckpt/
           retention-days: 90
           overwrite: true
+      - name: commit store
+        run: |
+          git config user.name "lattice-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add store/ || true
+          git commit -m "store: $(date -u +%F-%H%M) | $(wc -l < store/gyaan.txt) facts" || echo "no change"
+          git push || true
