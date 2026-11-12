@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""to_text.py -- parquet से सादा पाठ, बिना कुछ छोड़े।"""
+"""to_text.py -- parquet से सादा पाठ। खाली हो तो साफ़ त्रुटि।"""
 import argparse, glob, os, sys
 ap = argparse.ArgumentParser()
 ap.add_argument("--dir", default="data")
@@ -25,6 +25,9 @@ with open(a.out, "w", encoding="utf-8") as f:
                 f.write(ln + "\n")
                 tot += len(ln)
             if tot >= a.max_chars: break
-        print(f"{fn}: {tot/1e6:.0f}M अक्षर", flush=True)
+        print(f"{fn}: {tot/1e6:.0f}M", flush=True)
         if tot >= a.max_chars: break
 print(f"कुल {tot/1e6:.0f}M अक्षर -> {a.out}", flush=True)
+if tot < 1_000_000:
+    print("कोष बहुत छोटा -- रुक रहे हैं", flush=True)
+    sys.exit(1)
