@@ -45,15 +45,21 @@ jobs:
         run: |
           python buniyad.py --out store
           wc -l store/gyaan_buniyad.txt store/path_buniyad.txt
-      - name: data (hindi web -- new slice)
-        run: |
-          python fetch_hindi.py --shard ${{ inputs.shard || 0 }} --rows 150000 --out data/web.txt || echo "web fetch failed"
-          wc -l data/web.txt 2>/dev/null || true
       - name: data (domain)
         run: |
-          python fetch_domain.py --domain ${{ inputs.domain || 'science' }} --out store \
-            --per-dataset 8000 --shard ${{ inputs.shard || 0 }} || echo "domain fetch failed"
+          D="${{ inputs.domain || 'science' }}"
+          if [ "$D" = "coding" ]; then
+            python fetch_code.py --out store --rows 25000 || echo "code fetch failed"
+          else
+            python fetch_domain.py --domain "$D" --out store --per-dataset 8000 --shard ${{ inputs.shard || 0 }} || echo "domain fetch failed"
+          fi
           wc -l store/baat_*.txt
+      - name: data (hindi web -- new slice)
+        run: |
+          if [ "${{ inputs.domain || 'science' }}" != "coding" ]; then
+            python fetch_hindi.py --shard ${{ inputs.shard || 0 }} --rows 150000 --out data/web.txt || echo "web fetch failed"
+          fi
+          wc -l data/web.txt 2>/dev/null || true
       - name: data (wikipedia)
         run: |
           python prep.py --articles ${{ inputs.articles || 40000 }} --out data/wiki.txt
