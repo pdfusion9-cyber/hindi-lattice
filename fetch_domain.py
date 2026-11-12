@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""fetch_domain.py -- डोमेन-वार डेटा। coding के लिए नींव (buniyad.py) पहले चलाएँ।"""
+"""fetch_domain.py -- डोमेन-वार डेटा, दोबारा-कोशिश और डेटा-कर्सर के साथ।
+
+  python3 fetch_domain.py --domain math --out store --shard 2
+"""
 import argparse, json, os, time, urllib.parse, urllib.request
 
 UA = "HindiLatticeBot/1.0 (https://github.com/pdfusion9-cyber/hindi-lattice)"
@@ -31,6 +34,20 @@ def rows(ds, offset, length=100):
         return json.load(r)
 
 
+def rows_retry(ds, offset, tries=4):
+    """सेवा बंद हो तो रुक-रुककर दोबारा कोशिश।"""
+    for t in range(tries):
+        try:
+            return rows(ds, offset)
+        except Exception as e:
+            code = getattr(e, "code", None)
+            wait = 5 * (t + 1)
+            print(f"  {ds} @{offset} कोशिश {t+1}/{tries}: {type(e).__name__} {code or ''} -- {wait}s रुकें", flush=True)
+            if t < tries - 1:
+                time.sleep(wait)
+    return None
+
+
 def pick(row, names):
     for n in names:
         if n in row and isinstance(row[n], str) and row[n].strip():
@@ -42,19 +59,21 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--domain", required=True, choices=list(DOMAINS))
 ap.add_argument("--out", default="store")
 ap.add_argument("--per-dataset", type=int, default=8000)
+ap.add_argument("--shard", type=int, default=0, help="कर्सर: कौन-सा टुकड़ा (हर रन नया डेटा)")
 a = ap.parse_args()
 os.makedirs(a.out, exist_ok=True)
 
 total = 0
 with open(f"{a.out}/baat_{a.domain}.txt", "w", encoding="utf-8") as f:
-    f.write(f"# डोमेन: {a.domain}\n")
+    f.write(f"# डोमेन: {a.domain} | शार्ड: {a.shard}\n")
     for ds, qf, af in DOMAINS[a.domain]:
         got = 0
-        for off in range(0, a.per_dataset, 100):
-            try:
-                d = rows(ds, off)
-            except Exception as e:
-                print(f"{ds} @{off}: {type(e).__name__}", flush=True)
+        # कर्सर: हर शार्ड अलग हिस्से से शुरू
+        start = a.shard * a.per_dataset
+        for off in range(start, start + a.per_dataset, 100):
+            d = rows_retry(ds, off)
+            if d is None:
+                print(f"  {ds}: सेवा नहीं मिली, आगे बढ़ रहे", flush=True)
                 break
             rs = d.get("rows", [])
             if not rs:
@@ -74,4 +93,4 @@ with open(f"{a.out}/baat_{a.domain}.txt", "w", encoding="utf-8") as f:
             time.sleep(0.2)
         print(f"{ds}: {got}", flush=True)
         total += got
-print(f"डोमेन {a.domain}: कुल {total:,} -> {a.out}/baat_{a.domain}.txt", flush=True)
+print(f"डोमेन {a.domain} शार्ड {a.shard}: कुल {total:,} -> {a.out}/baat_{a.domain}.txt", flush=True)
