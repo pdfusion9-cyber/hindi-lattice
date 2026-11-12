@@ -1,0 +1,119 @@
+name: loop10
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "training minutes"
+        default: "250"
+  schedule:
+    - cron: '0 */5 * * *'
+permissions:
+  contents: write
+concurrency:
+  group: loop10-${{ matrix.domain }}
+  cancel-in-progress: false
+jobs:
+  train:
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - {domain: science, shard: 0}
+          - {domain: math, shard: 1}
+          - {domain: reasoning, shard: 2}
+          - {domain: news, shard: 3}
+          - {domain: qa, shard: 4}
+          - {domain: general, shard: 5}
+          - {domain: coding, shard: 6}
+          - {domain: document, shard: 7}
+          - {domain: history, shard: 8}
+          - {domain: geography, shard: 9}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          python -c "import torch; print(torch.__version__)"
+      - name: restore checkpoint
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ckpt-${{ matrix.domain }}
+          path: ckpt
+      - name: fetch domain data (never runs short)
+        env:
+          SHARD: ${{ matrix.shard }}
+          DOMAIN: ${{ matrix.domain }}
+        run: |
+          mkdir -p data
+          python - <<'PYEOF'
+          import os, urllib.request, json
+          shard = int(os.environ["SHARD"])
+          domain = os.environ["DOMAIN"]
+          base = "https://huggingface.co/datasets/HuggingFaceFW/fineweb-2/resolve/main/data/hin_Hani/train"
+          got = 0
+          # हर डोमेन अलग parquet फ़ाइल से -- 10 अलग भंडार
+          for k in range(6):
+              idx = shard * 6 + k
+              url = f"{base}/{idx:03d}_00000.parquet"
+              out = f"data/p{idx}.parquet"
+              try:
+                  urllib.request.urlretrieve(url, out)
+                  got += 1
+                  print("got", url, flush=True)
+              except Exception as e:
+                  print("miss", idx, type(e).__name__, flush=True)
+          # wiki + domain QA from repo
+          try:
+              urllib.request.urlretrieve(
+                  f"https://raw.githubusercontent.com/pdfusion9-cyber/hindi-lattice/shard-{domain}/store/baat_{domain}.txt",
+                  "data/baat.txt")
+          except Exception:
+              open("data/baat.txt","w").write("")
+          try:
+              urllib.request.urlretrieve(
+                  "https://raw.githubusercontent.com/pdfusion9-cyber/hindi-lattice/facts/data/gyaan_sab.txt",
+                  "data/gyaan.txt")
+          except Exception:
+              open("data/gyaan.txt","w").write("")
+          print("parquet files:", got, flush=True)
+          PYEOF
+          python to_text.py --dir data --out data/corpus.txt --max-chars 200000000
+          wc -l data/corpus.txt; du -h data/corpus.txt
+      - name: train (loop, keeps learning)
+        env:
+          MIN: ${{ inputs.minutes || 250 }}
+        run: |
+          python jaal_tf.py --data data/corpus.txt --vocab 30000 \
+            --dim 256 --layers 2 --heads 8 --seq 24 --batch 24 \
+            --steps 500000 --nbr 8 --use-lattice 1 \
+            --budget $((MIN*60)) --ckpt ckpt/jaal.pt --threads 4 2>&1 | tail -80
+      - name: save checkpoint
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-${{ matrix.domain }}
+          path: ckpt/
+          retention-days: 90
+          overwrite: true
+      - name: save to branch
+        if: always()
+        env:
+          DOMAIN: ${{ matrix.domain }}
+        run: |
+          mkdir -p store
+          cp -r ckpt/* store/ 2>/dev/null || true
+          cp data/gyaan.txt store/gyaan.txt 2>/dev/null || true
+          cp data/baat.txt store/baat.txt 2>/dev/null || true
+          git config user.email "bot@local"; git config user.name "loop10"
+          git checkout -B "shard-$DOMAIN" 2>/dev/null || git checkout "shard-$DOMAIN"
+          git add -f store/ 2>/dev/null || true
+          git commit -m "loop10: $DOMAIN checkpoint $(date -u +%H:%M)" 2>/dev/null || echo "no change"
+          git push -f origin "shard-$DOMAIN" 2>&1 | tail -3 || echo "push skipped"
