@@ -9,9 +9,6 @@ on:
     - cron: '0 */5 * * *'
 permissions:
   contents: write
-concurrency:
-  group: loop10-${{ matrix.domain }}
-  cancel-in-progress: false
 jobs:
   train:
     strategy:
@@ -31,6 +28,7 @@ jobs:
           - {domain: geography, shard: 9}
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    concurrency: loop10-${{ matrix.domain }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,9 +51,8 @@ jobs:
           python to_text.py --dir data --out data/corpus.txt --max-chars 200000000
           wc -l data/corpus.txt
       - name: train
-        env:
-          MIN: ${{ inputs.minutes || 250 }}
         run: |
+          MIN=${{ inputs.minutes || 250 }}
           python jaal_tf.py --data data/corpus.txt --vocab 30000 --dim 256 --layers 2 --heads 8 --seq 24 --batch 24 --steps 500000 --nbr 8 --use-lattice 1 --budget $((MIN*60)) --ckpt ckpt/jaal.pt --threads 4 2>&1 | tail -80
       - name: save
         if: always()
@@ -76,5 +73,5 @@ jobs:
           git config user.name loop10
           git checkout -B shard-${{ matrix.domain }}
           git add -f store/ 2>/dev/null || true
-          git commit -m "loop10 ${{ matrix.domain }} $(date -u +%H:%M)" 2>/dev/null || echo nochange
+          git commit -m "loop10 ${{ matrix.domain }}" 2>/dev/null || echo nochange
           git push -f origin shard-${{ matrix.domain }} 2>&1 | tail -3 || echo pushskip
