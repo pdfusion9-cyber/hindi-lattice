@@ -18,28 +18,17 @@ jobs:
       fail-fast: false
       max-parallel: 10
       matrix:
-        domain: [science, math, reasoning, news, qa, general, coding, document, history, geography]
         include:
-          - domain: science
-            shard: 0
-          - domain: math
-            shard: 1
-          - domain: reasoning
-            shard: 2
-          - domain: news
-            shard: 3
-          - domain: qa
-            shard: 4
-          - domain: general
-            shard: 5
-          - domain: coding
-            shard: 6
-          - domain: document
-            shard: 7
-          - domain: history
-            shard: 8
-          - domain: geography
-            shard: 9
+          - {domain: science, shard: 0}
+          - {domain: math, shard: 1}
+          - {domain: reasoning, shard: 2}
+          - {domain: news, shard: 3}
+          - {domain: qa, shard: 4}
+          - {domain: general, shard: 5}
+          - {domain: coding, shard: 6}
+          - {domain: document, shard: 7}
+          - {domain: history, shard: 8}
+          - {domain: geography, shard: 9}
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
@@ -64,8 +53,9 @@ jobs:
           python to_text.py --dir data --out data/corpus.txt --max-chars 200000000
           wc -l data/corpus.txt
       - name: train
+        env:
+          MIN: ${{ inputs.minutes || 250 }}
         run: |
-          MIN=${{ inputs.minutes || 250 }}
           python jaal_tf.py --data data/corpus.txt --vocab 30000 --dim 256 --layers 2 --heads 8 --seq 24 --batch 24 --steps 500000 --nbr 8 --use-lattice 1 --budget $((MIN*60)) --ckpt ckpt/jaal.pt --threads 4 2>&1 | tail -80
       - name: save
         if: always()
