@@ -14,7 +14,7 @@ ap.add_argument("--vocab", type=int, default=20000)
 ap.add_argument("--dim", type=int, default=256)
 ap.add_argument("--layers", type=int, default=2)
 ap.add_argument("--heads", type=int, default=8)
-ap.add_argument("--seq", type=int, default=24)
+ap.add_argument("--seq", type=int, default=10)
 ap.add_argument("--batch", type=int, default=24)
 ap.add_argument("--steps", type=int, default=280000)
 ap.add_argument("--budget", type=int, default=15000)
@@ -30,7 +30,7 @@ torch.manual_seed(0); random.seed(0); torch.set_num_threads(a.threads)
 sents = []
 for line in open(a.data, encoding="utf-8"):
     ws = re.findall(r"[^\s।,?!]+", line)
-    if 6 <= len(ws) <= 60: sents.append(ws)
+    if 8 <= len(ws) <= 60: sents.append(ws)
     if len(sents) >= a.max_sent: break
 cnt = Counter(w for ws in sents for w in ws)
 top = [w for w, _ in cnt.most_common(a.vocab)]
@@ -90,8 +90,8 @@ class JaalTF(nn.Module):
                 mem = s.tok(nbr_ids)                       # (B,T,K,d)
                 q2 = b["lq"](b["n3"](h)).view(B, T, s.H, -1)
                 k2 = mem.view(B, T, s.K, s.H, -1).permute(0, 1, 3, 2, 4)
-                sc = (q2.unsqueeze(3) @ k2.transpose(-1, -2)).squeeze(3) / math.sqrt(s.d // s.H)
-                got = (sc.softmax(-1) @ k2).reshape(B, T, s.d)
+                sc = (q2.unsqueeze(3) @ k2.transpose(-1, -2)) / math.sqrt(s.d // s.H)
+                got = (sc.softmax(-1) @ k2).squeeze(3).reshape(B, T, s.d)
                 h = h + b["lo"](got)
         return s.head(s.nf(h))
 
