@@ -49,10 +49,10 @@ jobs:
           python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }}
           python to_text.py --dir data --out data/corpus.txt --max-chars 150000000
           wc -l data/corpus.txt
-      - name: train sampurna (lattice + pattern + transformer)
+      - name: train sampurna 1024
         run: |
           MIN=${{ inputs.minutes || 250 }}
-          python sampurna.py --data data/corpus.txt --vocab 30000 --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --nbr 8 --cand 50 --pat-cand 20 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -90
+          python sampurna.py --data data/corpus.txt --vocab 30000 --dim 1024 --layers 12 --heads 16 --seq 24 --batch 8 --steps 500000 --nbr 8 --cand 50 --pat-cand 20 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -90
       - name: save
         if: always()
         uses: actions/upload-artifact@v4
@@ -70,5 +70,5 @@ jobs:
           git config user.name loop10
           git checkout -B shard-${{ matrix.domain }}
           git add -f store/ 2>/dev/null || true
-          git commit -m "loop10 ${{ matrix.domain }} sampurna" 2>/dev/null || echo nochange
+          git commit -m "loop10 ${{ matrix.domain }} dim1024" 2>/dev/null || echo nochange
           git push -f origin shard-${{ matrix.domain }} 2>&1 | tail -2 || echo pushskip
