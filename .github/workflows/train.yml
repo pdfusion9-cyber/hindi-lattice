@@ -3,10 +3,10 @@ on:
   workflow_dispatch:
     inputs:
       domain:
-        description: "डोमेन"
+        description: "डोमेन: science/math/reasoning/news/qa/general/coding/document"
         default: "science"
       shard:
-        description: "कर्सर (0-7): हर रन नया डेटा"
+        description: "कर्सर (0-7)"
         default: "0"
       dim:
         description: "आयाम"
@@ -27,7 +27,7 @@ concurrency:
 jobs:
   train:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -85,11 +85,11 @@ jobs:
         with:
           name: ckpt-${{ inputs.domain || 'science' }}
           path: ckpt
-      - name: train
+      - name: train (280 min)
         run: |
           python train_runner.py --data data/corpus.txt --ckpt ckpt/model.pt \
             --dim ${{ inputs.dim || 256 }} --steps ${{ inputs.steps || 300000 }} \
-            --budget 11400 --threads 4 --max-mb 40
+            --budget 16200 --threads 4 --max-mb 40
       - name: save checkpoint
         uses: actions/upload-artifact@v4
         with:
