@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """loop_fetch.py -- एक डोमेन के लिए अलग डेटा भंडार।
 
-हिंदी (hin_Deva) parquet में सिर्फ़ 8 फ़ाइलें हैं (000-007), इसलिए:
-  shard 0-7  -> parquet फ़ाइल 000-007 (हर एक ~100-200 MB)
-  shard 8-9  -> repo की vakya.txt, अलग हिस्से
+hin_Deva parquet में 8 फ़ाइलें (000-007)। 10 डोमेन के लिए:
+  shard 0-7 -> फ़ाइल 000-007
+  shard 8-9 -> फ़ाइल 000/001 फिर से (डोमेन-QA और तथ्य अलग रहते हैं)
 """
 import argparse, os, sys, urllib.request
 
@@ -17,51 +17,32 @@ os.makedirs("data", exist_ok=True)
 BASE = "https://huggingface.co/datasets/HuggingFaceFW/fineweb-2/resolve/main/data/hin_Deva/train"
 RAW = "https://raw.githubusercontent.com/pdfusion9-cyber/hindi-lattice"
 
+idx = a.shard if a.shard <= 7 else (a.shard - 8)
 got = 0
-if a.shard <= 7:
-    idx = a.shard
-    url = f"{BASE}/{idx:03d}_00000.parquet"
-    out = f"data/p{idx}.parquet"
-    if os.path.exists(out) and os.path.getsize(out) > 100000:
-        got = 1
-        print("have", idx, os.path.getsize(out) // 1024, "KB", flush=True)
-    else:
-        for attempt in range(4):
-            try:
-                urllib.request.urlretrieve(url, out)
-                if os.path.getsize(out) < 100000:
-                    raise IOError("too small")
-                got = 1
-                print("got", idx, os.path.getsize(out) // 1024, "KB", flush=True)
-                break
-            except Exception as e:
-                print("miss", idx, attempt, type(e).__name__, flush=True)
+url = f"{BASE}/{idx:03d}_00000.parquet"
+out = f"data/p{idx}.parquet"
+if os.path.exists(out) and os.path.getsize(out) > 100000:
+    got = 1
+    print("have", idx, os.path.getsize(out) // 1024, "KB", flush=True)
 else:
-    # 8, 9 -- repo की vakya.txt के अलग हिस्से
-    for br in ("shard-math", "shard-science"):
+    for attempt in range(5):
         try:
-            urllib.request.urlretrieve(f"{RAW}/{br}/store/vakya.txt", f"data/v_{br}.txt")
-            got += 1
-            print("got vakya", br, os.path.getsize(f"data/v_{br}.txt") // 1024, "KB", flush=True)
+            urllib.request.urlretrieve(url, out)
+            if os.path.getsize(out) < 100000:
+                raise IOError("too small")
+            got = 1
+            print("got", idx, os.path.getsize(out) // 1024, "KB", flush=True)
+            break
         except Exception as e:
-            print("miss vakya", br, type(e).__name__, flush=True)
-    # अलग हिस्सा: shard 8 पहला आधा, shard 9 दूसरा आधा
-    src = "data/v_shard-math.txt"
-    if os.path.exists(src):
-        lines = open(src, encoding="utf-8", errors="ignore").readlines()
-        half = len(lines) // 2
-        part = lines[:half] if a.shard == 8 else lines[half:]
-        with open("data/vakya_part.txt", "w", encoding="utf-8") as f:
-            f.writelines(part)
-        print("vakya part", a.shard, len(part), "पंक्तियाँ", flush=True)
+            print("miss", idx, attempt, type(e).__name__, flush=True)
 
-for name, url in (
+for name, url2 in (
     ("data/baat.txt", f"{RAW}/shard-{a.domain}/store/baat_{a.domain}.txt"),
     ("data/gyaan.txt", f"{RAW}/facts/data/gyaan_sab.txt"),
     ("data/gyaan2.txt", f"{RAW}/facts/data/gyaan_ghana.txt"),
 ):
     try:
-        urllib.request.urlretrieve(url, name)
+        urllib.request.urlretrieve(url2, name)
         print("got", name, os.path.getsize(name) // 1024, "KB", flush=True)
     except Exception:
         open(name, "w").write("")
