@@ -3,8 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       domain:
-        description: "डोमेन: science / math / reasoning / news / qa / general / coding"
+        description: "डोमेन"
         default: "science"
+      shard:
+        description: "कर्सर (0-7): हर रन नया डेटा"
+        default: "0"
       dim:
         description: "आयाम"
         default: "256"
@@ -19,7 +22,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: shard-${{ github.event.inputs.domain || 'auto' }}
+  group: shard-${{ github.event.inputs.domain || 'auto' }}-${{ github.event.inputs.shard || '0' }}
   cancel-in-progress: false
 jobs:
   train:
@@ -35,26 +38,36 @@ jobs:
       - name: deps
         run: |
           python -m pip install -q --upgrade pip
-          python -m pip install -q numpy
+          python -m pip install -q numpy pyarrow
           python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-          python -c "import numpy, torch; print('numpy', numpy.__version__, '| torch', torch.__version__)"
+          python -c "import numpy, pyarrow, torch; print('numpy', numpy.__version__, '| torch', torch.__version__)"
       - name: foundation (coding/english)
         run: |
           python buniyad.py --out store
           wc -l store/gyaan_buniyad.txt store/path_buniyad.txt
+      - name: data (hindi web -- new slice)
+        run: |
+          python fetch_hindi.py --shard ${{ inputs.shard || 0 }} --rows 150000 --out data/web.txt || echo "web fetch failed"
+          wc -l data/web.txt 2>/dev/null || true
       - name: data (domain)
         run: |
-          python fetch_domain.py --domain ${{ inputs.domain || 'science' }} --out store --per-dataset 8000 || echo "dataset fetch failed -- foundation only"
+          python fetch_domain.py --domain ${{ inputs.domain || 'science' }} --out store \
+            --per-dataset 8000 --shard ${{ inputs.shard || 0 }} || echo "domain fetch failed"
           wc -l store/baat_*.txt
       - name: data (wikipedia)
         run: |
-          python prep.py --articles ${{ inputs.articles || 40000 }} --out data/corpus.txt
-          wc -c data/corpus.txt
-      - name: build store
+          python prep.py --articles ${{ inputs.articles || 40000 }} --out data/wiki.txt
+          wc -c data/wiki.txt
+      - name: merge corpus
+        run: |
+          cat data/wiki.txt data/web.txt store/path_buniyad.txt > data/corpus.txt 2>/dev/null || cat data/wiki.txt > data/corpus.txt
+          wc -l data/corpus.txt
+      - name: build store (facts)
         run: |
           python build_store.py --data data/corpus.txt --out store
+          cat data/gyaan_base.txt >> store/gyaan.txt 2>/dev/null || true
           cat store/gyaan_buniyad.txt >> store/gyaan.txt 2>/dev/null || true
-          cat store/path_buniyad.txt >> data/corpus.txt 2>/dev/null || true
+          sort -u store/gyaan.txt -o store/gyaan.txt 2>/dev/null || true
           wc -l store/gyaan.txt
       - name: build pack
         run: |
@@ -70,7 +83,7 @@ jobs:
         run: |
           python train_runner.py --data data/corpus.txt --ckpt ckpt/model.pt \
             --dim ${{ inputs.dim || 256 }} --steps ${{ inputs.steps || 300000 }} \
-            --budget 13200 --threads 4 --max-mb 40
+            --budget 11400 --threads 4 --max-mb 40
       - name: save checkpoint
         uses: actions/upload-artifact@v4
         with:
@@ -82,11 +95,11 @@ jobs:
         run: |
           set -x
           D="${{ inputs.domain || 'science' }}"
+          S="${{ inputs.shard || 0 }}"
           git config user.name "lattice-bot"
           git config user.email "bot@users.noreply.github.com"
-          # शुद्ध ब्रांच: सिर्फ़ store/, कोई वर्कफ़्लो फ़ाइल नहीं
-          git checkout --orphan "orphan-$D"
+          git checkout --orphan "orphan-$D-$S"
           git rm -rf --cached . >/dev/null 2>&1 || true
           git add -f store/
-          git commit -m "shard $D: $(date -u +%F-%H%M) | $(wc -l < store/gyaan.txt 2>/dev/null) facts | $(cat store/baat_*.txt 2>/dev/null | wc -l) QA | pack $(du -h store/gyaan.pack 2>/dev/null | cut -f1)" || echo "no change"
-          git push -f origin "orphan-$D:refs/heads/shard-$D"
+          git commit -m "shard $D/$S: $(date -u +%F-%H%M) | $(wc -l < store/gyaan.txt 2>/dev/null) facts | $(cat store/baat_*.txt 2>/dev/null | wc -l) QA | pack $(du -h store/gyaan.pack 2>/dev/null | cut -f1)" || echo "no change"
+          git push -f origin "orphan-$D-$S:refs/heads/shard-$D"
