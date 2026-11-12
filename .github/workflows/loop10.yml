@@ -38,22 +38,22 @@ jobs:
         run: |
           python -m pip install -q numpy pyarrow
           python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-          python -c "import torch; print(torch.__version__)"
       - name: restore
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: ckpt-${{ matrix.domain }}
           path: ckpt
-      - name: fetch
+      - name: fetch all available data
         run: |
-          python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }} --files 6
-          python to_text.py --dir data --out data/corpus.txt --max-chars 200000000
+          python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }}
+          python to_text.py --dir data --out data/corpus.txt --max-chars 400000000
           wc -l data/corpus.txt
-      - name: train
+          du -h data/corpus.txt
+      - name: train upgraded model
         run: |
           MIN=${{ inputs.minutes || 250 }}
-          python jaal_tf.py --data data/corpus.txt --vocab 30000 --dim 256 --layers 2 --heads 8 --seq 24 --batch 24 --steps 500000 --nbr 8 --use-lattice 1 --budget $((MIN*60)) --ckpt ckpt/jaal.pt --threads 4 2>&1 | tail -80
+          python jaal_tf.py --data data/corpus.txt --vocab 30000 --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --nbr 8 --use-lattice 1 --budget $((MIN*60)) --ckpt ckpt/jaal.pt --threads 4 2>&1 | tail -90
       - name: save
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,11 +67,9 @@ jobs:
         run: |
           mkdir -p store
           cp -r ckpt/* store/ 2>/dev/null || true
-          cp data/gyaan.txt store/gyaan.txt 2>/dev/null || true
-          cp data/baat.txt store/baat.txt 2>/dev/null || true
           git config user.email bot@local
           git config user.name loop10
           git checkout -B shard-${{ matrix.domain }}
           git add -f store/ 2>/dev/null || true
-          git commit -m "loop10 ${{ matrix.domain }}" 2>/dev/null || echo nochange
-          git push -f origin shard-${{ matrix.domain }} 2>&1 | tail -3 || echo pushskip
+          git commit -m "loop10 ${{ matrix.domain }} upgraded" 2>/dev/null || echo nochange
+          git push -f origin shard-${{ matrix.domain }} 2>&1 | tail -2 || echo pushskip
