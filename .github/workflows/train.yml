@@ -80,10 +80,13 @@ jobs:
           overwrite: true
       - name: commit store to domain branch
         run: |
+          set -x
           D="${{ inputs.domain || 'science' }}"
           git config user.name "lattice-bot"
           git config user.email "bot@users.noreply.github.com"
-          git checkout -B "shard-$D"
-          git add store/ || true
+          # शुद्ध ब्रांच: सिर्फ़ store/, कोई वर्कफ़्लो फ़ाइल नहीं
+          git checkout --orphan "orphan-$D"
+          git rm -rf --cached . >/dev/null 2>&1 || true
+          git add -f store/
           git commit -m "shard $D: $(date -u +%F-%H%M) | $(wc -l < store/gyaan.txt 2>/dev/null) facts | $(cat store/baat_*.txt 2>/dev/null | wc -l) QA | pack $(du -h store/gyaan.pack 2>/dev/null | cut -f1)" || echo "no change"
-          git push -f origin "shard-$D" || true
+          git push -f origin "orphan-$D:refs/heads/shard-$D"
