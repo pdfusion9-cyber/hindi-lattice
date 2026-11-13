@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: read
 jobs:
   pack:
     runs-on: ubuntu-latest
@@ -16,14 +17,18 @@ jobs:
         run: |
           python -m pip install -q numpy pyarrow
           python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-      - name: download all checkpoints
+      - name: download checkpoints from the training run
         uses: actions/download-artifact@v4
         with:
           pattern: ckpt-*
           path: ck
           merge-multiple: false
+          run-id: 43263656655
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: list
         run: |
+          echo "--- ck ---"
+          ls -la ck/ | head -20
           du -sh ck/* 2>/dev/null | head -20
           find ck -name "*.pt" | head -20
       - name: convert to int4
@@ -45,7 +50,7 @@ jobs:
           set -o pipefail
           mkdir -p pack
           cp out/*.int4.npz pack/ 2>/dev/null || true
-          printf '%s\n' "हिंदी लैटिस — सभी 10 मॉडल कॉपी int4 में" "हर फ़ाइल: <domain>.int4.npz" "चेतावनी: शब्दकोश सेव नहीं है (पुराना फ़ॉर्मैट)" > pack/README.txt
+          printf '%s\n' "हिंदी लैटिस - सभी 10 मॉडल कॉपी int4 में" "हर फ़ाइल: domain.int4.npz" "चेतावनी: शब्दकोश सेव नहीं है (पुराना फ़ॉर्मैट)" > pack/README.txt
           zip -q -9 all_models_int4.zip pack/*
           ls -lh all_models_int4.zip
           du -sh pack/
