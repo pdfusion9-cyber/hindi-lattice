@@ -42,9 +42,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python chakra_lo.py ${{ matrix.domain }} old
-      - name: show old
-        run: find old -name "*.pt" | head -3
+        run: python chakra_lo.py ${{ matrix.domain }} old || echo "purani copy nahi"
       - name: fetch rotating data
         run: |
           set -o pipefail
@@ -56,18 +54,18 @@ jobs:
           wc -l data/corpus.txt
       - name: train full corpus
         run: |
-          set -o pipefail
           MIN=${{ inputs.minutes || 240 }}
-          OLD=$(find old -name "*.pt" | head -1)
-          echo "old=$OLD"
-          if [ -z "$OLD" ]; then
-            python punah.py --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
-          else
+          OLD=$(find old -name "*.pt" 2>/dev/null | head -1 || true)
+          echo "old=[$OLD]"
+          if [ -n "$OLD" ]; then
             python punah.py --old "$OLD" --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
+          else
+            python punah.py --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
           fi
       - name: int4
         if: always()
-        run: python int4_karo.py --ckpt ckpt/sampurna.pt --out store/int4.npz || echo skip
+        run: |
+          if [ -f ckpt/sampurna.pt ]; then python int4_karo.py --ckpt ckpt/sampurna.pt --out store/int4.npz || echo skip; else echo "koi ckpt nahi"; fi
       - name: save
         if: always()
         uses: actions/upload-artifact@v4
