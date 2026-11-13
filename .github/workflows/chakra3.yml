@@ -1,0 +1,79 @@
+name: chakra3
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        default: "240"
+permissions:
+  contents: write
+  actions: read
+jobs:
+  train:
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - {domain: science, shard: 0}
+          - {domain: math, shard: 1}
+          - {domain: reasoning, shard: 2}
+          - {domain: news, shard: 3}
+          - {domain: qa, shard: 4}
+          - {domain: general, shard: 5}
+          - {domain: coding, shard: 6}
+          - {domain: document, shard: 7}
+          - {domain: history, shard: 8}
+          - {domain: geography, shard: 9}
+    runs-on: ubuntu-latest
+    timeout-minutes: 290
+    concurrency: chakra3-${{ matrix.domain }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: bring the resumed copy
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: punah-${{ matrix.domain }}
+          path: old
+          run-id: 43413734459
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: show old
+        run: |
+          find old -name "*.pt" | head -3
+          ls -lh old/ckpt/ 2>/dev/null | head -3
+      - name: fetch new data
+        run: |
+          set -o pipefail
+          python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }}
+          python to_text.py --dir data --out data/corpus.txt --max-chars 400000000
+          wc -l data/corpus.txt
+      - name: train further
+        run: |
+          set -o pipefail
+          MIN=${{ inputs.minutes || 240 }}
+          OLD=$(find old -name "*.pt" | head -1)
+          echo "old: $OLD"
+          if [ -z "$OLD" ]; then echo "purani copy nahi mili -- ruk rahe"; exit 1; fi
+          python punah.py --old "$OLD" --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
+      - name: quantize
+        if: always()
+        run: |
+          python int4_karo.py --ckpt ckpt/sampurna.pt --out store/int4.npz || echo skip
+          ls -lh store/ ckpt/ 2>/dev/null | head -8
+      - name: save
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chakra-${{ matrix.domain }}
+          path: |
+            ckpt/
+            store/
+          retention-days: 60
+          overwrite: true
