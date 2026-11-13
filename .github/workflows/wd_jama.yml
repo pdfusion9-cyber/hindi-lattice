@@ -1,0 +1,38 @@
+name: wd_jama
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 290
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: harvest
+        run: python wd_jama.py
+      - name: show
+        run: |
+          wc -l gyaan_wd.txt gyaan_wd.txt.kism.txt 2>/dev/null
+          head -3 gyaan_wd.txt
+      - name: save
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gyaan-wd
+          path: |
+            gyaan_wd.txt
+            gyaan_wd.txt.kism.txt
+          retention-days: 90
+          overwrite: true
+      - name: push
+        if: always()
+        run: |
+          git config user.email bot@local
+          git config user.name wd
+          git add gyaan_wd.txt gyaan_wd.txt.kism.txt 2>/dev/null || true
+          git commit -m "wikidata facts $(date -u +%H:%M)" || echo nochange
+          git push origin main || echo pushskip
