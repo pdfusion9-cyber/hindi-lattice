@@ -4,7 +4,7 @@ on:
     inputs:
       minutes:
         description: training minutes
-        default: "250"
+        default: "240"
   schedule:
     - cron: '0 */5 * * *'
 permissions:
@@ -44,21 +44,28 @@ jobs:
         with:
           name: ckpt-${{ matrix.domain }}
           path: ckpt
-      - name: fetch all available data
+      - name: fetch data
         run: |
           python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }}
           python to_text.py --dir data --out data/corpus.txt --max-chars 150000000
           wc -l data/corpus.txt
-      - name: train sampurna 1024
+      - name: build lattice pack
         run: |
-          MIN=${{ inputs.minutes || 250 }}
-          python sampurna.py --data data/corpus.txt --vocab 30000 --dim 1024 --layers 12 --heads 16 --seq 24 --batch 8 --steps 500000 --nbr 8 --cand 50 --pat-cand 20 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -90
+          python pack_banao.py --text data/corpus.txt --out data/gyaan.pack --max-paths 300000
+          ls -lh data/gyaan.pack
+      - name: train from lattice pack
+        run: |
+          MIN=${{ inputs.minutes || 240 }}
+          python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt \
+            --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 \
+            --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 \
+            --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -90
       - name: make int8 and int4
         if: always()
         run: |
           python chhota_karo.py --ckpt ckpt/sampurna.pt --out store --part-mb 90 || echo "quantize skipped"
           ls -lh store/ | head -20
-      - name: save full checkpoint
+      - name: save checkpoint
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -66,7 +73,7 @@ jobs:
           path: ckpt/
           retention-days: 30
           overwrite: true
-      - name: save int8/int4 parts
+      - name: save small parts
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -80,6 +87,6 @@ jobs:
           git config user.email bot@local
           git config user.name loop10
           git checkout -B shard-${{ matrix.domain }}
-          git add -f store/ 2>/dev/null || true
-          git commit -m "loop10 ${{ matrix.domain }} int8/int4 $(date -u +%H:%M)" 2>/dev/null || echo nochange
-          git push -f origin shard-${{ matrix.domain }} 2>&1 | tail -2 || echo pushskip
+          git add -A
+          git commit -m "loop10 ${{ matrix.domain }} pack-connected $(date -u +%H:%M)" || echo nochange
+          git push -f origin shard-${{ matrix.domain }} || echo pushskip
