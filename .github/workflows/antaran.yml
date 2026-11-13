@@ -1,0 +1,55 @@
+name: antaran
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: which domain checkpoint to test
+        default: "document"
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: restore trained checkpoint
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ckpt-${{ inputs.domain || 'document' }}
+          path: ckpt
+      - name: data
+        run: |
+          python loop_fetch.py --shard 7 --domain ${{ inputs.domain || 'document' }}
+          python to_text.py --dir data --out data/corpus.txt --max-chars 60000000
+          wc -l data/corpus.txt
+      - name: transfer test
+        run: |
+          ls -lh ckpt/ || true
+          python antaran_runner.py --ckpt ckpt/sampurna.pt --data data/corpus.txt \
+            --n-train 15000 --n-test 3000 --out store/antaran.json 2>&1 | tail -40
+      - name: upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: antaran-result
+          path: store/
+          retention-days: 90
+          overwrite: true
+      - name: branch
+        if: always()
+        run: |
+          git config user.email bot@local
+          git config user.name antaran
+          git checkout -B antaran-result
+          git add -f store/ 2>/dev/null || true
+          git commit -m "antaran result $(date -u +%H:%M)" 2>/dev/null || echo nochange
+          git push -f origin antaran-result 2>&1 | tail -2 || echo pushskip
