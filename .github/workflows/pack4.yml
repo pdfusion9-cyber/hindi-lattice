@@ -1,0 +1,66 @@
+name: pack4
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 290
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: download all checkpoints
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ckpt-*
+          path: ck
+          merge-multiple: false
+      - name: show
+        run: |
+          du -sh ck/* 2>/dev/null | head -20
+          find ck -name "*.pt" | head -20
+      - name: convert every copy to int4
+        run: |
+          mkdir -p out
+          for d in ck/*/; do
+            name=$(basename "$d")
+            pt=$(find "$d" -name "*.pt" | head -1)
+            if [ -z "$pt" ]; then echo "skip $name"; continue; fi
+            echo "=== $name ==="
+            python int4_karo.py --ckpt "$pt" --out "out/${name}.int4.npz" || echo "fail $name"
+            rm -f "$pt"
+            df -h / | tail -1
+          done
+          ls -lh out/
+      - name: pack everything into one file
+        run: |
+          mkdir -p pack
+          cp out/*.int4.npz pack/ 2>/dev/null || true
+          cat > pack/README.txt <<'EOF'
+हिंदी लैटिस — सभी 10 मॉडल कॉपी, int4 में
+हर फ़ाइल: <domain>.int4.npz  (int4 वज़न + scale + आकार)
+लोड करने के लिए int4_karo.py का उल्टा (deq) इस्तेमाल करें।
+चेतावनी: इन कॉपी में शब्दकोश सेव नहीं है (पुराना फ़ॉर्मैट)।
+EOF
+          zip -q -9 all_models_int4.zip pack/*
+          ls -lh all_models_int4.zip
+          du -sh pack/
+      - name: upload pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-models-int4
+          path: all_models_int4.zip
+          retention-days: 90
+          overwrite: true
+      - name: summary
+        run: |
+          echo "--- सार ---"
+          ls -lh out/ | head -20
+          du -sh out/ pack/ all_models_int4.zip
