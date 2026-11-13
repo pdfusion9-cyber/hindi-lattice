@@ -53,22 +53,33 @@ jobs:
         run: |
           MIN=${{ inputs.minutes || 250 }}
           python sampurna.py --data data/corpus.txt --vocab 30000 --dim 1024 --layers 12 --heads 16 --seq 24 --batch 8 --steps 500000 --nbr 8 --cand 50 --pat-cand 20 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -90
-      - name: save
+      - name: make int8 and int4
+        if: always()
+        run: |
+          python chhota_karo.py --ckpt ckpt/sampurna.pt --out store --part-mb 90 || echo "quantize skipped"
+          ls -lh store/ | head -20
+      - name: save full checkpoint
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ckpt-${{ matrix.domain }}
           path: ckpt/
+          retention-days: 30
+          overwrite: true
+      - name: save int8/int4 parts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: small-${{ matrix.domain }}
+          path: store/
           retention-days: 90
           overwrite: true
       - name: branch
         if: always()
         run: |
-          mkdir -p store
-          cp -r ckpt/* store/ 2>/dev/null || true
           git config user.email bot@local
           git config user.name loop10
           git checkout -B shard-${{ matrix.domain }}
           git add -f store/ 2>/dev/null || true
-          git commit -m "loop10 ${{ matrix.domain }} dim1024" 2>/dev/null || echo nochange
+          git commit -m "loop10 ${{ matrix.domain }} int8/int4 $(date -u +%H:%M)" 2>/dev/null || echo nochange
           git push -f origin shard-${{ matrix.domain }} 2>&1 | tail -2 || echo pushskip
