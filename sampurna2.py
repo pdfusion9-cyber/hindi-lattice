@@ -25,6 +25,8 @@ ap.add_argument("--pat-cand", type=int, default=20)
 ap.add_argument("--minpat", type=int, default=5)
 ap.add_argument("--ckpt", default="ckpt/sampurna.pt")
 ap.add_argument("--threads", type=int, default=4)
+ap.add_argument("--lr", type=float, default=6e-4)
+ap.add_argument("--fixed-vocab", type=int, default=0)
 ap.add_argument("--max-paths", type=int, default=200000)
 ap.add_argument("--no-lattice", type=int, default=0)
 a = ap.parse_args()
@@ -127,12 +129,17 @@ if not paths:
 
 # पैक की आईडी ही शब्दकोश हैं
 cnt = Counter(i for q in paths for i in q)
-top = [i for i, _ in cnt.most_common(p.V)]
-remap = {old: new for new, old in enumerate(top)}
-V = len(top)
-paths = [[remap[i] for i in q if i in remap] for q in paths]
-paths = [q for q in paths if len(q) >= 6]
-print(f"शब्दकोश {V:,} | पाथ {len(paths):,}", flush=True)
+if a.fixed_vocab:
+    V = p.V; remap = {i: i for i in range(V)}; top = list(range(V))
+    paths = [q for q in paths if len(q) >= 6]
+    print(f"साझा शब्दकोश {V:,} | पाथ {len(paths):,}", flush=True)
+else:
+    top = [i for i, _ in cnt.most_common(p.V)]
+    remap = {old: new for new, old in enumerate(top)}
+    V = len(top)
+    paths = [[remap[i] for i in q if i in remap] for q in paths]
+    paths = [q for q in paths if len(q) >= 6]
+    print(f"शब्दकोश {V:,} | पाथ {len(paths):,}", flush=True)
 
 # ---------------- जाल: असली कड़ियों से ----------------
 nbrs, cands = {}, {}
@@ -215,7 +222,7 @@ use = 0 if a.no_lattice else 1
 m = M(V, len(pats), a.dim, a.layers, a.heads, a.nbr, use)
 npar = sum(x.numel() for x in m.parameters())
 print(f"पैरामीटर {npar:,} | जाल {'हाँ' if use else 'नहीं'} | dim {a.dim} | {a.layers} परतें", flush=True)
-opt = torch.optim.AdamW(m.parameters(), lr=6e-4, weight_decay=0.01)
+opt = torch.optim.AdamW(m.parameters(), lr=a.lr, weight_decay=0.01)
 step0 = 0
 if os.path.exists(a.ckpt):
     try:
@@ -270,7 +277,7 @@ while step < a.steps and (time.time() - t0) < a.budget:
         print(f"  कदम {step:,} | loss {last:.3f}", flush=True)
     if step % 2000 == 0:
         os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
-        torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim}, a.ckpt)
+        torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": top, "pats": pats}, a.ckpt)
 
 m.eval(); h1 = h5 = tot = 0
 with torch.no_grad():
@@ -284,5 +291,5 @@ with torch.no_grad():
         tot += len(YC)
 print(f"\nपरीक्षा ({tot:,}): पहले 1 में {h1/max(tot,1)*100:.1f}% | पहले 5 में {h5/max(tot,1)*100:.1f}%", flush=True)
 os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
-torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim}, a.ckpt)
+torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": top, "pats": pats}, a.ckpt)
 print(f"सहेजा: {a.ckpt} (कदम {step:,})", flush=True)
