@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""punah.py -- purani copy se training phir shuru (sahi settings: lr 1e-4, vocab saved)."""
+"""punah.py -- purani copy se training, POORI data par (adhoori nahi).
+
+"Poori cheez seekhe" ke liye:
+  1. data SEQUENCE me chalta hai (random nahi) -- har vaakya ek baar
+  2. position save hoti hai -- agla chakra wahin se shuru
+  3. coverage naapi jaati hai -- kitna % data dekha
+
+Chalane ke liye:
+  python3 punah.py --data data/corpus.txt --old old/ckpt/sampurna.pt --budget 12000
+"""
 import argparse, json, math, os, random, re, time
 from collections import Counter, defaultdict
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -22,15 +31,18 @@ ap.add_argument("--pat-cand", type=int, default=20)
 ap.add_argument("--minpat", type=int, default=5)
 ap.add_argument("--ckpt", default="ckpt/sampurna.pt")
 ap.add_argument("--threads", type=int, default=4)
-ap.add_argument("--max-sent", type=int, default=200000)
+ap.add_argument("--max-sent", type=int, default=400000)
 a = ap.parse_args()
 torch.manual_seed(0); random.seed(0); torch.set_num_threads(a.threads)
 
+# ---------- data ----------
 sents = []
 for line in open(a.data, encoding="utf-8", errors="ignore"):
     ws = re.findall(r"[^\s।,?!]+", line)
-    if 6 <= len(ws) <= 60: sents.append(ws)
-    if len(sents) >= a.max_sent: break
+    if 6 <= len(ws) <= 60:
+        sents.append(ws)
+    if len(sents) >= a.max_sent:
+        break
 cnt = Counter(w for ws in sents for w in ws)
 vocab = [w for w, _ in cnt.most_common(a.vocab)]
 stoi = {w: i for i, w in enumerate(vocab)}
@@ -42,7 +54,8 @@ if not sents:
 edge = defaultdict(Counter)
 for ws in sents:
     ids = [stoi[w] for w in ws if w in stoi]
-    for x, y in zip(ids, ids[1:]): edge[x][y] += 1
+    for x, y in zip(ids, ids[1:]):
+        edge[x][y] += 1
 nbrs = {x: [y for y, _ in c.most_common(a.nbr)] for x, c in edge.items()}
 cands = {x: [y for y, _ in c.most_common(a.cand)] for x, c in edge.items()}
 print(f"jaal {len(edge):,} sel | kadiya {sum(len(c) for c in edge.values()):,}", flush=True)
@@ -53,7 +66,8 @@ pat_slots = defaultdict(lambda: defaultdict(Counter)); pat_count = Counter()
 for ws in sents:
     pt = pattern(ws); pat_count[pt] += 1
     for i, w in enumerate(ws):
-        if pt[i] == "*": pat_slots[pt][i][w] += 1
+        if pt[i] == "*":
+            pat_slots[pt][i][w] += 1
 pats = [p for p, c in pat_count.items() if c >= a.minpat]
 pidx = {p: i for i, p in enumerate(pats)}
 slot_cand = {}
@@ -63,15 +77,15 @@ for p in pats:
             slot_cand[(p, i)] = [stoi[w] for w, _ in pat_slots[p][i].most_common(a.pat_cand) if w in stoi]
 print(f"pattern {len(pats):,} | slot {len(slot_cand):,}", flush=True)
 
+# ---------- SEQUENCE me (random nahi) ----------
 seqs = []
 for ws in sents:
     ids = [stoi[w] for w in ws if w in stoi]
-    if len(ids) >= a.seq + 2: seqs.append((ids, pattern(ws)))
-random.shuffle(seqs)
-cut = int(len(seqs) * 0.9)
-train, test = seqs[:cut], seqs[cut:]
-print(f"anukram: train {len(train):,} | test {len(test):,}", flush=True)
-if not train:
+    if len(ids) >= a.seq + 2:
+        seqs.append((ids, pattern(ws)))
+# kram me rakho -- koi chhoot na jaye
+print(f"anukram (kram me): {len(seqs):,}", flush=True)
+if not seqs:
     print("anukram nahi", flush=True); raise SystemExit(1)
 
 
@@ -111,11 +125,14 @@ class M(nn.Module):
 m = M(V, len(pats), a.dim, a.layers, a.heads, a.nbr)
 print(f"param {sum(p.numel() for p in m.parameters()):,}", flush=True)
 
+# ---------- purani copy + position ----------
+pos = 0
+epoch = 0
 if a.old and os.path.exists(a.old):
     try:
         ck = torch.load(a.old, map_location="cpu", weights_only=False)
         old = ck["m"]
-        cur = m.state_dict(); loaded = 0; skipped = 0
+        cur = m.state_dict(); loaded = skipped = 0
         with torch.no_grad():
             for name, t in old.items():
                 tgt = name.replace("blocks.", "blk.")
@@ -123,11 +140,13 @@ if a.old and os.path.exists(a.old):
                     cur[tgt].copy_(t.float()); loaded += 1
                 else:
                     skipped += 1
-        print(f"purani copy: lade {loaded} | chhode {skipped}", flush=True)
+        pos = int(ck.get("pos", 0))
+        epoch = int(ck.get("epoch", 0))
+        print(f"purani copy: lade {loaded} | chhode {skipped} | position {pos:,} | epoch {epoch}", flush=True)
     except Exception as e:
         print(f"purani copy nahi ladi: {type(e).__name__}", flush=True)
 else:
-    print("purani copy nahi mili -- shuru se", flush=True)
+    print("purani copy nahi -- shuru se", flush=True)
 
 opt = torch.optim.AdamW(m.parameters(), lr=a.lr, weight_decay=0.01)
 
@@ -138,7 +157,8 @@ def mk(rows):
     PI = torch.zeros(B, dtype=torch.long); CL = torch.zeros(B, K, dtype=torch.long)
     YC = torch.zeros(B, dtype=torch.long); keep = []
     for j, (ids, pt) in enumerate(rows):
-        i = random.randrange(1, len(ids) - 1)
+        i = (pos + j * 7) % max(1, len(ids) - 1)
+        if i < 1: i = 1
         ctx = ids[max(0, i - T):i]
         if len(ctx) < 2: continue
         X[j, :len(ctx)] = torch.tensor(ctx)
@@ -158,11 +178,22 @@ def mk(rows):
     return X[ix], NB[ix], PI[ix], CL[ix], YC[ix]
 
 
+# ---------- POORI data par chalao (kram me) ----------
 t0 = time.time(); step = 0; last = 0.0
+seen = 0
+N = len(seqs)
 while step < a.steps and (time.time() - t0) < a.budget:
-    step += 1
-    b = mk(random.sample(train, min(a.batch, len(train))))
+    # agle batch ke anukram (kram me, ghoomte hue)
+    batch = []
+    for k in range(a.batch):
+        batch.append(seqs[(pos + seen + k) % N])
+    b = mk(batch)
+    seen += a.batch
+    if seen >= N:
+        seen = 0; epoch += 1; pos = 0
+        print(f"  -- poora kosh ek baar dekh liya (epoch {epoch}) --", flush=True)
     if b is None: continue
+    step += 1
     X, NB, PI, CL, YC = b
     h = m(X, NB, PI)[:, -1, :]
     loss = F.cross_entropy((h[:, None, :] * m.tok(CL)).sum(-1), YC)
@@ -170,26 +201,30 @@ while step < a.steps and (time.time() - t0) < a.budget:
     torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0); opt.step()
     last = loss.item()
     if step % 200 == 0:
-        print(f"  kadam {step:,} | loss {last:.3f}", flush=True)
+        cov = (seen / N * 100) if N else 0
+        print(f"  kadam {step:,} | loss {last:.3f} | coverage {cov:.1f}% | epoch {epoch}", flush=True)
     if step % 1000 == 0:
         os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
         torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V,
                     "dim": a.dim, "layers": a.layers, "heads": a.heads,
-                    "vocab": vocab, "pats": pats}, a.ckpt)
+                    "vocab": vocab, "pats": pats, "pos": pos + seen, "epoch": epoch}, a.ckpt)
 
+# ---------- jaanch: poore kosh par ----------
 m.eval(); h1 = h5 = tot = 0
 with torch.no_grad():
-    for i in range(0, min(len(test), 800), 16):
-        b = mk(test[i:i+16])
+    for i in range(0, min(len(seqs), 600), 16):
+        b = mk(seqs[i:i+16])
         if b is None: continue
         X, NB, PI, CL, YC = b
         sc = (m(X, NB, PI)[:, -1, :][:, None, :] * m.tok(CL)).sum(-1)
         h1 += (sc.argmax(-1) == YC).sum().item()
         h5 += sum(1 for j in range(len(YC)) if YC[j] in sc.topk(5, -1).indices[j])
         tot += len(YC)
+cov = ((pos + seen) / N * 100) if N else 0
 print(f"\ntest ({tot:,}): top1 {h1/max(tot,1)*100:.1f}% | top5 {h5/max(tot,1)*100:.1f}%", flush=True)
+print(f"coverage: {cov:.1f}% | epoch {epoch} | kadam {step:,}", flush=True)
 os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
 torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V,
             "dim": a.dim, "layers": a.layers, "heads": a.heads,
-            "vocab": vocab, "pats": pats}, a.ckpt)
-print(f"saheja: {a.ckpt} (kadam {step:,}) -- shabdakosh sahit", flush=True)
+            "vocab": vocab, "pats": pats, "pos": pos + seen, "epoch": epoch}, a.ckpt)
+print(f"saheja: {a.ckpt} -- shabdakosh + position sahit", flush=True)
