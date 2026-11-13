@@ -4,9 +4,9 @@ on:
     inputs:
       minutes:
         description: training minutes
-        default: "200"
+        default: "180"
   schedule:
-    - cron: '0 */5 * * *'
+    - cron: '0 */6 * * *'
 permissions:
   contents: write
 jobs:
@@ -27,7 +27,7 @@ jobs:
           - {domain: history, shard: 8}
           - {domain: geography, shard: 9}
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 280
     concurrency: loop10-${{ matrix.domain }}
     steps:
       - uses: actions/checkout@v4
@@ -49,37 +49,24 @@ jobs:
           python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }}
           python to_text.py --dir data --out data/corpus.txt --max-chars 600000000
           wc -l data/corpus.txt
-      - name: build lattice pack
+      - name: build own lattice
         run: |
           python pack_banao.py --text data/corpus.txt --out data/gyaan.pack --max-paths 400000
           ls -lh data/gyaan.pack
       - name: train from own lattice + pattern table
         run: |
-          MIN=${{ inputs.minutes || 200 }}
-          python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -90
-      - name: measure answer accuracy
+          MIN=${{ inputs.minutes || 180 }}
+          python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -80
+      - name: measure accuracy
         if: always()
         run: |
-          python uttar_naapo.py --pack data/gyaan.pack --facts data/gyaan.txt --ckpt ckpt/sampurna.pt --dim 512 --layers 4 --heads 8 --nq 300 --out store/uttar.json 2>&1 | tail -30
+          python uttar_naapo.py --pack data/gyaan.pack --facts data/gyaan.txt --ckpt ckpt/sampurna.pt --dim 512 --layers 4 --heads 8 --nq 300 --out store/uttar.json 2>&1 | tail -20
           cat store/uttar.json || true
       - name: quantize int8 int4
         if: always()
         run: |
           python chhota_karo.py --ckpt ckpt/sampurna.pt --out store --part-mb 90 || echo "quantize skipped"
-          ls -lh store/ | head -20
-      - name: upload weights to release
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release view weights-v1 >/dev/null 2>&1 || gh release create weights-v1 --title "Model weights" --notes "int8/int4 per domain"
-          for f in store/int8.part* store/int4.part* store/ckpt_meta.json store/uttar.json; do
-            if [ -f "$f" ]; then
-              cp "$f" "store/${{ matrix.domain }}_$(basename $f)"
-              gh release upload weights-v1 "store/${{ matrix.domain }}_$(basename $f)" --clobber || echo "upload fail $f"
-            fi
-          done
-      - name: save results
+      - name: save
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -87,12 +74,69 @@ jobs:
           path: store/
           retention-days: 30
           overwrite: true
-      - name: branch
+      - name: push lattice to branch
         if: always()
         run: |
+          mkdir -p store
+          cp data/gyaan.pack store/ 2>/dev/null || true
+          cp data/gyaan.txt store/ 2>/dev/null || true
           git config user.email bot@local
           git config user.name loop10
           git checkout -B shard-${{ matrix.domain }}
           git add -A
           git commit -m "loop10 ${{ matrix.domain }} $(date -u +%H:%M)" || echo nochange
           git push -f origin shard-${{ matrix.domain }} || echo pushskip
+
+  merge:
+    needs: train
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: fetch all lattices
+        run: |
+          mkdir -p packs
+          for d in science math reasoning news qa general coding document history geography; do
+            curl -sL "https://raw.githubusercontent.com/pdfusion9-cyber/hindi-lattice/shard-$d/store/gyaan.pack" -o packs/$d.pack || echo "miss $d"
+            curl -sL "https://raw.githubusercontent.com/pdfusion9-cyber/hindi-lattice/shard-$d/store/gyaan.txt" -o packs/$d.txt || true
+          done
+          ls -lh packs/ | head -25
+      - name: merge all lattices and pattern tables
+        run: |
+          mkdir -p store
+          python jodo_jaal.py --packs packs/*.pack --out store/merged.pack --pat-out store/merged_pats.json 2>&1 | tail -30
+          cat packs/*.txt > store/merged_gyaan.txt 2>/dev/null || true
+          sort -u store/merged_gyaan.txt -o store/merged_gyaan.txt 2>/dev/null || true
+          ls -lh store/
+      - name: train one merged model
+        run: |
+          python sampurna2.py --pack store/merged.pack --facts store/merged_gyaan.txt --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget 3000 --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt store/merged_model.pt --threads 4 2>&1 | tail -40
+      - name: make int4 variant
+        run: |
+          python chhota_karo.py --ckpt store/merged_model.pt --out store --part-mb 90 || echo "quantize skipped"
+          ls -lh store/
+      - name: publish merged model
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-model
+          path: store/
+          retention-days: 90
+          overwrite: true
+      - name: push merged
+        if: always()
+        run: |
+          git config user.email bot@local
+          git config user.name merge
+          git checkout -B merged
+          git add -A
+          git commit -m "merged model $(date -u +%H:%M)" || echo nochange
+          git push -f origin merged || echo pushskip
