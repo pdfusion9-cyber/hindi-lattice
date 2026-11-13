@@ -1,0 +1,100 @@
+name: chakra_loop
+on:
+  workflow_dispatch:
+    inputs:
+      cycle:
+        default: "1"
+      minutes:
+        default: "240"
+permissions:
+  contents: write
+  actions: read
+jobs:
+  train:
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - {domain: science, idx: 0}
+          - {domain: math, idx: 1}
+          - {domain: reasoning, idx: 2}
+          - {domain: news, idx: 3}
+          - {domain: qa, idx: 4}
+          - {domain: general, idx: 5}
+          - {domain: coding, idx: 6}
+          - {domain: document, idx: 7}
+          - {domain: history, idx: 8}
+          - {domain: geography, idx: 9}
+    runs-on: ubuntu-latest
+    timeout-minutes: 290
+    concurrency: chakra-${{ matrix.domain }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: bring previous copy
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python chakra_lo.py ${{ matrix.domain }} old
+      - name: show old
+        run: find old -name "*.pt" | head -3
+      - name: fetch rotating data
+        run: |
+          set -o pipefail
+          CYCLE=${{ inputs.cycle || 1 }}
+          SHARD=$(( (CYCLE + ${{ matrix.idx }}) % 10 ))
+          echo "cycle=$CYCLE shard=$SHARD domain=${{ matrix.domain }}"
+          python loop_fetch.py --shard $SHARD --domain ${{ matrix.domain }}
+          python to_text.py --dir data --out data/corpus.txt --max-chars 400000000
+          wc -l data/corpus.txt
+      - name: train
+        run: |
+          set -o pipefail
+          MIN=${{ inputs.minutes || 240 }}
+          OLD=$(find old -name "*.pt" | head -1)
+          echo "old=$OLD"
+          if [ -z "$OLD" ]; then
+            echo "pehli baar -- shuru se"
+            python punah.py --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
+          else
+            python punah.py --old "$OLD" --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
+          fi
+      - name: int4
+        if: always()
+        run: python int4_karo.py --ckpt ckpt/sampurna.pt --out store/int4.npz || echo skip
+      - name: save
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chakra-${{ matrix.domain }}
+          path: |
+            ckpt/
+            store/
+          retention-days: 90
+          overwrite: true
+
+  next:
+    needs: train
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: next cycle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CYCLE=${{ inputs.cycle || 1 }}
+          NEXT=$(( CYCLE + 1 ))
+          echo "agle chakra: $NEXT"
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/chakra_loop.yml/dispatches" \
+            -d "{\"ref\":\"main\",\"inputs\":{\"cycle\":\"$NEXT\",\"minutes\":\"240\"}}"
+          echo " bhej diya"
