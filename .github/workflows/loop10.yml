@@ -4,7 +4,7 @@ on:
     inputs:
       minutes:
         description: training minutes
-        default: "210"
+        default: "200"
   schedule:
     - cron: '0 */5 * * *'
 permissions:
@@ -49,39 +49,43 @@ jobs:
           python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }}
           python to_text.py --dir data --out data/corpus.txt --max-chars 600000000
           wc -l data/corpus.txt
-          du -h data/corpus.txt
       - name: build lattice pack
         run: |
           python pack_banao.py --text data/corpus.txt --out data/gyaan.pack --max-paths 400000
           ls -lh data/gyaan.pack
       - name: train from own lattice + pattern table
         run: |
-          MIN=${{ inputs.minutes || 210 }}
+          MIN=${{ inputs.minutes || 200 }}
           python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -90
       - name: measure answer accuracy
         if: always()
         run: |
           python uttar_naapo.py --pack data/gyaan.pack --facts data/gyaan.txt --ckpt ckpt/sampurna.pt --dim 512 --layers 4 --heads 8 --nq 300 --out store/uttar.json 2>&1 | tail -30
           cat store/uttar.json || true
-      - name: make int8 and int4
+      - name: quantize int8 int4
         if: always()
         run: |
           python chhota_karo.py --ckpt ckpt/sampurna.pt --out store --part-mb 90 || echo "quantize skipped"
-      - name: save checkpoint
+          ls -lh store/ | head -20
+      - name: upload weights to release
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ckpt-${{ matrix.domain }}
-          path: ckpt/
-          retention-days: 30
-          overwrite: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view weights-v1 >/dev/null 2>&1 || gh release create weights-v1 --title "Model weights" --notes "int8/int4 per domain"
+          for f in store/int8.part* store/int4.part* store/ckpt_meta.json store/uttar.json; do
+            if [ -f "$f" ]; then
+              cp "$f" "store/${{ matrix.domain }}_$(basename $f)"
+              gh release upload weights-v1 "store/${{ matrix.domain }}_$(basename $f)" --clobber || echo "upload fail $f"
+            fi
+          done
       - name: save results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: small-${{ matrix.domain }}
           path: store/
-          retention-days: 90
+          retention-days: 30
           overwrite: true
       - name: branch
         if: always()
@@ -90,5 +94,5 @@ jobs:
           git config user.name loop10
           git checkout -B shard-${{ matrix.domain }}
           git add -A
-          git commit -m "loop10 ${{ matrix.domain }} pack+pattern+accuracy $(date -u +%H:%M)" || echo nochange
+          git commit -m "loop10 ${{ matrix.domain }} $(date -u +%H:%M)" || echo nochange
           git push -f origin shard-${{ matrix.domain }} || echo pushskip
