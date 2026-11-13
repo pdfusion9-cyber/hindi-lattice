@@ -10,7 +10,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,6 +26,11 @@ jobs:
         with:
           name: ckpt-${{ inputs.domain || 'document' }}
           path: ckpt
+      - name: show checkpoint
+        run: |
+          echo "--- ckpt ---"
+          ls -lhR ckpt/ || echo "ckpt खाली"
+          du -sh ckpt/ 2>/dev/null || true
       - name: data
         run: |
           python loop_fetch.py --shard 7 --domain ${{ inputs.domain || 'document' }}
@@ -33,9 +38,14 @@ jobs:
           wc -l data/corpus.txt
       - name: transfer test
         run: |
-          ls -lh ckpt/ || true
-          python antaran_runner.py --ckpt ckpt/sampurna.pt --data data/corpus.txt \
-            --n-train 15000 --n-test 3000 --out store/antaran.json 2>&1 | tail -40
+          set -o pipefail
+          python antaran_runner.py --ckpt ckpt/sampurna.pt --data data/corpus.txt --n-train 8000 --n-test 2000 --out store/antaran.json
+      - name: show result
+        if: always()
+        run: |
+          echo "--- store ---"
+          ls -lh store/ || echo "store खाली"
+          cat store/antaran.json 2>/dev/null || echo "json नहीं"
       - name: upload result
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,6 +60,6 @@ jobs:
           git config user.email bot@local
           git config user.name antaran
           git checkout -B antaran-result
-          git add -f store/ 2>/dev/null || true
-          git commit -m "antaran result $(date -u +%H:%M)" 2>/dev/null || echo nochange
-          git push -f origin antaran-result 2>&1 | tail -2 || echo pushskip
+          git add -A
+          git commit -m "antaran result $(date -u +%H:%M)" || echo nochange
+          git push -f origin antaran-result || echo pushskip
