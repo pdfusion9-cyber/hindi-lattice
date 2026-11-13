@@ -1,0 +1,86 @@
+name: chakra2
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        default: "240"
+permissions:
+  contents: write
+  actions: read
+jobs:
+  train:
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - {domain: science, shard: 10}
+          - {domain: math, shard: 11}
+          - {domain: reasoning, shard: 12}
+          - {domain: news, shard: 13}
+          - {domain: qa, shard: 14}
+          - {domain: general, shard: 15}
+          - {domain: coding, shard: 16}
+          - {domain: document, shard: 17}
+          - {domain: history, shard: 18}
+          - {domain: geography, shard: 19}
+    runs-on: ubuntu-latest
+    timeout-minutes: 290
+    concurrency: chakra2-${{ matrix.domain }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: bring the resumed copy
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: punah-${{ matrix.domain }}
+          path: old
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: show old
+        run: |
+          find old -name "*.pt" | head -3
+          ls -lh old/ckpt/ 2>/dev/null | head -3
+      - name: fetch new data
+        run: |
+          python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }} || python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }}
+          python to_text.py --dir data --out data/corpus.txt --max-chars 400000000
+          wc -l data/corpus.txt
+      - name: train further
+        run: |
+          set -o pipefail
+          MIN=${{ inputs.minutes || 240 }}
+          OLD=$(find old -name "*.pt" | head -1)
+          echo "old: $OLD"
+          python punah.py --old "$OLD" --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
+      - name: quantize
+        if: always()
+        run: |
+          python int4_karo.py --ckpt ckpt/sampurna.pt --out store/int4.npz || echo skip
+          ls -lh store/ ckpt/ 2>/dev/null | head -8
+      - name: save
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chakra-${{ matrix.domain }}
+          path: |
+            ckpt/
+            store/
+          retention-days: 60
+          overwrite: true
+      - name: push
+        if: always()
+        run: |
+          mkdir -p store
+          git config user.email bot@local
+          git config user.name chakra
+          git checkout -B shard-${{ matrix.domain }}
+          git add store/ ckpt/ 2>/dev/null || true
+          git commit -m "chakra ${{ matrix.domain }} $(date -u +%H:%M)" || echo nochange
+          git push -f origin shard-${{ matrix.domain }} || echo pushskip
