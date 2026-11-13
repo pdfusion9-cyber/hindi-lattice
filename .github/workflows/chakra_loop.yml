@@ -54,14 +54,13 @@ jobs:
           python loop_fetch.py --shard $SHARD --domain ${{ matrix.domain }}
           python to_text.py --dir data --out data/corpus.txt --max-chars 400000000
           wc -l data/corpus.txt
-      - name: train
+      - name: train full corpus
         run: |
           set -o pipefail
           MIN=${{ inputs.minutes || 240 }}
           OLD=$(find old -name "*.pt" | head -1)
           echo "old=$OLD"
           if [ -z "$OLD" ]; then
-            echo "pehli baar -- shuru se"
             python punah.py --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
           else
             python punah.py --old "$OLD" --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
@@ -92,9 +91,5 @@ jobs:
           CYCLE=${{ inputs.cycle || 1 }}
           NEXT=$(( CYCLE + 1 ))
           echo "agle chakra: $NEXT"
-          curl -sS -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/chakra_loop.yml/dispatches" \
-            -d "{\"ref\":\"main\",\"inputs\":{\"cycle\":\"$NEXT\",\"minutes\":\"240\"}}"
+          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/workflows/chakra_loop.yml/dispatches" -d "{\"ref\":\"main\",\"inputs\":{\"cycle\":\"$NEXT\",\"minutes\":\"240\"}}"
           echo " bhej diya"
