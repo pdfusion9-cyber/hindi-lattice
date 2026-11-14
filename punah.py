@@ -96,7 +96,8 @@ class M(nn.Module):
         s.blk = nn.ModuleList()
         for _ in range(L):
             s.blk.append(nn.ModuleDict({
-                "n1": nn.LayerNorm(d), "qkv": nn.Linear(d, 3*d, bias=False),
+                "n1": nn.LayerNorm(d), "q": nn.Linear(d, d, bias=False),
+                "k": nn.Linear(d, d//H, bias=False), "v": nn.Linear(d, d//H, bias=False),
                 "out": nn.Linear(d, d, bias=False), "n2": nn.LayerNorm(d),
                 "ff1": nn.Linear(d, 4*d), "ff2": nn.Linear(4*d, d),
                 "n3": nn.LayerNorm(d), "lq": nn.Linear(d, d, bias=False),
@@ -107,10 +108,10 @@ class M(nn.Module):
         B, T = x.shape
         h = s.tok(x) + s.pos(torch.arange(T, device=x.device))[None] + s.pat(pid)[:, None, :]
         for b in s.blk:
-            q, k, v = b["qkv"](b["n1"](h)).chunk(3, -1)
-            q = q.view(B, T, s.H, -1).transpose(1, 2)
-            k = k.view(B, T, s.H, -1).transpose(1, 2)
-            v = v.view(B, T, s.H, -1).transpose(1, 2)
+            xx = b["n1"](h)
+            q = b["q"](xx).view(B, T, s.H, -1).transpose(1, 2)   # (B,H,T,hd)
+            k = b["k"](xx).view(B, T, 1, -1).transpose(1, 2)      # (B,1,T,hd) saajha
+            v = b["v"](xx).view(B, T, 1, -1).transpose(1, 2)      # (B,1,T,hd) saajha
             att = F.scaled_dot_product_attention(q, k, v, is_causal=True)
             h = h + b["out"](att.transpose(1, 2).contiguous().view(B, T, s.d))
             h = h + b["ff2"](F.gelu(b["ff1"](b["n2"](h))))
