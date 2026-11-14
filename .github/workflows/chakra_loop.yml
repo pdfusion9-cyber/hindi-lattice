@@ -5,10 +5,10 @@ on:
       cycle:
         default: "1"
       minutes:
-        default: "240"
+        default: "280"
 permissions:
   contents: write
-  actions: read
+  actions: write
 jobs:
   train:
     strategy:
@@ -27,7 +27,7 @@ jobs:
           - {domain: history, idx: 8}
           - {domain: geography, idx: 9}
     runs-on: ubuntu-latest
-    timeout-minutes: 290
+    timeout-minutes: 295
     concurrency: chakra-${{ matrix.domain }}
     steps:
       - uses: actions/checkout@v4
@@ -42,19 +42,19 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python chakra_lo.py ${{ matrix.domain }} old || echo "purani copy nahi"
-      - name: fetch rotating data
+        run: python chakra_lo.py ${{ matrix.domain }} old || echo "purani copy nahi mili"
+      - name: fetch data
         run: |
           set -o pipefail
           CYCLE=${{ inputs.cycle || 1 }}
           SHARD=$(( (CYCLE + ${{ matrix.idx }}) % 10 ))
           echo "cycle=$CYCLE shard=$SHARD domain=${{ matrix.domain }}"
           python loop_fetch.py --shard $SHARD --domain ${{ matrix.domain }}
-          python to_text.py --dir data --out data/corpus.txt --max-chars 400000000
+          python to_text.py --dir data --out data/corpus.txt --max-chars 600000000
           wc -l data/corpus.txt
       - name: train full corpus
         run: |
-          MIN=${{ inputs.minutes || 240 }}
+          MIN=${{ inputs.minutes || 280 }}
           OLD=$(find old -name "*.pt" 2>/dev/null | head -1 || true)
           echo "old=[$OLD]"
           if [ -n "$OLD" ]; then
@@ -89,5 +89,8 @@ jobs:
           CYCLE=${{ inputs.cycle || 1 }}
           NEXT=$(( CYCLE + 1 ))
           echo "agle chakra: $NEXT"
-          curl -sS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/workflows/chakra_loop.yml/dispatches" -d "{\"ref\":\"main\",\"inputs\":{\"cycle\":\"$NEXT\",\"minutes\":\"240\"}}"
-          echo " bhej diya"
+          CODE=$(curl -sS -o /tmp/out.txt -w "%{http_code}" -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/${{ github.repository }}/actions/workflows/chakra_loop.yml/dispatches" -d "{\"ref\":\"main\",\"inputs\":{\"cycle\":\"$NEXT\",\"minutes\":\"280\"}}")
+          echo "HTTP $CODE"
+          cat /tmp/out.txt 2>/dev/null || true
+          if [ "$CODE" != "204" ]; then echo "CHAKRA FAIL: dispatch nahi hua"; exit 1; fi
+          echo "chakra $NEXT shuru ho gaya"
