@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""chakra_lo.py -- pichhle chakra ki copy laao (artifact API se).
+"""chakra_lo.py -- pichhle chakra ki copy laao (S3 redirect theek se).
 
-Artifact ka naam: chakra-<domain>
-Sabse naya, jo expire na hua ho, wahi utaarta hai.
+Gadbad jo thi: GitHub artifact S3 par redirect karta hai, aur hum
+Authorization header wahan bhi bhej rahe the -- S3 usse mana kar deta tha (401).
+
+Sudhar: redirect khud handle karo, S3 par bina token ke jao.
 """
-import json, os, sys, urllib.request, zipfile, io
+import io, json, os, sys, urllib.error, urllib.request, zipfile
 
 TOKEN = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
 REPO = os.environ.get("GITHUB_REPOSITORY", "pdfusion9-cyber/hindi-lattice")
@@ -16,21 +18,26 @@ if not TOKEN:
     sys.exit(1)
 
 
-def api(url, raw=False):
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+
+def api_json(url):
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {TOKEN}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     })
     with urllib.request.urlopen(req, timeout=120) as r:
-        return r.read() if raw else json.load(r)
+        return json.load(r)
 
 
 name = f"chakra-{DOMAIN}"
-print(f"dhoondh rahe: {name}")
+print(f"dhoondh rahe: {name}", flush=True)
 
 try:
-    d = api(f"https://api.github.com/repos/{REPO}/actions/artifacts")
+    d = api_json(f"https://api.github.com/repos/{REPO}/actions/artifacts")
 except Exception as e:
     print("list fail:", type(e).__name__, str(e)[:120])
     sys.exit(1)
@@ -42,19 +49,58 @@ if not arts:
 
 arts.sort(key=lambda a: a["id"], reverse=True)
 pick = arts[0]
-print(f"milta: id={pick['id']} {pick['size_in_bytes']/1e6:.0f} MB")
+print(f"milta: id={pick['id']} {pick['size_in_bytes']/1e6:.0f} MB", flush=True)
 
+zip_url = f"https://api.github.com/repos/{REPO}/actions/artifacts/{pick['id']}/zip"
+
+# 1. redirect dhundo (token ke saath, par follow na karo)
+opener = urllib.request.build_opener(NoRedirect)
+req = urllib.request.Request(zip_url, headers={
+    "Authorization": f"Bearer {TOKEN}",
+    "Accept": "application/vnd.github+json",
+})
 try:
-    raw = api(f"https://api.github.com/repos/{REPO}/actions/artifacts/{pick['id']}/zip", raw=True)
-except Exception as e:
-    print("download fail:", type(e).__name__, str(e)[:120])
+    opener.open(req, timeout=120)
+    print("redirect nahi mila")
+    sys.exit(1)
+except urllib.error.HTTPError as e:
+    if e.code in (301, 302, 303, 307, 308):
+        s3 = e.headers.get("Location")
+        print(f"redirect mila (HTTP {e.code})", flush=True)
+    else:
+        print(f"HTTP {e.code}: {str(e)[:120]}")
+        sys.exit(1)
+
+if not s3:
+    print("Location header nahi mila")
     sys.exit(1)
 
+# 2. S3 se BINA token ke utaaro
+print("S3 se utaar rahe (bina token)...", flush=True)
+try:
+    with urllib.request.urlopen(s3, timeout=300) as r:
+        raw = r.read()
+except Exception as e:
+    print("S3 fail:", type(e).__name__, str(e)[:150])
+    sys.exit(1)
+
+print(f"utaara: {len(raw)/1e6:.0f} MB", flush=True)
+
 os.makedirs(OUT, exist_ok=True)
-with zipfile.ZipFile(io.BytesIO(raw)) as z:
-    z.extractall(OUT)
-print(f"khol diya: {OUT}")
+try:
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        z.extractall(OUT)
+except Exception as e:
+    print("unzip fail:", type(e).__name__, str(e)[:120])
+    sys.exit(1)
+
+found = 0
 for root, _, files in os.walk(OUT):
     for f in files:
         if f.endswith(".pt"):
-            print("  ", os.path.join(root, f), os.path.getsize(os.path.join(root, f)) // 1000000, "MB")
+            p = os.path.join(root, f)
+            print("  ", p, os.path.getsize(p) // 1000000, "MB")
+            found += 1
+print(f"milne wali .pt files: {found}")
+if found == 0:
+    sys.exit(2)
