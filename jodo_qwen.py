@@ -139,9 +139,9 @@ print("\n=== JAANCH 1: shunya hisse se nateeja badla? ===", flush=True)
 def banao(prompt, naya=24, garam=0.0):
     ids = tok.encode(prompt).ids
     out = list(ids)
-    nb = torch.zeros(len(out), 8, dtype=torch.long)
     with torch.no_grad():
         for _ in range(naya):
+            nb = torch.zeros(len(out), 8, dtype=torch.long)   # har baar naya
             lg = forward(out, nb, 0)[-1]
             nxt = int(torch.argmax(lg)) if garam <= 0 else int(torch.multinomial(torch.softmax(lg/garam,-1),1))
             out.append(nxt)
@@ -165,6 +165,8 @@ for line in open(corpus, encoding="utf-8", errors="ignore"):
     ws = re.findall(r"[^\s।,?!]+", line)
     if 6 <= len(ws) <= 40: sents.append(ws)
     if len(sents) >= 3000: break
+if len(sents) < 100:
+    print(f"  dhyan: kosh chhota ({len(sents)} vaakya)", flush=True)
 cnt = Counter(w for ws in sents for w in ws)
 print(f"  kosh: {len(sents):,} vaakya", flush=True)
 
