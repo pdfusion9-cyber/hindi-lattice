@@ -20,23 +20,35 @@ jobs:
         run: |
           curl -sL -o m.safetensors https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/model.safetensors
           curl -sL -o tok.json https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json
-      - name: kosh laao
+      - name: kosh laao (kayi jagah se)
         run: |
           python - <<'PY'
-          import urllib.request
-          got = ""
-          for u in ["https://www.gutenberg.org/files/11/11-0.txt",
-                    "https://raw.githubusercontent.com/pdfusion9-cyber/hindi-lattice/main/hindi_corpus.txt"]:
+          import urllib.request, re
+          urls = [
+            "https://www.gutenberg.org/cache/epub/1342/pg1342.txt",
+            "https://www.gutenberg.org/files/11/11-0.txt",
+            "https://raw.githubusercontent.com/pdfusion9-cyber/hindi-lattice/main/hindi_corpus.txt",
+            "https://www.gutenberg.org/cache/epub/2701/pg2701.txt",
+          ]
+          best = ""
+          for u in urls:
               try:
                   d = urllib.request.urlopen(u, timeout=90).read().decode("utf-8","ignore")
-                  if len(d) > 200000:
-                      got = d; print("mila:", u, len(d)); break
+                  words = set(re.findall(r"[A-Za-z]+|[\u0900-\u097F]+", d[:200000]))
+                  print(f"{u.split('/')[-1]}: {len(d)} bytes, {len(words)} unique words")
+                  if len(words) > 2000 and len(d) > len(best):
+                      best = d
               except Exception as e:
-                  print("skip", type(e).__name__)
-          if not got:
-              got = "The capital of India is New Delhi. Machine learning is a field of study. Python is a programming language.\n" * 20000
-          open("corpus.txt","w",encoding="utf-8").write(got[:8000000])
-          print("bytes:", len(got))
+                  print("skip", u.split('/')[-1], type(e).__name__)
+          if len(best) < 200000:
+              best = ("The capital of India is New Delhi. Machine learning is a field of study. "
+                      "Python is a programming language used for data science. "
+                      "The sun rises in the east and sets in the west. "
+                      "She walked to the market and bought fresh bread. "
+                      "History teaches us about the past and guides the future.\n") * 20000
+          open("corpus.txt","w",encoding="utf-8").write(best[:8000000])
+          w = set(re.findall(r"[A-Za-z]+", best[:500000]))
+          print("FINAL unique words:", len(w), "| bytes:", len(best))
           PY
           wc -c corpus.txt
       - name: pura jodo
