@@ -155,7 +155,7 @@ def jaal_smriti(x, i, nb):
 
 def forward(ids, nb, pid, cand=None):
     T = len(ids)
-    x = W["model.embed_tokens.weight"][ids] + P["pat"][pid][None]
+    x = W["model.embed_tokens.weight"][ids] + P["pat"][int(pid) if torch.is_tensor(pid) else pid].view(1, D)
     for i in range(L):
         p = f"model.layers.{i}."
         x = x + RS * qwen_attn(rmsnorm(x, W[p+"input_layernorm.weight"]), i, T)
@@ -202,7 +202,7 @@ while steps < 80 and time.time() - t0 < 240:
     nb = torch.zeros(T, K, dtype=torch.long)
     for t in range(T):
         for j, u in enumerate(nbrs.get(int(x[t]), [])[:K]): nb[t, j] = u
-    pid = torch.zeros(1, dtype=torch.long)
+    pid = 0
     lg = forward(x, nb, pid)
     loss = torch.nn.functional.cross_entropy(lg, y)
     opt.zero_grad(); loss.backward()
