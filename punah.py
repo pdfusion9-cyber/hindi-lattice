@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""punah.py -- purani copy se training, POORI data par (adhoori nahi).
+"""punah.py -- purani copy se training, POORI data par.
 
-"Poori cheez seekhe" ke liye:
-  1. data SEQUENCE me chalta hai (random nahi) -- har vaakya ek baar
-  2. position save hoti hai -- agla chakra wahin se shuru
-  3. coverage naapi jaati hai -- kitna % data dekha
+SUDHAR (v2):
+  1. RESIDUAL SCALING -- har jod 0.5 se. Isse activation dhamaka rukta hai.
+     Pehle |h| 46 -> 21,459 (460x) ho jata tha. Ab ~1x par rahega.
+  2. MQA -- K,V sab head me saajha (16x kam ganana)
+  3. Kram se poora kosh + coverage tracking
 
 Chalane ke liye:
   python3 punah.py --data data/corpus.txt --old old/ckpt/sampurna.pt --budget 12000
@@ -29,6 +30,7 @@ ap.add_argument("--nbr", type=int, default=8)
 ap.add_argument("--cand", type=int, default=50)
 ap.add_argument("--pat-cand", type=int, default=20)
 ap.add_argument("--minpat", type=int, default=5)
+ap.add_argument("--res-scale", type=float, default=0.5, help="residual ka bhaar")
 ap.add_argument("--ckpt", default="ckpt/sampurna.pt")
 ap.add_argument("--threads", type=int, default=4)
 ap.add_argument("--max-sent", type=int, default=400000)
@@ -77,16 +79,16 @@ for p in pats:
             slot_cand[(p, i)] = [stoi[w] for w, _ in pat_slots[p][i].most_common(a.pat_cand) if w in stoi]
 print(f"pattern {len(pats):,} | slot {len(slot_cand):,}", flush=True)
 
-# ---------- SEQUENCE me (random nahi) ----------
 seqs = []
 for ws in sents:
     ids = [stoi[w] for w in ws if w in stoi]
     if len(ids) >= a.seq + 2:
         seqs.append((ids, pattern(ws)))
-# kram me rakho -- koi chhoot na jaye
 print(f"anukram (kram me): {len(seqs):,}", flush=True)
 if not seqs:
     print("anukram nahi", flush=True); raise SystemExit(1)
+
+RS = a.res_scale
 
 
 class M(nn.Module):
@@ -97,9 +99,9 @@ class M(nn.Module):
         for _ in range(L):
             s.blk.append(nn.ModuleDict({
                 "n1": nn.LayerNorm(d), "q": nn.Linear(d, d, bias=False),
-                "k": nn.Linear(d, d//H, bias=False), "v": nn.Linear(d, d//H, bias=False),
+                "k": nn.Linear(d, d // H, bias=False), "v": nn.Linear(d, d // H, bias=False),
                 "out": nn.Linear(d, d, bias=False), "n2": nn.LayerNorm(d),
-                "ff1": nn.Linear(d, 4*d), "ff2": nn.Linear(4*d, d),
+                "ff1": nn.Linear(d, 4 * d), "ff2": nn.Linear(4 * d, d),
                 "n3": nn.LayerNorm(d), "lq": nn.Linear(d, d, bias=False),
                 "lo": nn.Linear(d, d, bias=False)}))
         s.nf = nn.LayerNorm(d)
@@ -109,26 +111,26 @@ class M(nn.Module):
         h = s.tok(x) + s.pos(torch.arange(T, device=x.device))[None] + s.pat(pid)[:, None, :]
         for b in s.blk:
             xx = b["n1"](h)
-            q = b["q"](xx).view(B, T, s.H, -1).transpose(1, 2)   # (B,H,T,hd)
-            k = b["k"](xx).view(B, T, 1, -1).transpose(1, 2)      # (B,1,T,hd) saajha
-            v = b["v"](xx).view(B, T, 1, -1).transpose(1, 2)      # (B,1,T,hd) saajha
+            q = b["q"](xx).view(B, T, s.H, -1).transpose(1, 2)
+            k = b["k"](xx).view(B, T, 1, -1).transpose(1, 2)     # MQA
+            v = b["v"](xx).view(B, T, 1, -1).transpose(1, 2)     # MQA
             att = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-            h = h + b["out"](att.transpose(1, 2).contiguous().view(B, T, s.d))
-            h = h + b["ff2"](F.gelu(b["ff1"](b["n2"](h))))
+            h = h + RS * b["out"](att.transpose(1, 2).contiguous().view(B, T, s.d))
+            h = h + RS * b["ff2"](F.gelu(b["ff1"](b["n2"](h))))
             mem = s.tok(nb)
             q2 = b["lq"](b["n3"](h)).view(B, T, s.H, -1)
             k2 = mem.view(B, T, s.K, s.H, -1).permute(0, 1, 3, 2, 4)
             sc = (q2.unsqueeze(3) @ k2.transpose(-1, -2)) / math.sqrt(s.d // s.H)
-            h = h + b["lo"]((sc.softmax(-1) @ k2).squeeze(3).reshape(B, T, s.d))
+            h = h + RS * b["lo"]((sc.softmax(-1) @ k2).squeeze(3).reshape(B, T, s.d))
         return s.nf(h)
 
 
 m = M(V, len(pats), a.dim, a.layers, a.heads, a.nbr)
 print(f"param {sum(p.numel() for p in m.parameters()):,}", flush=True)
+print(f"residual scale: {RS}", flush=True)
 
-# ---------- purani copy + position ----------
-pos = 0
-epoch = 0
+# ---------- purani copy ----------
+pos = 0; epoch = 0
 if a.old and os.path.exists(a.old):
     try:
         ck = torch.load(a.old, map_location="cpu", weights_only=False)
@@ -141,8 +143,7 @@ if a.old and os.path.exists(a.old):
                     cur[tgt].copy_(t.float()); loaded += 1
                 else:
                     skipped += 1
-        pos = int(ck.get("pos", 0))
-        epoch = int(ck.get("epoch", 0))
+        pos = int(ck.get("pos", 0)); epoch = int(ck.get("epoch", 0))
         print(f"purani copy: lade {loaded} | chhode {skipped} | position {pos:,} | epoch {epoch}", flush=True)
     except Exception as e:
         print(f"purani copy nahi ladi: {type(e).__name__}", flush=True)
@@ -179,15 +180,11 @@ def mk(rows):
     return X[ix], NB[ix], PI[ix], CL[ix], YC[ix]
 
 
-# ---------- POORI data par chalao (kram me) ----------
-t0 = time.time(); step = 0; last = 0.0
-seen = 0
-N = len(seqs)
+# ---------- POORI data par (kram me) ----------
+t0 = time.time(); step = 0; last = 0.0; seen = 0; N = len(seqs)
+h_norm = 0.0
 while step < a.steps and (time.time() - t0) < a.budget:
-    # agle batch ke anukram (kram me, ghoomte hue)
-    batch = []
-    for k in range(a.batch):
-        batch.append(seqs[(pos + seen + k) % N])
+    batch = [seqs[(pos + seen + k) % N] for k in range(a.batch)]
     b = mk(batch)
     seen += a.batch
     if seen >= N:
@@ -201,16 +198,17 @@ while step < a.steps and (time.time() - t0) < a.budget:
     opt.zero_grad(); loss.backward()
     torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0); opt.step()
     last = loss.item()
+    h_norm = float(h.norm(dim=-1).mean())
     if step % 200 == 0:
         cov = (seen / N * 100) if N else 0
-        print(f"  kadam {step:,} | loss {last:.3f} | coverage {cov:.1f}% | epoch {epoch}", flush=True)
+        print(f"  kadam {step:,} | loss {last:.3f} | |h| {h_norm:.1f} | coverage {cov:.1f}% | epoch {epoch}", flush=True)
     if step % 1000 == 0:
         os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
         torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V,
                     "dim": a.dim, "layers": a.layers, "heads": a.heads,
                     "vocab": vocab, "pats": pats, "pos": pos + seen, "epoch": epoch}, a.ckpt)
 
-# ---------- jaanch: poore kosh par ----------
+# ---------- jaanch ----------
 m.eval(); h1 = h5 = tot = 0
 with torch.no_grad():
     for i in range(0, min(len(seqs), 600), 16):
@@ -223,7 +221,7 @@ with torch.no_grad():
         tot += len(YC)
 cov = ((pos + seen) / N * 100) if N else 0
 print(f"\ntest ({tot:,}): top1 {h1/max(tot,1)*100:.1f}% | top5 {h5/max(tot,1)*100:.1f}%", flush=True)
-print(f"coverage: {cov:.1f}% | epoch {epoch} | kadam {step:,}", flush=True)
+print(f"coverage: {cov:.1f}% | epoch {epoch} | kadam {step:,} | |h| {h_norm:.1f}", flush=True)
 os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
 torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V,
             "dim": a.dim, "layers": a.layers, "heads": a.heads,
