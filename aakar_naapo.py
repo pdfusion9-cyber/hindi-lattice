@@ -101,7 +101,7 @@ tok = Tokenizer.from_file("tok.json")
 
 # ---------- jaanch ka text ----------
 text = open("corpus.txt", encoding="utf-8", errors="ignore").read()
-ids_all = tok.encode(text)[:600]
+ids_all = tok.encode(text).ids[:600]
 print(f"jaanch: {len(ids_all)} token", flush=True)
 
 def ppl(layers):
