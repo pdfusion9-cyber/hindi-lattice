@@ -38,6 +38,10 @@ jobs:
         run: |
           python -m pip install -q numpy pyarrow
           python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Qwen gyan laao
+        run: |
+          curl -sL -o emb_q.npz https://github.com/pdfusion9-cyber/hindi-lattice/releases/download/emb-v1/emb_q.npz
+          ls -lh emb_q.npz
       - name: bring previous copy
         continue-on-error: true
         env:
@@ -58,9 +62,9 @@ jobs:
           OLD=$(find old -name "*.pt" 2>/dev/null | head -1 || true)
           echo "old=[$OLD]"
           if [ -n "$OLD" ]; then
-            python punah.py --old "$OLD" --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
+            python punah.py --old "$OLD" --data data/corpus.txt --emb emb_q.npz --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
           else
-            python punah.py --data data/corpus.txt --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
+            python punah.py --data data/corpus.txt --emb emb_q.npz --dim 1024 --layers 12 --heads 16 --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) --ckpt ckpt/sampurna.pt --threads 4
           fi
       - name: int4
         if: always()
