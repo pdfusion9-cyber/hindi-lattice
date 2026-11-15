@@ -168,7 +168,7 @@ def chalao_jaal(x0, K_idx, bacha=True):
     x = x0.copy()
     for i in range(L):
         lab = assign(x, Cs[i])
-        y = Ycs[i][lab] * SC[i][lab]
+        y = Ycs[i][lab] * SC[i][lab][:, None]
         if bacha:
             y = y + (x - Cs[i][lab])          # bacha hua hissa
         x = y
