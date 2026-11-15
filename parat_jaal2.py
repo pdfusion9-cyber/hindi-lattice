@@ -139,12 +139,13 @@ def assign(A, C):
     return lab
 
 
-def chalao_jaal(x, C, Yc, bacha):
+def chalao_jaal(x, Cs, Ycs, bacha):
     for i in range(L):
-        lab = assign(x.numpy(), C)
-        y = Yc[i][lab]
+        Ci = Cs[i]                            # <-- parat ka apna kendra
+        lab = assign(x.numpy(), Ci)
+        y = Ycs[i][lab]
         if bacha:
-            y = y + (x.numpy() - C[lab])      # bacha hua hissa jodo
+            y = y + (x.numpy() - Ci[lab])     # bacha hua hissa jodo
         x = torch.tensor(y)
     return x
 
