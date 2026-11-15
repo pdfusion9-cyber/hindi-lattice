@@ -161,7 +161,7 @@ def mlp_jaal(xn, i):
     K = torch.tensor(kg); U = torch.tensor(ku); V = torch.tensor(vv)
     g = torch.nn.functional.silu(xn @ K.T)
     u = xn @ U.T
-    return (g * u) @ V.T
+    return (g * u) @ V
 
 print("\n=== 5) MLP JAAL vs ASLI MLP ===", flush=True)
 seg = torch.tensor(ids_all[:96])
