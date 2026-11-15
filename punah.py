@@ -34,6 +34,8 @@ ap.add_argument("--res-scale", type=float, default=0.5, help="residual ka bhaar"
 ap.add_argument("--ckpt", default="ckpt/sampurna.pt")
 ap.add_argument("--threads", type=int, default=4)
 ap.add_argument("--max-sent", type=int, default=400000)
+ap.add_argument("--emb", default="", help="Qwen se nigla hua shabd-embedding (.npy)")
+ap.add_argument("--emb-vocab", default="", help="us embedding ka shabdakosh (.json)")
 a = ap.parse_args()
 torch.manual_seed(0); random.seed(0); torch.set_num_threads(a.threads)
 
@@ -126,6 +128,37 @@ class M(nn.Module):
 
 
 m = M(V, len(pats), a.dim, a.layers, a.heads, a.nbr)
+
+# ---------- QWEN ka gyan bhardo ----------
+if a.emb and os.path.exists(a.emb):
+    try:
+        import numpy as np
+        z = np.load(a.emb, allow_pickle=False)
+        if "q" in z and "s" in z:                 # int8 + scale (npz)
+            E = z["q"].astype(np.float32) * z["s"][:, None]
+            qw = json.loads(str(z["vocab"])) if "vocab" in z else None
+        else:                                      # saada npy
+            E = np.load(a.emb)
+            qw = json.load(open(a.emb_vocab)) if a.emb_vocab and os.path.exists(a.emb_vocab) else None
+        if qw:
+            qi = {w: i for i, w in enumerate(qw)}
+            D = min(E.shape[1], a.dim)
+            hit = 0
+            with torch.no_grad():
+                W = m.tok.weight.data
+                for i, w in enumerate(vocab):
+                    j = qi.get(w)
+                    if j is None: continue
+                    W[i, :D].copy_(torch.from_numpy(np.array(E[j][:D], dtype=np.float32)))
+                    hit += 1
+            print(f"QWEN gyan: {hit:,}/{V:,} shabd bhare ({hit/V*100:.1f}%)", flush=True)
+        else:
+            print("emb-vocab nahi mila -- random shuruat", flush=True)
+    except Exception as e:
+        print(f"embedding nahi bhari: {type(e).__name__} {str(e)[:80]}", flush=True)
+else:
+    print("koi embedding nahi -- random shuruat", flush=True)
+
 print(f"param {sum(p.numel() for p in m.parameters()):,}", flush=True)
 print(f"residual scale: {RS}", flush=True)
 
