@@ -92,12 +92,16 @@ def rmsnorm(x, w):
     return x / torch.sqrt(var + EPS) * w
 
 def rope(x, T):
+    """Qwen/Llama tarika: PEHLA AADHA aur DOOSRA AADHA (bari-bari nahi)"""
     pos = torch.arange(T, dtype=torch.float32)
     inv = 1.0 / (THETA ** (torch.arange(0, hd, 2, dtype=torch.float32) / hd))
-    ang = torch.outer(pos, inv)
+    ang = torch.outer(pos, inv)                      # (T, hd/2)
     cos = ang.cos()[:, None, :]; sin = ang.sin()[:, None, :]
-    x1 = x[..., 0::2]; x2 = x[..., 1::2]
-    return torch.stack([x1*cos - x2*sin, x1*sin + x2*cos], dim=-1).flatten(-2)
+    half = hd // 2
+    x1 = x[..., :half]; x2 = x[..., half:]           # <-- SUDHAR
+    o1 = x1 * cos - x2 * sin
+    o2 = x1 * sin + x2 * cos
+    return torch.cat([o1, o2], dim=-1)
 
 def attn(x, i, T):
     p = f"model.layers.{i}.self_attn."
