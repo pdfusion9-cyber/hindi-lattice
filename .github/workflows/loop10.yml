@@ -51,7 +51,7 @@ jobs:
           wc -l data/corpus.txt
       - name: build own lattice
         run: |
-          python pack_banao.py --text data/corpus.txt --out data/gyaan.pack --max-paths 400000
+          python pack_banao.py --text data/corpus.txt --out data/gyaan.pack --max-paths 800000
           ls -lh data/gyaan.pack
       - name: train from own lattice + pattern table
         run: |
@@ -59,7 +59,7 @@ jobs:
           MIN=${{ inputs.minutes || 180 }}
           mkdir -p ckpt
           echo "=== shuru: $MIN minute, budget $((MIN*60)) sec ==="
-          python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -200
+          python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt --dim 768 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -200
           echo "=== khatam. ckpt me kya hai: ==="
           ls -lh ckpt/ || echo "ckpt khali"
           if [ ! -f ckpt/sampurna.pt ]; then echo "!! CHECKPOINT NAHI BANA -- fail"; exit 1; fi
@@ -67,7 +67,7 @@ jobs:
       - name: measure accuracy
         if: always()
         run: |
-          python uttar_naapo.py --pack data/gyaan.pack --facts data/gyaan.txt --ckpt ckpt/sampurna.pt --dim 512 --layers 4 --heads 8 --nq 300 --out store/uttar.json 2>&1 | tail -20
+          python uttar_naapo.py --pack data/gyaan.pack --facts data/gyaan.txt --ckpt ckpt/sampurna.pt --dim 768 --layers 4 --heads 8 --nq 300 --out store/uttar.json 2>&1 | tail -20
           cat store/uttar.json || true
       - name: quantize int8 int4
         if: always()
@@ -127,7 +127,7 @@ jobs:
           ls -lh store/
       - name: train one merged model
         run: |
-          python sampurna2.py --pack store/merged.pack --facts store/merged_gyaan.txt --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget 3000 --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt store/merged_model.pt --threads 4 2>&1 | tail -40
+          python sampurna2.py --pack store/merged.pack --facts store/merged_gyaan.txt --dim 768 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget 3000 --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt store/merged_model.pt --threads 4 2>&1 | tail -40
       - name: make int4 variant
         run: |
           python chhota_karo.py --ckpt store/merged_model.pt --out store --part-mb 90 || echo "quantize skipped"
