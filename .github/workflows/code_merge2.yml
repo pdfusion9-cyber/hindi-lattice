@@ -21,6 +21,9 @@ jobs:
       - name: jodo aur test
         run: |
           mkdir -p in
-          cp dl/*.json in/ 2>/dev/null || echo "koi json nahi"
-          ls in/ | head
+          echo "--- dl me kya hai ---"
+          find dl -type f | head -20
+          find dl -name "*.json" -exec cp {} in/ \;
+          echo "--- in me ---"
+          ls -la in/ | head
           python code_merge2.py
