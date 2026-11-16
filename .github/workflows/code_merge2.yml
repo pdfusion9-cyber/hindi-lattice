@@ -1,0 +1,26 @@
+name: code_merge2
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  jodo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: shard utaaro
+        uses: actions/download-artifact@v4
+        with:
+          path: dl
+          pattern: shard-*
+          merge-multiple: true
+      - name: jodo aur test
+        run: |
+          mkdir -p in
+          cp dl/*.json in/ 2>/dev/null || echo "koi json nahi"
+          ls in/ | head
+          python code_merge2.py
