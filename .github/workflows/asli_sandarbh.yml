@@ -1,0 +1,43 @@
+name: asli_sandarbh
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  chalao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: kosh laao
+        run: |
+          python - <<'PY'
+          import urllib.request
+          urls = [
+            ("corpus.txt", "https://www.gutenberg.org/cache/epub/2701/pg2701.txt"),
+            ("hindi.txt", "https://raw.githubusercontent.com/ayushoriginal/Hindi-Text-Corpus/master/hindi_text.txt"),
+          ]
+          for name, u in urls:
+              try:
+                  d = urllib.request.urlopen(u, timeout=90).read().decode("utf-8","ignore")
+                  open(name,"w",encoding="utf-8").write(d[:12000000])
+                  print(name, len(d), "bytes")
+              except Exception as e:
+                  print("skip", name, type(e).__name__)
+          # fallback hindi
+          import os
+          if not os.path.exists("hindi.txt") or os.path.getsize("hindi.txt") < 100000:
+              base = ("राम ने रोटी खाई और सीता ने पानी पिया। भारत एक बड़ा देश है। "
+                      "दिल्ली भारत की राजधानी है। सूरज पूरब से उगता है और पश्चिम में डूबता है। "
+                      "बच्चे खेत में खेल रहे हैं और माँ खाना बना रही है।\n")
+              open("hindi.txt","w",encoding="utf-8").write(base*8000)
+              print("hindi fallback")
+          PY
+          ls -lh corpus.txt hindi.txt
+      - name: angrezi par
+        run: python asli_sandarbh.py corpus.txt
+      - name: hindi par
+        run: python asli_sandarbh.py hindi.txt
