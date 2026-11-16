@@ -31,6 +31,7 @@ ap.add_argument("--cand", type=int, default=50)
 ap.add_argument("--pat-cand", type=int, default=20)
 ap.add_argument("--minpat", type=int, default=5)
 ap.add_argument("--res-scale", type=float, default=0.5, help="residual ka bhaar")
+ap.add_argument("--sparse-win", type=int, default=6, help="jaal-sparse dhyan ki khidki (0 = band)")
 ap.add_argument("--ckpt", default="ckpt/sampurna.pt")
 ap.add_argument("--threads", type=int, default=4)
 ap.add_argument("--max-sent", type=int, default=400000)
@@ -108,7 +109,7 @@ class M(nn.Module):
                 "lo": nn.Linear(d, d, bias=False)}))
         s.nf = nn.LayerNorm(d)
 
-    def forward(s, x, nb, pid):
+    def forward(s, x, nb, pid, amask=None):
         B, T = x.shape
         h = s.tok(x) + s.pos(torch.arange(T, device=x.device))[None] + s.pat(pid)[:, None, :]
         for b in s.blk:
@@ -116,7 +117,10 @@ class M(nn.Module):
             q = b["q"](xx).view(B, T, s.H, -1).transpose(1, 2)
             k = b["k"](xx).view(B, T, 1, -1).transpose(1, 2)     # MQA
             v = b["v"](xx).view(B, T, 1, -1).transpose(1, 2)     # MQA
-            att = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+            if amask is None:
+                att = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+            else:
+                att = F.scaled_dot_product_attention(q, k, v, attn_mask=amask)
             h = h + RS * b["out"](att.transpose(1, 2).contiguous().view(B, T, s.d))
             h = h + RS * b["ff2"](F.gelu(b["ff1"](b["n2"](h))))
             mem = s.tok(nb)
@@ -210,7 +214,24 @@ def mk(rows):
         YC[j] = pool.index(tgt); keep.append(j)
     if not keep: return None
     ix = torch.tensor(keep)
-    return X[ix], NB[ix], PI[ix], CL[ix], YC[ix]
+    AM = None
+    if a.sparse_win > 0:
+        # har token: apni khidki + jaal-padosi (causal)
+        AM = torch.zeros(len(ix), T, T, dtype=torch.bool)
+        idx = torch.arange(T)
+        local = (idx[None, :] >= (idx[:, None] - a.sparse_win)) & (idx[None, :] <= idx[:, None])
+        AM[:] = local[None]
+        for j, (ids, pt) in enumerate(rows):
+            if j not in keep: continue
+            jj = keep.index(j)
+            i = (pos + j * 7) % max(1, len(ids) - 1)
+            if i < 1: i = 1
+            ctx = ids[max(0, i - T):i]
+            for t in range(len(ctx)):
+                for q in range(t):
+                    if ctx[q] in nbrs.get(ctx[t], []): AM[jj, t, q] = True
+        AM = AM.unsqueeze(1)
+    return X[ix], NB[ix], PI[ix], CL[ix], YC[ix], AM
 
 
 # ---------- POORI data par (kram me) ----------
@@ -225,8 +246,8 @@ while step < a.steps and (time.time() - t0) < a.budget:
         print(f"  -- poora kosh ek baar dekh liya (epoch {epoch}) --", flush=True)
     if b is None: continue
     step += 1
-    X, NB, PI, CL, YC = b
-    h = m(X, NB, PI)[:, -1, :]
+    X, NB, PI, CL, YC, AM = b
+    h = m(X, NB, PI, AM)[:, -1, :]
     loss = F.cross_entropy((h[:, None, :] * m.tok(CL)).sum(-1), YC)
     opt.zero_grad(); loss.backward()
     torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0); opt.step()
@@ -247,8 +268,8 @@ with torch.no_grad():
     for i in range(0, min(len(seqs), 600), 16):
         b = mk(seqs[i:i+16])
         if b is None: continue
-        X, NB, PI, CL, YC = b
-        sc = (m(X, NB, PI)[:, -1, :][:, None, :] * m.tok(CL)).sum(-1)
+        X, NB, PI, CL, YC, AM = b
+        sc = (m(X, NB, PI, AM)[:, -1, :][:, None, :] * m.tok(CL)).sum(-1)
         h1 += (sc.argmax(-1) == YC).sum().item()
         h5 += sum(1 for j in range(len(YC)) if YC[j] in sc.topk(5, -1).indices[j])
         tot += len(YC)
