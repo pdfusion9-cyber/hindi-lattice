@@ -1,0 +1,33 @@
+name: pura_jaal
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  chalao:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: kosh laao
+        run: |
+          python - <<'PY'
+          import urllib.request
+          for name, u in [
+            ("corpus.txt", "https://www.gutenberg.org/cache/epub/2701/pg2701.txt"),
+            ("corpus2.txt", "https://www.gutenberg.org/cache/epub/1342/pg1342.txt")]:
+              try:
+                  d = urllib.request.urlopen(u, timeout=90).read().decode("utf-8","ignore")
+                  open(name,"w",encoding="utf-8").write(d[:12000000])
+                  print(name, len(d))
+              except Exception as e:
+                  print("skip", name, type(e).__name__)
+          PY
+          ls -lh corpus.txt corpus2.txt 2>/dev/null
+      - name: poora jaal
+        run: python pura_jaal.py corpus.txt
+      - name: doosra kosh
+        run: python pura_jaal.py corpus2.txt
