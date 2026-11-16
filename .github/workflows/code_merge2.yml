@@ -2,7 +2,8 @@ name: code_merge2
 on:
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
+  actions: read
 jobs:
   jodo:
     runs-on: ubuntu-latest
@@ -12,18 +13,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: shard utaaro
+      - name: shard utaaro (doosre run se)
         uses: actions/download-artifact@v4
         with:
           path: dl
           pattern: shard-*
           merge-multiple: true
+          run-id: 43723467038
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: pdfusion9-cyber/hindi-lattice
       - name: jodo aur test
         run: |
           mkdir -p in
-          echo "--- dl me kya hai ---"
+          echo "--- dl ---"
           find dl -type f | head -20
           find dl -name "*.json" -exec cp {} in/ \;
-          echo "--- in me ---"
-          ls -la in/ | head
+          echo "--- in ---"
+          ls in/ | head
           python code_merge2.py
