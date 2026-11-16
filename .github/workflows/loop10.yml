@@ -55,8 +55,15 @@ jobs:
           ls -lh data/gyaan.pack
       - name: train from own lattice + pattern table
         run: |
+          set -o pipefail
           MIN=${{ inputs.minutes || 180 }}
-          python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -80
+          mkdir -p ckpt
+          echo "=== shuru: $MIN minute, budget $((MIN*60)) sec ==="
+          python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt --dim 512 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -200
+          echo "=== khatam. ckpt me kya hai: ==="
+          ls -lh ckpt/ || echo "ckpt khali"
+          if [ ! -f ckpt/sampurna.pt ]; then echo "!! CHECKPOINT NAHI BANA -- fail"; exit 1; fi
+          echo "checkpoint taiyar"
       - name: measure accuracy
         if: always()
         run: |
