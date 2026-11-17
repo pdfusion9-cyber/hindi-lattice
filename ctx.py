@@ -56,7 +56,7 @@ def dist(ctx,K,alpha=3.0,beta=0.5,L=0.4):
         for j,c in conts.items(): p[j]+=L*c/t
     # adaptive weight: K-gram count
     key=tuple(ctx[-K:])
-    nk=CTOT[K].get(key[:-1],{}).get(key[-1],0) if K>1 else CTOT[1].get((key[0],),0)
+    nk=CONT[K].get(key[:-1],{}).get(key[-1],0)
     w=nk/(nk+1.0)
     s=SEM[ctx[-1]]*alpha; s=s-s.max(); ps=np.exp(s); ps/=ps.sum()
     pb=(1-beta)*p + beta*ps
