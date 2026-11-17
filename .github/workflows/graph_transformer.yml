@@ -11,7 +11,10 @@ jobs:
         with:
           python-version: '3.11'
       - name: install
-        run: pip install --quiet numpy tokenizers pyarrow
+        run: |
+          pip install --quiet numpy tokenizers pyarrow
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          python -c "import torch;print('torch',torch.__version__)"
       - name: download
         run: |
           set +e
@@ -28,7 +31,9 @@ jobs:
           print('wikitext chars',len(txt))
           EOF
       - name: run bridge
-        run: python -u gtrans.py 2>&1 | tee run.log
+        run: |
+          set -o pipefail
+          python -u gtrans.py 2>&1 | tee run.log
       - name: show
         if: always()
         run: tail -50 run.log 2>/dev/null || true
