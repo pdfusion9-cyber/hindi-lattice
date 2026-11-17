@@ -40,7 +40,7 @@ jobs:
 
       - name: run DNA pipeline
         run: |
-          python -u codon_only.py 2>&1 | tee run.log
+          python -u mix_test.py 2>&1 | tee run.log
 
       - name: show result
         if: always()
