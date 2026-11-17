@@ -28,32 +28,24 @@ jobs:
 
       - name: download Qwen 0.5B
         run: |
-          curl -sL -o model.safetensors \
-            "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/model.safetensors"
-          curl -sL -o config.json \
-            "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/config.json"
-          curl -sL -o tokenizer.json \
-            "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
-          echo ok
+          curl -sL -o model.safetensors "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/model.safetensors"
+          curl -sL -o config.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/config.json"
+          curl -sL -o tokenizer.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
           ls -lh model.safetensors config.json tokenizer.json
-          cat config.json
 
-      - name: run DNA pipeline
-        run: |
-          python -u qwen_int4_all.py 2>&1 | tee run.log
+      - name: run test
+        run: python -u quality_up.py 2>&1 | tee run.log
 
       - name: show result
         if: always()
         run: |
-          echo "===== RESULT ====="
-          cat result.json 2>/dev/null || echo "no result.json"
-          echo "===== TAIL LOG ====="
-          tail -40 run.log 2>/dev/null || true
+          echo "===== TAIL ====="
+          tail -50 run.log 2>/dev/null || true
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: qwen-dna-result
+          name: result
           path: |
             result.json
             run.log
