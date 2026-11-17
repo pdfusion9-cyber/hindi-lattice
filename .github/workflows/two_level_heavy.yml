@@ -1,0 +1,24 @@
+name: two-level-heavy
+on:
+  workflow_dispatch:
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: corpus
+        run: |
+          curl -sL -o c1.txt "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+          curl -sL -o c2.txt "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch02/01_main-chapter-code/the-verdict.txt" || true
+          curl -sL -o c3.txt "https://raw.githubusercontent.com/karpathy/nanoGPT/master/data/shakespeare_char/prepare.py" || true
+          ls -lh c1.txt c2.txt c3.txt
+          python -c "import os;a=os.path.getsize('c1.txt');print('bytes',a);assert a>500000,'chhota'"
+      - name: run
+        run: python -u heavy2.py 2>&1 | tee run.log
+      - name: show
+        if: always()
+        run: tail -30 run.log 2>/dev/null || true
