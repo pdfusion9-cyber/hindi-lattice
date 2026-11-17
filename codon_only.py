@@ -29,29 +29,43 @@ def main():
     OUT0={"ppl":p0,"top1":t0,"held":h0}
 
     print(f"\n=== 2) 2-BIT CODON (64-codon table) ===", flush=True)
+    # halka sample: har parat se 1500 codon
     pool=[]
-    for b in m.blk:
-        fl=b.mlp.gate.weight.data.reshape(-1); nn3=len(fl)//3*3
-        pool.append(fl[:nn3].reshape(-1,3))
-    P=torch.cat(pool,0)
-    if len(P)>300000: P=P[torch.randperm(len(P))[:300000]]
+    with torch.no_grad():
+        for b in m.blk[:12]:
+            fl=b.mlp.gate.weight.data.reshape(-1); nn3=len(fl)//3*3
+            A=fl[:nn3].reshape(-1,3)
+            ix=torch.randperm(len(A))[:1500]
+            pool.append(A[ix])
+    P=torch.cat(pool,0).clone()
+    print(f"  sample {P.shape[0]:,} codon", flush=True)
     C=P[torch.randperm(len(P))[:64]].clone()
-    for it in range(12):
+    for it in range(10):
         d=(P**2).sum(1)[:,None]-2*P@C.T+(C**2).sum(1)[None]
         lab=d.argmin(1)
         for j in range(64):
             msk=lab==j
             if msk.any(): C[j]=P[msk].mean(0)
+    del P, d, lab
     errs=[]
+    Cn=(C*C).sum(1)[None]
     with torch.no_grad():
         for p in m.parameters():
             if p.dim()<2: continue
             fl=p.data.reshape(-1); nn3=len(fl)//3*3
             A=fl[:nn3].reshape(-1,3)
-            d=(A**2).sum(1)[:,None]-2*A@C.T+(C**2).sum(1)[None]
-            ix=d.argmin(1)
-            errs.append(float((A-C[ix]).abs().mean()/(A.abs().mean()+1e-9)))
-            p.data.copy_(torch.cat([C[ix].reshape(-1),fl[nn3:]]).reshape(p.shape))
+            newA=torch.empty_like(A)
+            B=200000
+            e_num=0.0; e_den=0.0
+            for s0 in range(0,len(A),B):
+                s1=min(s0+B,len(A)); Ab=A[s0:s1]
+                d=(Ab*Ab).sum(1)[:,None]-2*Ab@C.T+Cn
+                ix=d.argmin(1)
+                newA[s0:s1]=C[ix]
+                e_num+=float((Ab-C[ix]).abs().sum()); e_den+=float(Ab.abs().sum())
+            errs.append(e_num/(e_den+1e-9))
+            p.data.copy_(torch.cat([newA.reshape(-1),fl[nn3:]]).reshape(p.shape))
+            del A, newA
     p1=perplexity(m,ids); t1=top1(m,ids); h1=perplexity(m,hids)
     print(f"  codon galti {sum(errs)/len(errs)*100:.1f}%", flush=True)
     print(f"  eval  : ppl {p1:.3f} | top-1 {t1*100:.1f}%  ({t1*100-t0*100:+.1f})", flush=True)
@@ -61,13 +75,13 @@ def main():
     toks=tokenize(TEXT*6)[0]; seq=64; nwin=len(toks)//seq
     opt=torch.optim.AdamW(m.parameters(), lr=1.5e-4, weight_decay=0.01)
     m.train(); t_start=time.time()
-    for st in range(1,81):
+    for st in range(1,41):
         i=torch.randint(0,nwin-1,(1,)).item()
         x=toks[i*seq:(i+1)*seq][None]; y=toks[i*seq+1:(i+1)*seq+1][None]
         loss=F.cross_entropy(m(x)[0].float(), y[0])
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(m.parameters(),1.0); opt.step()
-        if st%20==0:
+        if st%10==0:
             print(f"  kadam {st} | loss {loss.item():.3f} | {time.time()-t_start:.0f}s", flush=True)
     p2=perplexity(m,ids); t2=top1(m,ids); h2=perplexity(m,hids)
     print(f"  eval  : ppl {p2:.3f} | top-1 {t2*100:.1f}%  ({t2*100-t0*100:+.1f})", flush=True)
