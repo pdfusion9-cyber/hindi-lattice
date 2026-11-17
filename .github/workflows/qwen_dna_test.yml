@@ -20,10 +20,7 @@ jobs:
           curl -sL -o model.safetensors "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/model.safetensors"
           curl -sL -o config.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/config.json"
           curl -sL -o tokenizer.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
-          curl -sL -o c1.txt "https://www.gutenberg.org/cache/epub/11/pg11.txt"
-          curl -sL -o c2.txt "https://www.gutenberg.org/cache/epub/1661/pg1661.txt"
-          curl -sL -o c3.txt "https://www.gutenberg.org/cache/epub/84/pg84.txt"
-          cat c1.txt c2.txt c3.txt > corpus.txt 2>/dev/null || true
+          curl -sL -o corpus.txt "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
           ls -lh model.safetensors corpus.txt
           python -c "import os;s=os.path.getsize('corpus.txt');print('corpus bytes',s);assert s>200000,'corpus too small'"
       - name: run QAT
