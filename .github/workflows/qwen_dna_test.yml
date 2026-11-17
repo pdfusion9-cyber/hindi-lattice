@@ -34,7 +34,7 @@ jobs:
           ls -lh model.safetensors config.json tokenizer.json
 
       - name: run test
-        run: python -u quality_up.py 2>&1 | tee run.log
+        run: python -u qat_test.py 2>&1 | tee run.log
 
       - name: show result
         if: always()
