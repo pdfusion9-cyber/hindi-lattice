@@ -33,9 +33,9 @@ def rope_half(x, cos, sin):
     return torch.cat([x1 * cos - x2 * sin, x2 * cos + x1 * sin], dim=-1)
 
 class Attn(nn.Module):
-    def __init__(s, d, nh, nkv):
+    def __init__(s, d, nh, nkv, hd):
         super().__init__()
-        s.nh, s.nkv, s.hd = nh, nkv, d // nh
+        s.nh, s.nkv, s.hd = nh, nkv, hd
         s.q = nn.Linear(d, nh * s.hd, bias=True)
         s.k = nn.Linear(d, nkv * s.hd, bias=True)
         s.v = nn.Linear(d, nkv * s.hd, bias=True)
@@ -61,9 +61,9 @@ class MLP(nn.Module):
         return s.down(F.silu(s.gate(x)) * s.up(x))
 
 class Blk(nn.Module):
-    def __init__(s, d, nh, nkv, ff):
+    def __init__(s, d, nh, nkv, ff, hd):
         super().__init__()
-        s.n1 = RMSNorm(d); s.attn = Attn(d, nh, nkv)
+        s.n1 = RMSNorm(d); s.attn = Attn(d, nh, nkv, hd)
         s.n2 = RMSNorm(d); s.mlp = MLP(d, ff)
     def forward(s, x, cos, sin, mask):
         x = x + s.attn(s.n1(x), cos, sin, mask)
@@ -74,9 +74,9 @@ class Qwen(nn.Module):
         super().__init__()
         d, L = cfg["hidden"], cfg["layers"]
         s.emb = nn.Embedding(cfg["vocab"], d)
-        s.blk = nn.ModuleList([Blk(d, cfg["heads"], cfg["kv"], cfg["ff"]) for _ in range(L)])
+        s.blk = nn.ModuleList([Blk(d, cfg["heads"], cfg["kv"], cfg["ff"], cfg["hd"]) for _ in range(L)])
         s.nf = RMSNorm(d)
-        s.d, s.nh, s.nkv, s.hd = d, cfg["heads"], cfg["kv"], d // cfg["heads"]
+        s.d, s.nh, s.nkv, s.hd = d, cfg["heads"], cfg["kv"], cfg["hd"]
         s.theta = cfg.get("rope", 1000000.0)
     def forward(s, idx):
         B, T = idx.shape
@@ -84,8 +84,9 @@ class Qwen(nn.Module):
         pos = torch.arange(T, device=dev).float()
         inv = 1.0 / (s.theta ** (torch.arange(0, s.hd, 2, device=dev).float() / s.hd))
         f = torch.outer(pos, inv)
-        cos = torch.cos(f).repeat_interleave(2, -1)[None, None]
-        sin = torch.sin(f).repeat_interleave(2, -1)[None, None]
+        cc = torch.cos(f); ss = torch.sin(f)
+        cos = torch.cat([cc, cc], dim=-1)[None, None]   # HALF-SPLIT
+        sin = torch.cat([ss, ss], dim=-1)[None, None]
         mask = torch.full((T, T), float("-inf"), device=dev).triu(1)[None, None]
         h = s.emb(idx)
         for b in s.blk:
@@ -108,14 +109,22 @@ def load_qwen(path):
         else:
             a = np.frombuffer(raw, dtype=np.float32)
         return torch.from_numpy(a.reshape(v["shape"]).copy())
+    import json as _j, os as _os
+    if _os.path.exists("config.json"):
+        c = _j.load(open("config.json"))
+        nh = c["num_attention_heads"]; nkv = c["num_key_value_heads"]
+        hd = c.get("head_dim", cfg_hd := c["hidden_size"] // nh)
+        theta = c.get("rope_theta", 1000000.0)
+    else:
+        nh, nkv, hd, theta = 14, 2, 64, 1000000.0
     cfg = {
         "hidden": hdr["model.embed_tokens.weight"]["shape"][1],
         "vocab": hdr["model.embed_tokens.weight"]["shape"][0],
         "layers": len({k.split(".")[2] for k in hdr if "layers" in k}),
         "ff": hdr["model.layers.0.mlp.gate_proj.weight"]["shape"][0],
-        "heads": hdr["model.layers.0.self_attn.q_proj.weight"]["shape"][0] // 128,
-        "kv": hdr["model.layers.0.self_attn.k_proj.weight"]["shape"][0] // 128,
+        "heads": nh, "kv": nkv, "hd": hd, "rope": theta,
     }
+    assert cfg["heads"] * cfg["hd"] == hdr["model.layers.0.self_attn.q_proj.weight"]["shape"][0], "head_dim mismatch"
     m = Qwen(cfg)
     sd = {}
     sd["emb.weight"] = get("model.embed_tokens.weight")
@@ -180,6 +189,16 @@ def main():
 
     ids = tokenize(TEXT)
     print(f"  test tokens {ids.shape[1]}", flush=True)
+
+    print("\n=== 1b) SANITY (port sahi hai?) ===", flush=True)
+    probe = "The capital of France is"
+    pids = tokenize(probe)
+    m.eval()
+    with torch.no_grad():
+        lg = m(pids)[0, -1]
+    top = lg.topk(8).indices.tolist()
+    print(f"  '{probe}' -> top-8 ids {top}", flush=True)
+    OUT["sanity_top"] = top
 
     print("\n=== 2) BASELINE ===", flush=True)
     ppl0 = perplexity(m, ids); t1_0 = top1(m, ids)
