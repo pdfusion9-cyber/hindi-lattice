@@ -1,0 +1,37 @@
+name: two-level-10x
+on:
+  workflow_dispatch:
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: corpus (distinct sources, no duplication)
+        run: |
+          set +e
+          curl -sL -o a.txt "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+          curl -sL -o b.txt "https://www.gutenberg.org/cache/epub/1342/pg1342.txt"
+          curl -sL -o c.txt "https://www.gutenberg.org/cache/epub/98/pg98.txt"
+          curl -sL -o d.txt "https://www.gutenberg.org/cache/epub/2600/pg2600.txt"
+          curl -sL -o e.txt "https://www.gutenberg.org/cache/epub/1661/pg1661.txt"
+          curl -sL -o f.txt "https://www.gutenberg.org/cache/epub/2701/pg2701.txt"
+          curl -sL -o g.txt "https://www.gutenberg.org/cache/epub/84/pg84.txt"
+          curl -sL -o h.txt "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch02/01_main-chapter-code/the-verdict.txt"
+          for x in a b c d e f g h; do
+            if [ -f $x.txt ]; then echo "$x.txt $(wc -c < $x.txt) bytes"; fi
+          done
+          cat a.txt b.txt c.txt d.txt e.txt f.txt g.txt h.txt > all.txt 2>/dev/null
+          ls -lh all.txt
+          python -c "import os;s=os.path.getsize('all.txt');print('TOTAL BYTES',s);assert s>1000000,'too small'"
+      - name: run
+        run: |
+          cp all.txt c1.txt
+          rm -f c2.txt c3.txt
+          python -u heavy2.py 2>&1 | tee run.log
+      - name: show
+        if: always()
+        run: tail -30 run.log 2>/dev/null || true
