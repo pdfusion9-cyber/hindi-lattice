@@ -34,7 +34,10 @@ jobs:
         run: |
           curl -sL -o model.safetensors \
             "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/model.safetensors"
-          ls -lh model.safetensors
+          curl -sL -o config.json \
+            "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/config.json"
+          ls -lh model.safetensors config.json
+          cat config.json
 
       - name: run DNA pipeline
         run: |
