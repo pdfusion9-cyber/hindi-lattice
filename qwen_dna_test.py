@@ -158,9 +158,19 @@ more than any single discovery, is what moves knowledge forward. The same habit 
 that learn from data. We can ask how well a model predicts, and we can ask why it predicts that way.
 The second question is harder, and it is the one that matters when we decide whether to rely on it."""
 
+_TOK = None
+def get_tok():
+    global _TOK
+    if _TOK is None:
+        from tokenizers import Tokenizer
+        _TOK = Tokenizer.from_file("tokenizer.json")
+    return _TOK
+
 def tokenize(text):
-    """byte-level fallback: har byte ko token maano (vocab 151936 me fit)"""
-    return torch.tensor([[b for b in text.encode()]], dtype=torch.long)
+    """ASLI Qwen tokenizer (BPE)"""
+    t = get_tok()
+    ids = t.encode(text).ids
+    return torch.tensor([ids], dtype=torch.long)
 
 def perplexity(model, ids):
     model.eval()
@@ -197,8 +207,9 @@ def main():
     with torch.no_grad():
         lg = m(pids)[0, -1]
     top = lg.topk(8).indices.tolist()
-    print(f"  '{probe}' -> top-8 ids {top}", flush=True)
-    OUT["sanity_top"] = top
+    words = [get_tok().decode([i]) for i in top]
+    print(f"  '{probe}' -> top-8 {words}", flush=True)
+    OUT["sanity_top"] = words
 
     print("\n=== 2) BASELINE ===", flush=True)
     ppl0 = perplexity(m, ids); t1_0 = top1(m, ids)
