@@ -84,9 +84,9 @@ class Qwen(nn.Module):
         pos = torch.arange(T, device=dev).float()
         inv = 1.0 / (s.theta ** (torch.arange(0, s.hd, 2, device=dev).float() / s.hd))
         f = torch.outer(pos, inv)
-        cc = torch.cos(f); ss = torch.sin(f)
-        cos = torch.cat([cc, cc], dim=-1)[None, None]   # HALF-SPLIT
-        sin = torch.cat([ss, ss], dim=-1)[None, None]
+        # HALF-SPLIT: cos/sin sirf hd/2 lambai ke (x ko do hisson me baantte hain)
+        cos = torch.cos(f)[None, None]
+        sin = torch.sin(f)[None, None]
         mask = torch.full((T, T), float("-inf"), device=dev).triu(1)[None, None]
         h = s.emb(idx)
         for b in s.blk:
