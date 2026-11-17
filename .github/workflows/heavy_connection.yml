@@ -1,0 +1,36 @@
+name: heavy-connection-train
+on:
+  workflow_dispatch:
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: install
+        run: |
+          python -m pip install --quiet --upgrade pip
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet numpy
+      - name: corpus
+        run: |
+          curl -sL -o corpus_a.txt "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+          curl -sL -o corpus_b.txt "https://www.gutenberg.org/cache/epub/1342/pg1342.txt"
+          curl -sL -o corpus_c.txt "https://www.gutenberg.org/cache/epub/98/pg98.txt"
+          cat corpus_c.txt >> corpus_b.txt 2>/dev/null || true
+          ls -lh corpus_a.txt corpus_b.txt
+          python -c "import os;a=os.path.getsize('corpus_a.txt');b=os.path.getsize('corpus_b.txt');print('bytes',a,b);assert a>500000,'corpus_a chhota'"
+      - name: train
+        run: python -u heavy_run.py 2>&1 | tee run.log
+      - name: show
+        if: always()
+        run: tail -40 run.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result
+          path: run.log
+          if-no-files-found: warn
