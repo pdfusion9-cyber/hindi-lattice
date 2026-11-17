@@ -34,12 +34,13 @@ jobs:
             "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/config.json"
           curl -sL -o tokenizer.json \
             "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
+          echo ok
           ls -lh model.safetensors config.json tokenizer.json
           cat config.json
 
       - name: run DNA pipeline
         run: |
-          python -u qwen_dna_test.py 2>&1 | tee run.log
+          python -u prune_sweep.py 2>&1 | tee run.log
 
       - name: show result
         if: always()
