@@ -1,0 +1,34 @@
+name: hybrid-bridge
+on:
+  workflow_dispatch:
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: install
+        run: pip install --quiet numpy tokenizers pyarrow
+      - name: download
+        run: |
+          set +e
+          curl -sL -o model.safetensors "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/model.safetensors"
+          curl -sL -o tokenizer.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
+          curl -sL -o sh.txt "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+          curl -sL -o wt.parquet "https://huggingface.co/datasets/Salesforce/wikitext/resolve/main/wikitext-2-raw-v1/train-00000-of-00001.parquet"
+          ls -lh model.safetensors tokenizer.json sh.txt wt.parquet
+          python - <<'EOF'
+          import pyarrow.parquet as pq
+          t=pq.read_table('wt.parquet'); col=t.column_names[0]
+          txt="\n".join(str(x) for x in t.column(col).to_pylist())
+          open('wt.txt','w').write(txt)
+          print('wikitext chars',len(txt))
+          EOF
+      - name: run bridge
+        run: python -u bridge2.py 2>&1 | tee run.log
+      - name: show
+        if: always()
+        run: tail -50 run.log 2>/dev/null || true
