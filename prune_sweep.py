@@ -5,7 +5,7 @@ torch.set_num_threads(4); torch.manual_seed(0); np.random.seed(0)
 
 exec(open("qwen_dna_test.py").read().split("# ---------------- main ----------------")[0])
 
-TEXT = open("sample.txt").read()
+TEXT = open("sample.txt").read()*8
 
 def main():
     print("=== LOAD ===", flush=True)
@@ -23,12 +23,12 @@ def main():
 
     print(f"\n{'FFN hate':<10} {'param':>12} {'ppl':>8} {'top-1':>7} {'girawat':>9}", flush=True)
     print("-"*52, flush=True)
-    for frac in (0.10, 0.30, 0.50, 0.70, 0.85):
+    for frac in (0.10, 0.20, 0.30, 0.50, 0.70):
         mm,_,_,_ = load_qwen("model.safetensors")
         mm.load_state_dict(base_sd)
         with torch.no_grad():
             for b in mm.blk:
-                imp=b.mlp.gate.weight.norm(dim=1)*b.mlp.up.weight.norm(dim=1)
+                imp=b.mlp.gate.weight.norm(dim=1)*b.mlp.up.weight.norm(dim=1)*b.mlp.down.weight.norm(dim=0)
                 keep=max(8,int(len(imp)*(1-frac)))
                 ix=imp.topk(keep).indices.sort().values
                 b.mlp.gate.weight=nn.Parameter(b.mlp.gate.weight.data[ix].clone())
