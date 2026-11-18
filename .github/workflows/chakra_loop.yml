@@ -69,6 +69,7 @@ jobs:
       - name: int4
         if: always()
         run: |
+          mkdir -p store
           if [ -f ckpt/sampurna.pt ]; then python int4_karo.py --ckpt ckpt/sampurna.pt --out store/int4.npz || echo skip; fi
       - name: save
         if: always()
