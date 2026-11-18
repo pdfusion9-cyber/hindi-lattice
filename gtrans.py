@@ -73,12 +73,17 @@ print(f"  parameter: {npar:,} (isme {NE:,} connection)",flush=True)
 opt=torch.optim.AdamW(m.parameters(),lr=3e-3)
 B=256
 t0=time.time()
-for st in range(1,1201):
+LIMIT=1500.0
+for st in range(1,601):
     i=np.random.randint(0,len(tr)-1,B)
     x=torch.tensor([tr[j] for j in i]); y=torch.tensor([tr[j+1] for j in i])
     loss=F.cross_entropy(m(x),y)
     opt.zero_grad(); loss.backward(); opt.step()
-    if st%300==0: print(f"  kadam {st} | loss {loss.item():.3f} | {time.time()-t0:.0f}s",flush=True)
+    if st%100==0:
+        print(f"  kadam {st} | loss {loss.item():.3f} | {time.time()-t0:.0f}s",flush=True)
+    if time.time()-t0 > LIMIT:
+        print(f"  samay ki hadd ({LIMIT:.0f}s) -- kadam {st} par roka",flush=True)
+        break
 
 # ---------- naap ----------
 m.eval()
