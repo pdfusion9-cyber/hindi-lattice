@@ -140,7 +140,11 @@ if a.emb and os.path.exists(a.emb):
         z = np.load(a.emb, allow_pickle=False)
         if "q" in z and "s" in z:                 # int8 + scale (npz)
             E = z["q"].astype(np.float32) * z["s"][:, None]
-            qw = json.loads(str(z["vocab"])) if "vocab" in z else None
+            if "vocab" in z:
+                vv = z["vocab"]
+                qw = json.loads(vv.item() if hasattr(vv, "item") else str(vv))
+            else:
+                qw = None
         else:                                      # saada npy
             E = np.load(a.emb)
             qw = json.load(open(a.emb_vocab)) if a.emb_vocab and os.path.exists(a.emb_vocab) else None
