@@ -4,7 +4,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -12,15 +12,16 @@ jobs:
           python-version: '3.11'
       - name: install
         run: |
-          pip install --quiet numpy pyarrow
+          pip install --quiet numpy pyarrow tokenizers
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-          python -c "import torch;print('torch',torch.__version__)"
+          python -c "import torch,tokenizers;print('ok',torch.__version__)"
       - name: corpus
         run: |
           set +e
           curl -sL -o sh.txt "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
           curl -sL -o wt.parquet "https://huggingface.co/datasets/Salesforce/wikitext/resolve/main/wikitext-2-raw-v1/train-00000-of-00001.parquet"
-          ls -lh sh.txt wt.parquet
+          curl -sL -o tokenizer.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
+          ls -lh sh.txt wt.parquet tokenizer.json
           python - <<'EOF'
           import pyarrow.parquet as pq
           t=pq.read_table('wt.parquet'); col=t.column_names[0]
@@ -31,7 +32,7 @@ jobs:
       - name: run
         run: |
           set -o pipefail
-          python -u lattice_conn.py 2>&1 | tee run.log
+          python -u qwen_lattice.py 2>&1 | tee run.log
       - name: show
         if: always()
         run: tail -30 run.log 2>/dev/null || true
