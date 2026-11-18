@@ -31,7 +31,7 @@ jobs:
       - name: run
         run: |
           set -o pipefail
-          python -u gtrans2.py 2>&1 | tee run.log
+          python -u gtrans3.py 2>&1 | tee run.log
       - name: show
         if: always()
         run: tail -30 run.log 2>/dev/null || true
