@@ -4,7 +4,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,11 +20,11 @@ jobs:
           set +e
           curl -sL -o tokenizer.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
           curl -sL -o w1.parquet "https://huggingface.co/datasets/Salesforce/wikitext/resolve/main/wikitext-103-raw-v1/train-00000-of-00002.parquet"
-          ls -lh tokenizer.json w1.parquet pos7.b64
+          ls -lh tokenizer.json w1.parquet
       - name: run
         run: |
           set -o pipefail
-          python -u qwen7b_lattice.py 2>&1 | tee run.log
+          python -u qwen7b_k.py 2>&1 | tee run.log
       - name: show
         if: always()
-        run: tail -30 run.log 2>/dev/null || true
+        run: tail -40 run.log 2>/dev/null || true
