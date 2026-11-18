@@ -1,0 +1,21 @@
+name: transfer-routes
+on:
+  workflow_dispatch:
+jobs:
+  m:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: deps
+        run: pip install --quiet numpy
+      - name: measure
+        run: |
+          set -o pipefail
+          python -u transfer_routes.py 2>&1 | tee run.log
+      - name: show
+        if: always()
+        run: tail -30 run.log 2>/dev/null || true
