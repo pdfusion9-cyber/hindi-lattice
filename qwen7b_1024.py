@@ -77,7 +77,7 @@ class LT(nn.Module):
             h=s.n[l](h+s.o[l](w@Vv))
         return s.out(h)
 
-def run(nm,pos_init,steps=1000,B_=16,LIM=3600.0):
+def run(nm,pos_init,steps=2000,B_=16,LIM=5400.0):
     m=LT(pos_init); opt=torch.optim.AdamW(m.parameters(),lr=3e-3)
     t0=time.time()
     print(f"\n[{nm}] param {sum(p.numel() for p in m.parameters()):,}",flush=True)
@@ -113,3 +113,4 @@ print(f"  7B PCA transfer : ppl {p7:,.2f} | rank {r7:,}",flush=True)
 print(f"  random          : ppl {p0:,.2f} | rank {r0:,}",flush=True)
 print(f"  transfer ka labh: ppl {p0/p7:.2f}x | rank {r0/max(r7,1):.2f}x",flush=True)
 print(f"\n  K=64 (2000 kadam): transfer rank 33 | random rank 38",flush=True)
+print(f"  pichhla K=1024 (1000 kadam): transfer rank 81 | random rank 50",flush=True)
