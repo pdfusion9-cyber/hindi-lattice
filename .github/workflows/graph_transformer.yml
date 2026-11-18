@@ -4,7 +4,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,21 +18,15 @@ jobs:
       - name: corpus
         run: |
           set +e
-          curl -sL -o sh.txt "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
-          curl -sL -o wt.parquet "https://huggingface.co/datasets/Salesforce/wikitext/resolve/main/wikitext-2-raw-v1/train-00000-of-00001.parquet"
           curl -sL -o tokenizer.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
-          ls -lh sh.txt wt.parquet tokenizer.json
-          python - <<'EOF'
-          import pyarrow.parquet as pq
-          t=pq.read_table('wt.parquet'); col=t.column_names[0]
-          txt="\n".join(str(x) for x in t.column(col).to_pylist())
-          open('wt.txt','w').write(txt)
-          print('wikitext chars',len(txt))
-          EOF
+          curl -sL -o w1.parquet "https://huggingface.co/datasets/Salesforce/wikitext/resolve/main/wikitext-103-raw-v1/train-00000-of-00002.parquet"
+          curl -sL -o w2.parquet "https://huggingface.co/datasets/Salesforce/wikitext/resolve/main/wikitext-103-raw-v1/train-00001-of-00002.parquet"
+          ls -lh tokenizer.json w1.parquet w2.parquet
+          python -c "import os;print('total bytes',os.path.getsize('w1.parquet')+os.path.getsize('w2.parquet'))"
       - name: run
         run: |
           set -o pipefail
-          python -u qwen_lattice.py 2>&1 | tee run.log
+          python -u qwen_big.py 2>&1 | tee run.log
       - name: show
         if: always()
         run: tail -30 run.log 2>/dev/null || true
