@@ -24,7 +24,7 @@ jobs:
       - name: run
         run: |
           set -o pipefail
-          python -u qwen7b_k.py 2>&1 | tee run.log
+          python -u qwen7b_pca.py 2>&1 | tee run.log
       - name: show
         if: always()
-        run: tail -40 run.log 2>/dev/null || true
+        run: tail -30 run.log 2>/dev/null || true
