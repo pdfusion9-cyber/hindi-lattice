@@ -23,6 +23,7 @@ print(f"  download {os.path.getsize('emb7b.bin'):,} bytes",flush=True)
 mm=np.memmap("emb7b.bin",dtype=np.uint16,mode="r",shape=(V7,D7))
 
 def project(K):
+    """7B embedding (152064) -> V rows tak kaat kar"""
     rng=np.random.default_rng(0)
     R=(rng.standard_normal((D7,K))/np.sqrt(K)).astype(np.float32)
     pos=np.empty((V7,K),np.float32); CH=2000
@@ -107,8 +108,10 @@ def run(nm,pos_init,steps=350,B=32):
     print(f"  => ppl {math.exp(-lps.mean()):,.2f} | top-1 {t1/N*100:.2f}% | top-5 {t5/N*100:.2f}% | median rank {int(np.median(ranks)):,}",flush=True)
     return math.exp(-lps.mean()), int(np.median(ranks))
 
+Vt=tok.get_vocab_size()
 for K in (64,256):
-    pos=project(K)
+    pos=project(K)[:Vt]        # 7B=152064, tokenizer=151665 -> kaat do
+    assert pos.shape[0]==V, f"pos {pos.shape[0]} vs V {V}" 
     print(f"\n=== K={K} | jaal sthiti {pos.nbytes/1e6:.1f} MB | transfer {1.09e9/pos.nbytes:.0f}x ===",flush=True)
     p7,r7=run(f"7B TRANSFER K={K}",pos)
     rnd=(np.random.rand(V,K)*2-1).astype(np.float32)
