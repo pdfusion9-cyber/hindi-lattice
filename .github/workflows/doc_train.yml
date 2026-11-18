@@ -1,0 +1,72 @@
+name: doc-train
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        default: "280"
+jobs:
+  doc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: deps
+        run: |
+          python -m pip install -q numpy pyarrow tokenizers
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+          python -c "import torch;print('torch',torch.__version__)"
+      - name: purani copy
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python chakra_lo.py document old || echo "purani copy nahi mili"
+      - name: data
+        run: |
+          set -o pipefail
+          python loop_fetch.py --shard 7 --domain document || echo "fetch skip"
+          python to_text.py --dir data --out data/corpus.txt --max-chars 600000000 || true
+          if [ ! -s data/corpus.txt ]; then
+            echo "corpus khali -- wikitext se bana rahe"
+            curl -sL -o w.parquet "https://huggingface.co/datasets/Salesforce/wikitext/resolve/main/wikitext-103-raw-v1/train-00000-of-00002.parquet"
+            python - <<'EOF'
+          import pyarrow.parquet as pq
+          t=pq.read_table('w.parquet'); col=t.column_names[0]
+          txt="\n".join(str(x) for x in t.column(col).to_pylist())
+          open('data/corpus.txt','w').write(txt)
+          print('corpus chars',len(txt))
+          EOF
+          fi
+          wc -l data/corpus.txt
+      - name: Qwen embedding + vocab
+        run: |
+          set -o pipefail
+          curl -sL -o tokenizer.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
+          python -u emb_banao.py
+          ls -lh emb_q.npz
+      - name: train
+        run: |
+          set -o pipefail
+          MIN=${{ inputs.minutes || 280 }}
+          python punah.py --data data/corpus.txt --emb emb_q.npz --dim 1024 --layers 12 --heads 16 \
+            --seq 16 --batch 8 --lr 1e-4 --vocab 30000 --steps 500000 --budget $((MIN*60)) \
+            --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tee run.log
+      - name: int4
+        if: always()
+        run: |
+          mkdir -p store
+          if [ -f ckpt/sampurna.pt ]; then python int4_karo.py --ckpt ckpt/sampurna.pt --out store/int4.npz || echo skip; fi
+          ls -lh store/ 2>/dev/null || true
+      - name: save
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-train
+          path: |
+            ckpt/
+            store/
+            run.log
+          retention-days: 90
+          overwrite: true
