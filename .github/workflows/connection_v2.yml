@@ -6,6 +6,14 @@ on:
         description: "Training budget per model (minutes)"
         required: true
         default: "180"
+  push:
+    branches: [main]
+    paths:
+      - "conn_model_v2.py"
+      - "lattice_conn.py"
+      - "qwen_lattice.py"
+      - "fetch_hindi.py"
+      - ".github/workflows/connection_v2.yml"
 permissions:
   contents: read
   actions: read
