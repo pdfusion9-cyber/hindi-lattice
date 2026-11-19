@@ -1,0 +1,85 @@
+name: connection-model-v2
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Training budget per model (minutes)"
+        required: true
+        default: "180"
+permissions:
+  contents: read
+  actions: read
+jobs:
+  train:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - model: lattice-small
+            mode: regex
+            script: lattice_conn.py
+          - model: qwen-full-vocab
+            mode: tokenizer
+            script: qwen_lattice.py
+    runs-on: ubuntu-latest
+    timeout-minutes: 280
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: install dependencies
+        run: |
+          python -m pip install --quiet --upgrade pip
+          pip install --quiet numpy pyarrow tokenizers
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          python -c "import torch,numpy,pyarrow,tokenizers; print('dependencies OK',torch.__version__)"
+      - name: restore previous model checkpoint
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set +e
+          PREV=$(gh run list --workflow connection_v2.yml --json databaseId,status,conclusion --limit 30 | jq -r --arg current "$GITHUB_RUN_ID" '[.[] | select((.databaseId|tostring)!=$current and .status=="completed" and .conclusion=="success")][0].databaseId // empty')
+          if [ -n "$PREV" ]; then
+            echo "restore from run $PREV"
+            gh run download "$PREV" --name "checkpoint-\${{ matrix.model }}" --dir . || true
+          else
+            echo "no previous successful checkpoint; fresh start"
+          fi
+          mkdir -p checkpoints results data
+          find . -maxdepth 3 -type f | grep -E '(\.pt$|\.json$)' | head -30 || true
+      - name: fetch Hindi corpus
+        run: |
+          python fetch_hindi.py --shard 3 --rows 30000 --out data/web.txt
+          test -s data/web.txt
+          wc -l data/web.txt
+      - name: fetch tokenizer
+        if: matrix.mode == 'tokenizer'
+        run: |
+          curl -fL --retry 4 --retry-delay 3 -o tokenizer.json "https://huggingface.co/Qwen/Qwen2.5-0.5B/resolve/main/tokenizer.json"
+          python -c "from tokenizers import Tokenizer; t=Tokenizer.from_file('tokenizer.json'); print('Qwen vocab',t.get_vocab_size()); assert t.get_vocab_size() > 100000"
+      - name: train and evaluate
+        env:
+          MINUTES: \${{ inputs.minutes }}
+        run: |
+          set -o pipefail
+          BUDGET=$((MINUTES*60))
+          if [ "\${{ matrix.mode }}" = "tokenizer" ]; then
+            python -u qwen_lattice.py --corpus data/web.txt --tokenizer tokenizer.json --seq 32 --dim 32 --layers 2 --heads 4 --batch 8 --steps 10000 --budget "$BUDGET" --eval-samples 500 --eval-batch 8 --save-every 100 --ckpt checkpoints/qwen_lattice.pt --metrics results/qwen_lattice.json 2>&1 | tee training.log
+          else
+            python -u lattice_conn.py --corpus data/web.txt --seq 32 --dim 64 --layers 2 --heads 4 --batch 32 --steps 10000 --budget "$BUDGET" --eval-samples 1000 --eval-batch 32 --save-every 100 --ckpt checkpoints/lattice_conn.pt --metrics results/lattice_conn.json 2>&1 | tee training.log
+          fi
+          test -s checkpoints/*.pt
+          test -s results/*.json
+      - name: upload checkpoint and metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint-\${{ matrix.model }}
+          path: |
+            checkpoints/
+            results/
+            training.log
+          if-no-files-found: warn
+          retention-days: 90
+          overwrite: true
