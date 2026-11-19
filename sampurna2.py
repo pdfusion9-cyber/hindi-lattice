@@ -141,6 +141,10 @@ else:
     paths = [q for q in paths if len(q) >= 6]
     print(f"शब्दकोश {V:,} | पाथ {len(paths):,}", flush=True)
 
+vocab_tokens = [words[i] for i in top]
+if len(vocab_tokens) != V:
+    raise SystemExit("शब्दकोश मैपिंग असंगत है")
+
 # ---------------- जाल: असली कड़ियों से ----------------
 nbrs, cands = {}, {}
 for old, new in remap.items():
@@ -170,12 +174,17 @@ for pt in pats:
 print(f"पैटर्न {len(pats):,} | स्लॉट {len(slot_cand):,}", flush=True)
 
 # ---------------- अनुक्रम ----------------
-seqs = []
-for q in paths:
-    if len(q) < a.seq + 2: continue
-    seqs.append((q, pattern(q)))
+# पैक में पाथ 4-25 शब्दों के होते हैं; seq केवल अधिकतम context-window है।
+# हर उदाहरण को पूरे पाथ से sample करें, न कि seq+2 लंबाई वाले पाथ तक सीमित करें।
+seqs = [(q, pattern(q)) for q in paths if len(q) >= 3]
+if not seqs:
+    print("दो-token context वाले पाथ नहीं मिले", flush=True)
+    raise SystemExit(1)
+lengths = [len(q) for q, _ in seqs]
+print(f"अनुक्रम-पाथ: {len(seqs):,} | लंबाई {min(lengths)}-{max(lengths)} | context {a.seq}", flush=True)
 random.shuffle(seqs)
-cut = int(len(seqs) * 0.9)
+cut = max(1, int(len(seqs) * 0.9))
+cut = min(cut, len(seqs))
 train, test = seqs[:cut], seqs[cut:]
 print(f"अनुक्रम: प्रशिक्षण {len(train):,} | परीक्षा {len(test):,}", flush=True)
 if not train:
@@ -225,13 +234,29 @@ print(f"पैरामीटर {npar:,} | जाल {'हाँ' if use else '
 opt = torch.optim.AdamW(m.parameters(), lr=a.lr, weight_decay=0.01)
 step0 = 0
 if os.path.exists(a.ckpt):
+    # केवल वही checkpoint लें जिसका वास्तविक token-map और model shape समान हो।
+    fresh_state = {k: v.detach().clone() for k, v in m.state_dict().items()}
     try:
         ck = torch.load(a.ckpt, map_location="cpu", weights_only=False)
-        if ck.get("V") == V and ck.get("dim") == a.dim:
-            m.load_state_dict(ck["m"]); opt.load_state_dict(ck["o"]); step0 = ck["step"]
+        compatible = (
+            ck.get("V") == V and ck.get("dim") == a.dim
+            and ck.get("layers") == a.layers and ck.get("heads") == a.heads
+            and ck.get("vocab") == vocab_tokens and ck.get("pats") == pats
+            and ck.get("use", use) == use and "m" in ck and "o" in ck
+            and "step" in ck
+        )
+        if compatible:
+            opt.load_state_dict(ck["o"])
+            m.load_state_dict(ck["m"])
+            step0 = int(ck["step"])
             print(f"चेकपॉइंट से: कदम {step0:,}", flush=True)
+        else:
+            print("पुराना checkpoint असंगत: नया सुरक्षित training शुरू", flush=True)
     except Exception as e:
-        print(f"चेकपॉइंट नहीं लदा ({type(e).__name__})", flush=True)
+        m.load_state_dict(fresh_state)
+        opt = torch.optim.AdamW(m.parameters(), lr=a.lr, weight_decay=0.01)
+        step0 = 0
+        print(f"चेकपॉइंट नहीं लदा ({type(e).__name__}); नया training शुरू", flush=True)
 
 
 def mk(rows):
@@ -240,7 +265,7 @@ def mk(rows):
     PI = torch.zeros(B, dtype=torch.long); CL = torch.zeros(B, K, dtype=torch.long)
     YC = torch.zeros(B, dtype=torch.long); keep = []
     for j, (ids, pt) in enumerate(rows):
-        i = random.randrange(1, len(ids) - 1)
+        i = random.randrange(2, len(ids))
         ctx = ids[max(0, i-T):i]
         if len(ctx) < 2: continue
         X[j, :len(ctx)] = torch.tensor(ctx)
@@ -277,7 +302,7 @@ while step < a.steps and (time.time() - t0) < a.budget:
         print(f"  कदम {step:,} | loss {last:.3f}", flush=True)
     if step % 2000 == 0:
         os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
-        torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": top, "pats": pats}, a.ckpt)
+        torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": vocab_tokens, "pats": pats, "use": use}, a.ckpt)
 
 m.eval(); h1 = h5 = tot = 0
 with torch.no_grad():
@@ -291,5 +316,5 @@ with torch.no_grad():
         tot += len(YC)
 print(f"\nपरीक्षा ({tot:,}): पहले 1 में {h1/max(tot,1)*100:.1f}% | पहले 5 में {h5/max(tot,1)*100:.1f}%", flush=True)
 os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
-torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": top, "pats": pats}, a.ckpt)
+torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": vocab_tokens, "pats": pats, "use": use}, a.ckpt)
 print(f"सहेजा: {a.ckpt} (कदम {step:,})", flush=True)
