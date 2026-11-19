@@ -47,13 +47,16 @@ jobs:
           wc -l store/gyaan_buniyad.txt store/path_buniyad.txt
       - name: data (domain)
         run: |
+          set -euo pipefail
           D="${{ inputs.domain || 'science' }}"
           if [ "$D" = "coding" ]; then
-            python fetch_code.py --out store --rows 25000 || echo "code fetch failed"
+            python fetch_code.py --out store --rows 25000
           else
-            python fetch_domain.py --domain "$D" --out store --per-dataset 8000 --shard ${{ inputs.shard || 0 }} || echo "domain fetch failed"
+            python fetch_domain.py --domain "$D" --out store --per-dataset 8000 --shard ${{ inputs.shard || 0 }}
           fi
-          wc -l store/baat_*.txt
+          test -f "store/baat_$D.txt"
+          test "$(wc -c < "store/baat_$D.txt")" -gt 100
+          wc -l "store/baat_$D.txt"
       - name: data (hindi web -- new slice)
         run: |
           if [ "${{ inputs.domain || 'science' }}" != "coding" ]; then
