@@ -7,8 +7,6 @@ on:
         default: "180"
   schedule:
     - cron: '0 */6 * * *'
-  push:
-    branches: [main]
 permissions:
   actions: read
   contents: read
