@@ -120,6 +120,8 @@ for p in a.packs:
     print(f"  {os.path.basename(p)}: {len(ps):,} पाथ | नए {len(all_paths)-before:,}", flush=True)
 
 print(f"\nकुल यूनीक पाथ: {len(all_paths):,}", flush=True)
+if not all_paths:
+    raise SystemExit("मर्ज रोक दिया: कोई वैध GPACK पाथ नहीं मिला")
 
 # ---------- पैटर्न-तालिका ----------
 cnt = Counter(w for p in all_paths for w in p)
@@ -150,6 +152,7 @@ ids = [[vocab[w] for w in p] for p in all_paths]
 links = defaultdict(Counter)
 for p in ids:
     for x, y in zip(p, p[1:]): links[x][y] += 1
+edge_order = {k: [y for y, _ in c.most_common()] for k, c in links.items()}
 
 def vint(v, buf):
     while True:
@@ -158,7 +161,6 @@ def vint(v, buf):
         else: buf.append(b); break
 
 chars = sorted({c for w in words for c in w})
-chars = chars[:250]
 cmap = {c: i for i, c in enumerate(chars)}
 STOPC = len(chars)
 cbits = max(1, (len(chars) + 1).bit_length() - 1) if len(chars) > 1 else 1
@@ -179,7 +181,7 @@ if nb: cb_buf.append(acc & 0xFF)
 lat = bytearray(); lat_off = []
 for k in range(V):
     lat_off.append(len(lat))
-    lst = [y for y, _ in links.get(k, Counter()).most_common(1000)]
+    lst = edge_order.get(k, [])
     vint(len(lst), lat)
     for x in lst: vint(x, lat)
 lat_off.append(len(lat))
@@ -191,7 +193,7 @@ for p in ids:
     blocks.append(bbits)
     starts.append(p[0]); wrote = 0
     for x, y in zip(p, p[1:]):
-        lst = [z for z, _ in links.get(x, Counter()).most_common(1000)]
+        lst = edge_order.get(x, [])
         try: k = lst.index(y)
         except ValueError: continue
         wdt = max(1, (max(len(lst), 2) - 1).bit_length())
