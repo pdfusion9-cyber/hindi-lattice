@@ -44,13 +44,13 @@ jobs:
           python -c "import torch,numpy,pyarrow,tokenizers; print('dependencies OK',torch.__version__)"
       - name: restore previous model checkpoint
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           PREV=$(gh run list --workflow connection_v2.yml --json databaseId,status,conclusion --limit 30 | jq -r --arg current "$GITHUB_RUN_ID" '[.[] | select((.databaseId|tostring)!=$current and .status=="completed" and .conclusion=="success")][0].databaseId // empty')
           if [ -n "$PREV" ]; then
             echo "restore from run $PREV"
-            gh run download "$PREV" --name "checkpoint-\${{ matrix.model }}" --dir . || true
+            gh run download "$PREV" --name "checkpoint-${{ matrix.model }}" --dir . || true
           else
             echo "no previous successful checkpoint; fresh start"
           fi
@@ -68,11 +68,11 @@ jobs:
           python -c "from tokenizers import Tokenizer; t=Tokenizer.from_file('tokenizer.json'); print('Qwen vocab',t.get_vocab_size()); assert t.get_vocab_size() > 100000"
       - name: train and evaluate
         env:
-          MINUTES: \${{ inputs.minutes }}
+          MINUTES: ${{ inputs.minutes || 180 }}
         run: |
           set -o pipefail
           BUDGET=$((MINUTES*60))
-          if [ "\${{ matrix.mode }}" = "tokenizer" ]; then
+          if [ "${{ matrix.mode }}" = "tokenizer" ]; then
             python -u qwen_lattice.py --corpus data/web.txt --tokenizer tokenizer.json --seq 32 --dim 32 --layers 2 --heads 4 --batch 8 --steps 10000 --budget "$BUDGET" --eval-samples 500 --eval-batch 8 --save-every 100 --ckpt checkpoints/qwen_lattice.pt --metrics results/qwen_lattice.json 2>&1 | tee training.log
           else
             python -u lattice_conn.py --corpus data/web.txt --seq 32 --dim 64 --layers 2 --heads 4 --batch 32 --steps 10000 --budget "$BUDGET" --eval-samples 1000 --eval-batch 32 --save-every 100 --ckpt checkpoints/lattice_conn.pt --metrics results/lattice_conn.json 2>&1 | tee training.log
@@ -83,7 +83,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: checkpoint-\${{ matrix.model }}
+          name: checkpoint-${{ matrix.model }}
           path: |
             checkpoints/
             results/
