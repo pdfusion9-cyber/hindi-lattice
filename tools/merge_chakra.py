@@ -61,28 +61,40 @@ def atomic_save(payload, path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--input", required=True)
+    ap.add_argument("--input", default="")
+    ap.add_argument("--finalize-only", action="store_true")
     ap.add_argument("--state", required=True)
-    ap.add_argument("--domain", required=True)
+    ap.add_argument("--domain", default="")
     ap.add_argument("--final-output", default="")
     ap.add_argument("--report", default="out/merge_report.json")
     args = ap.parse_args()
 
-    ck = load_checkpoint(args.input)
-    if not isinstance(ck, dict) or not isinstance(ck.get("m"), dict):
+    if args.finalize_only:
+        ck = None
+        model = None
+        state = load_checkpoint(args.state)
+        token_hits = pattern_hits = 0
+    else:
+        if not args.input or not args.domain:
+            raise ValueError("--input and --domain are required unless --finalize-only is used")
+        ck = load_checkpoint(args.input)
+        if not isinstance(ck, dict) or not isinstance(ck.get("m"), dict):
         raise ValueError(f"{args.domain}: checkpoint does not contain a model state dict")
-    model = ck["m"]
-    vocab = ck.get("vocab")
-    pats = ck.get("pats")
-    if not isinstance(vocab, list) or not isinstance(pats, list):
+        model = ck["m"]
+        vocab = ck.get("vocab")
+        pats = ck.get("pats")
+    if not args.finalize_only and not isinstance(vocab, list) or not isinstance(pats, list):
         raise ValueError(f"{args.domain}: checkpoint must contain vocab and pats metadata")
-    dim, layers, heads = (int(ck.get(k, -1)) for k in ("dim", "layers", "heads"))
-    if min(dim, layers, heads) <= 0:
+    if not args.finalize_only:
+        dim, layers, heads = (int(ck.get(k, -1)) for k in ("dim", "layers", "heads"))
+    if not args.finalize_only and min(dim, layers, heads) <= 0:
         raise ValueError(f"{args.domain}: invalid architecture metadata")
-    if "tok.weight" not in model or "pat.weight" not in model:
+    if not args.finalize_only and ("tok.weight" not in model or "pat.weight" not in model):
         raise ValueError(f"{args.domain}: expected tok.weight and pat.weight")
 
-    if not os.path.exists(args.state):
+    if args.finalize_only:
+        pass
+    elif not os.path.exists(args.state):
         sums = {k: v.detach().cpu().clone() for k, v in model.items()}
         if sums["tok.weight"].shape[0] != len(vocab):
             raise ValueError("base token embedding rows do not match vocabulary")
@@ -106,7 +118,7 @@ def main():
         }
         token_hits = len(vocab)
         pattern_hits = len(pats)
-    else:
+    elif os.path.exists(args.state):
         state = load_checkpoint(args.state)
         if (state["dim"], state["layers"], state["heads"]) != (dim, layers, heads):
             raise ValueError(f"{args.domain}: architecture metadata differs from base model")
@@ -143,21 +155,23 @@ def main():
             else:
                 target.add_(source.to(dtype=target.dtype))
 
-    state["domains"].append({
+    if not args.finalize_only:
+      state["domains"].append({
         "domain": args.domain,
         "token_rows_matched_to_base": int(token_hits),
         "token_rows_in_source": int(model["tok.weight"].shape[0]),
         "pattern_rows_matched_to_base": int(pattern_hits),
         "pattern_rows_in_source": int(model["pat.weight"].shape[0]),
     })
-    atomic_save(state, args.state)
-    print(
+      atomic_save(state, args.state)
+    if not args.finalize_only:
+      print(
         f"{args.domain}: added | token rows matched={token_hits:,} "
         f"| pattern rows matched={pattern_hits:,} | checkpoints={len(state['domains'])}",
         flush=True,
     )
-    del ck, model, state
-    gc.collect()
+      del ck, model, state
+      gc.collect()
 
     if args.final_output:
         state = load_checkpoint(args.state)
@@ -200,7 +214,7 @@ def main():
             "config": config,
             "merge": {
                 "method": "equal-weight parameter mean; token/pattern rows aligned by identity",
-                "source_run_id": 44678731140,
+                "source_run_id": state.get("source_run_id", "triggering CHAKRA run"),
                 "domains": [x["domain"] for x in state["domains"]],
                 "base_domain": state["domains"][0]["domain"],
                 "note": "Experimental model merge; base vocabulary/pattern inventory retained.",
@@ -210,7 +224,7 @@ def main():
         parameter_count = sum(v.numel() for v in merged_weights.values())
         report = {
             "status": "merged",
-            "source_run_id": 44678731140,
+            "source_run_id": state.get("source_run_id", "triggering CHAKRA run"),
             "checkpoint_count": count,
             "domains": state["domains"],
             "base_domain": state["domains"][0]["domain"],
