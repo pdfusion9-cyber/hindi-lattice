@@ -171,23 +171,70 @@ print(f"param {sum(p.numel() for p in m.parameters()):,}", flush=True)
 print(f"residual scale: {RS}", flush=True)
 
 # ---------- purani copy ----------
+# Chakra cycles rotate data shards. Transfer learned weights, not the old
+# shard's cursor or optimizer state. Token/pattern rows must be mapped by meaning.
 pos = 0; epoch = 0
 if a.old and os.path.exists(a.old):
     try:
         ck = torch.load(a.old, map_location="cpu", weights_only=False)
         old = ck["m"]
-        cur = m.state_dict(); loaded = skipped = 0
-        with torch.no_grad():
-            for name, t in old.items():
-                tgt = name.replace("blocks.", "blk.")
-                if tgt in cur and list(cur[tgt].shape) == list(t.shape):
-                    cur[tgt].copy_(t.float()); loaded += 1
-                else:
-                    skipped += 1
-        pos = int(ck.get("pos", 0)); epoch = int(ck.get("epoch", 0))
-        print(f"purani copy: lade {loaded} | chhode {skipped} | position {pos:,} | epoch {epoch}", flush=True)
+        cur = m.state_dict()
+        loaded = skipped = token_rows = pattern_rows = 0
+        old_vocab = ck.get("vocab")
+        old_pats = ck.get("pats")
+        architecture_ok = (
+            int(ck.get("dim", -1)) == a.dim
+            and int(ck.get("layers", -1)) == a.layers
+            and int(ck.get("heads", -1)) == a.heads
+        )
+        if not architecture_ok:
+            print("purani copy ka architecture alag hai; model weights skip", flush=True)
+        else:
+            old_word_to_id = {w: i for i, w in enumerate(old_vocab)} if isinstance(old_vocab, list) else {}
+            old_pattern_to_id = {tuple(p): i for i, p in enumerate(old_pats)} if isinstance(old_pats, list) else {}
+            with torch.no_grad():
+                for name, tensor in old.items():
+                    target = name.replace("blocks.", "blk.")
+                    if target not in cur or not isinstance(tensor, torch.Tensor):
+                        skipped += 1
+                        continue
+                    if target == "tok.weight":
+                        if not old_word_to_id or tensor.ndim != 2 or tensor.shape[1] != cur[target].shape[1]:
+                            skipped += 1
+                            continue
+                        for word, old_id in old_word_to_id.items():
+                            new_id = stoi.get(word)
+                            if new_id is not None and old_id < tensor.shape[0] and new_id < cur[target].shape[0]:
+                                cur[target][new_id].copy_(tensor[old_id].to(dtype=cur[target].dtype))
+                                token_rows += 1
+                        loaded += 1
+                    elif target == "pat.weight":
+                        if not old_pattern_to_id or tensor.ndim != 2 or tensor.shape[1] != cur[target].shape[1]:
+                            skipped += 1
+                            continue
+                        for new_id, pattern_value in enumerate(pats):
+                            old_id = old_pattern_to_id.get(tuple(pattern_value))
+                            if old_id is not None and old_id < tensor.shape[0] and new_id < cur[target].shape[0]:
+                                cur[target][new_id].copy_(tensor[old_id].to(dtype=cur[target].dtype))
+                                pattern_rows += 1
+                        loaded += 1
+                    elif list(cur[target].shape) == list(tensor.shape):
+                        cur[target].copy_(tensor.to(dtype=cur[target].dtype))
+                        loaded += 1
+                    else:
+                        skipped += 1
+        # Old cursor/epoch belongs to a different rotating shard; start this
+        # shard at its beginning. A fresh optimizer avoids stale moment states.
+        pos = 0
+        epoch = 0
+        print(
+            f"semantic warm start: {loaded} tensors | {skipped} skipped | "
+            f"matched word rows {token_rows:,}/{V:,} | matched pattern rows {pattern_rows:,}/{len(pats):,}; "
+            "new shard cursor and optimizer",
+            flush=True
+        )
     except Exception as e:
-        print(f"purani copy nahi ladi: {type(e).__name__}", flush=True)
+        print(f"purani copy nahi ladi: {type(e).__name__}: {str(e)[:160]}", flush=True)
 else:
     print("purani copy nahi -- shuru se", flush=True)
 
@@ -238,6 +285,41 @@ def mk(rows):
     return X[ix], NB[ix], PI[ix], CL[ix], YC[ix], AM
 
 
+def save_checkpoint():
+    os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
+    graph = {
+        "nbrs": {int(k): list(v) for k, v in nbrs.items()},
+        "cands": {int(k): list(v) for k, v in cands.items()},
+        "slot_cand": [
+            {"pattern": list(pt), "position": int(i), "ids": list(ids)}
+            for (pt, i), ids in slot_cand.items()
+        ],
+    }
+    payload = {
+        "m": m.state_dict(),
+        "step": step,
+        "V": V,
+        "dim": a.dim,
+        "layers": a.layers,
+        "heads": a.heads,
+        "vocab": vocab,
+        "vocab_counts": [int(cnt[w]) for w in vocab],
+        "pats": pats,
+        "pat_counts": [int(pat_count[p]) for p in pats],
+        "graph": graph,
+        "config": {
+            "nbr": a.nbr, "cand": a.cand, "pat_cand": a.pat_cand,
+            "res_scale": RS, "sparse_win": a.sparse_win,
+        },
+        "pos": pos + seen,
+        "epoch": epoch,
+    }
+    tmp_path = a.ckpt + ".tmp"
+    torch.save(payload, tmp_path)
+    os.replace(tmp_path, a.ckpt)
+    print(f"checkpoint saved atomically: {a.ckpt}", flush=True)
+
+
 # ---------- POORI data par (kram me) ----------
 t0 = time.time(); step = 0; last = 0.0; seen = 0; N = len(seqs)
 h_norm = 0.0
@@ -261,10 +343,7 @@ while step < a.steps and (time.time() - t0) < a.budget:
         cov = (seen / N * 100) if N else 0
         print(f"  kadam {step:,} | loss {last:.3f} | |h| {h_norm:.1f} | coverage {cov:.1f}% | epoch {epoch}", flush=True)
     if step % 1000 == 0:
-        os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
-        torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V,
-                    "dim": a.dim, "layers": a.layers, "heads": a.heads,
-                    "vocab": vocab, "pats": pats, "pos": pos + seen, "epoch": epoch}, a.ckpt)
+        save_checkpoint()
 
 # ---------- jaanch ----------
 m.eval(); h1 = h5 = tot = 0
@@ -281,7 +360,5 @@ cov = ((pos + seen) / N * 100) if N else 0
 print(f"\ntest ({tot:,}): top1 {h1/max(tot,1)*100:.1f}% | top5 {h5/max(tot,1)*100:.1f}%", flush=True)
 print(f"coverage: {cov:.1f}% | epoch {epoch} | kadam {step:,} | |h| {h_norm:.1f}", flush=True)
 os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
-torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V,
-            "dim": a.dim, "layers": a.layers, "heads": a.heads,
-            "vocab": vocab, "pats": pats, "pos": pos + seen, "epoch": epoch}, a.ckpt)
+save_checkpoint()
 print(f"saheja: {a.ckpt} -- shabdakosh + position sahit", flush=True)
