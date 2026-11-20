@@ -23,27 +23,18 @@ jobs:
         run: |
           python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
           python -m py_compile tools/merge_chakra.py tools/smoke_merged.py
-      - name: download all ten checkpoints from completed CHAKRA run
-        uses: actions/download-artifact@v4
-        with:
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-          pattern: chakra-*
-          path: checkpoints/
-          merge-multiple: false
-      - name: verify all ten checkpoints
+      - name: download, merge, and delete each domain checkpoint sequentially
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mkdir -p out checkpoints
           for d in science math reasoning news qa general coding document history geography; do
-            test -s "checkpoints/chakra-$d/ckpt/sampurna.pt" || { echo "Missing checkpoint: $d"; exit 1; }
-          done
-          test "$(find checkpoints -path '*/ckpt/sampurna.pt' -type f | wc -l)" -eq 10
-      - name: merge sequentially with identity alignment
-        run: |
-          set -euo pipefail
-          mkdir -p out
-          for d in science math reasoning news qa general coding document history geography; do
-            python tools/merge_chakra.py --input "checkpoints/chakra-$d/ckpt/sampurna.pt" --state out/merge_state.pt --domain "$d"
+            gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "chakra-$d" --dir "checkpoints/$d"
+            test -s "checkpoints/$d/ckpt/sampurna.pt" || { echo "Missing checkpoint: $d"; exit 1; }
+            python tools/merge_chakra.py --input "checkpoints/$d/ckpt/sampurna.pt" --state out/merge_state.pt --domain "$d"
+            rm -rf "checkpoints/$d"
           done
           python tools/merge_chakra.py --finalize-only --state out/merge_state.pt --final-output out/merged_model.pt --report out/merge_report.json
           test -s out/merged_model.pt
