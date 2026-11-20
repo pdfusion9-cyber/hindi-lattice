@@ -1,0 +1,60 @@
+name: chakra-merge-smoke-once
+on:
+  workflow_run:
+    workflows: ["chakra_loop"]
+    types: [completed]
+    branches: [main]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  merge-and-smoke:
+    if: github.event.workflow_run.run_number == 41 && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: dependencies
+        run: python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: download all ten checkpoints from completed CHAKRA run
+        uses: actions/download-artifact@v4
+        with:
+          run-id: \${{ github.event.workflow_run.id }}
+          github-token: \${{ github.token }}
+          pattern: chakra-*
+          path: checkpoints/
+          merge-multiple: false
+      - name: verify all ten checkpoints
+        run: |
+          set -euo pipefail
+          for d in science math reasoning news qa general coding document history geography; do
+            test -s "checkpoints/chakra-$d/ckpt/sampurna.pt" || { echo "Missing checkpoint: $d"; exit 1; }
+          done
+          test "$(find checkpoints -path '*/ckpt/sampurna.pt' -type f | wc -l)" -eq 10
+      - name: merge sequentially with identity alignment
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for d in science math reasoning news qa general coding document history geography; do
+            python tools/merge_chakra.py --input "checkpoints/chakra-$d/ckpt/sampurna.pt" --state out/merge_state.pt --domain "$d"
+          done
+          python tools/merge_chakra.py --finalize-only --state out/merge_state.pt --final-output out/merged_model.pt --report out/merge_report.json
+          test -s out/merged_model.pt
+      - name: strict-load and forward-pass smoke test
+        run: |
+          set -euo pipefail
+          python tools/smoke_merged.py --ckpt out/merged_model.pt --out out/smoke_report.json
+      - name: publish experimental merged model and reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: chakra41-merged-experimental
+          path: |
+            out/merged_model.pt
+            out/merge_report.json
+            out/smoke_report.json
+          retention-days: 90
