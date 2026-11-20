@@ -79,11 +79,11 @@ def main():
             raise ValueError("--input and --domain are required unless --finalize-only is used")
         ck = load_checkpoint(args.input)
         if not isinstance(ck, dict) or not isinstance(ck.get("m"), dict):
-        raise ValueError(f"{args.domain}: checkpoint does not contain a model state dict")
+            raise ValueError(f"{args.domain}: checkpoint does not contain a model state dict")
         model = ck["m"]
         vocab = ck.get("vocab")
         pats = ck.get("pats")
-    if not args.finalize_only and not isinstance(vocab, list) or not isinstance(pats, list):
+    if not args.finalize_only and (not isinstance(vocab, list) or not isinstance(pats, list)):
         raise ValueError(f"{args.domain}: checkpoint must contain vocab and pats metadata")
     if not args.finalize_only:
         dim, layers, heads = (int(ck.get(k, -1)) for k in ("dim", "layers", "heads"))
