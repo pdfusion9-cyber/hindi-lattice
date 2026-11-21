@@ -100,7 +100,7 @@ def route_query(query: str, min_score: int = 2) -> Route:
             needle = " " + normalize(phrase) + " "
             if needle in text:
                 # Multiword/specific phrases receive a modestly higher weight.
-                weight = 2 if " " in phrase.strip() else 1
+                weight = 2 if (" " in phrase.strip() or domain == "qa") else 1
                 scores[domain] += weight
                 matched[domain].append(phrase.strip())
 
