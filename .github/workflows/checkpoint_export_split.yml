@@ -9,35 +9,37 @@ permissions:
   contents: read
 concurrency:
   group: checkpoint-export-split
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
-  split-checkpoints:
+  select-source:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    outputs:
+      run_id: ${{ steps.pick.outputs.run_id }}
+    steps:
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RID="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow chakra_loop --status completed --json databaseId,conclusion,createdAt --limit 30 | python -c 'import json,sys; a=[x for x in json.load(sys.stdin) if x["conclusion"]=="success"]; a.sort(key=lambda x:x["createdAt"],reverse=True); print(a[0]["databaseId"] if a else "")')"
+          test -n "$RID" || { echo "No successful CHAKRA run found"; exit 1; }
+          echo "run_id=$RID" >> "$GITHUB_OUTPUT"
+          echo "Selected successful CHAKRA run: $RID"
+  split-checkpoints:
+    needs: select-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 280
     strategy:
       max-parallel: 2
       fail-fast: false
       matrix:
         domain: [science, math, reasoning, news, qa, general, coding, document, history, geography]
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-      - name: Select latest successful CHAKRA run
-        id: source
+      - name: Download and split checkpoint
         env:
-          GH_TOKEN: \${{ github.token }}
-        run: |
-          set -euo pipefail
-          RID="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow chakra_loop --status completed --json databaseId,conclusion,createdAt --limit 30 | python -c 'import json,sys; a=[x for x in json.load(sys.stdin) if x["conclusion"]=="success"]; a.sort(key=lambda x:x["createdAt"],reverse=True); print(a[0]["databaseId"] if a else "")')"
-          test -n "$RID"
-          echo "run_id=$RID" >> "$GITHUB_OUTPUT"
-          echo "Selected source run $RID"
-      - name: Download and split domain checkpoint
-        env:
-          GH_TOKEN: \${{ github.token }}
-          RUN_ID: \${{ steps.source.outputs.run_id }}
-          DOMAIN: \${{ matrix.domain }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ needs.select-source.outputs.run_id }}
+          DOMAIN: ${{ matrix.domain }}
         run: |
           set -euo pipefail
           mkdir -p "work/$DOMAIN/raw" "work/$DOMAIN/parts"
@@ -47,33 +49,61 @@ jobs:
           split -b 350m -d -a 3 "$CK" "work/$DOMAIN/parts/$DOMAIN.part."
           (cd "work/$DOMAIN/parts" && sha256sum *.part.* > SHA256SUMS)
           printf '%s\n' "$RUN_ID" > "work/$DOMAIN/parts/SOURCE_RUN_ID"
-          ls -lh "work/$DOMAIN/parts"
+          echo "domain=$DOMAIN source_run=$RUN_ID original_bytes=$(stat -c %s "$CK") parts=$(find "work/$DOMAIN/parts" -name '*.part.*' | wc -l)"
       - name: Upload part 000
+        if: hashFiles('work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.000') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: ckpt-\${{ matrix.domain }}-part-000
-          path: work/\${{ matrix.domain }}/parts/\${{ matrix.domain }}.part.000
-          if-no-files-found: ignore
+          name: ckpt-${{ matrix.domain }}-part-000
+          path: work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.000
           retention-days: 7
       - name: Upload part 001
+        if: hashFiles('work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.001') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: ckpt-\${{ matrix.domain }}-part-001
-          path: work/\${{ matrix.domain }}/parts/\${{ matrix.domain }}.part.001
-          if-no-files-found: ignore
+          name: ckpt-${{ matrix.domain }}-part-001
+          path: work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.001
           retention-days: 7
       - name: Upload part 002
+        if: hashFiles('work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.002') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: ckpt-\${{ matrix.domain }}-part-002
-          path: work/\${{ matrix.domain }}/parts/\${{ matrix.domain }}.part.002
-          if-no-files-found: ignore
+          name: ckpt-${{ matrix.domain }}-part-002
+          path: work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.002
+          retention-days: 7
+      - name: Upload part 003
+        if: hashFiles('work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.003') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-${{ matrix.domain }}-part-003
+          path: work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.003
+          retention-days: 7
+      - name: Upload part 004
+        if: hashFiles('work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.004') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-${{ matrix.domain }}-part-004
+          path: work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.004
+          retention-days: 7
+      - name: Upload part 005
+        if: hashFiles('work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.005') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-${{ matrix.domain }}-part-005
+          path: work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.005
+          retention-days: 7
+      - name: Upload part 006
+        if: hashFiles('work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.006') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-${{ matrix.domain }}-part-006
+          path: work/${{ matrix.domain }}/parts/${{ matrix.domain }}.part.006
           retention-days: 7
       - name: Upload checksums and source metadata
         uses: actions/upload-artifact@v4
         with:
-          name: ckpt-\${{ matrix.domain }}-manifest
+          name: ckpt-${{ matrix.domain }}-manifest
           path: |
-            work/\${{ matrix.domain }}/parts/SHA256SUMS
-            work/\${{ matrix.domain }}/parts/SOURCE_RUN_ID
+            work/${{ matrix.domain }}/parts/SHA256SUMS
+            work/${{ matrix.domain }}/parts/SOURCE_RUN_ID
           retention-days: 7
