@@ -56,7 +56,7 @@ jobs:
           test -s "source/ckpt/sampurna.pt"
           test -s "out/$DOMAIN.SHA256SUMS"
           test -s "out/$DOMAIN.manifest.json"
-          (cd out && sha256sum -c "$DOMAIN.SHA256SUMS")
+          sha256sum -c "out/$DOMAIN.SHA256SUMS"
           cat "out/$DOMAIN.expert.part-000" \
               "out/$DOMAIN.expert.part-001" \
               "out/$DOMAIN.expert.part-002" > "out/$DOMAIN.expert.pt"
