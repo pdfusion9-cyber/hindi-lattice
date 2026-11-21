@@ -112,6 +112,23 @@ def main():
     candidate_perplexity_sum=collections.Counter()
     candidate_perplexity_n=collections.Counter()
     evaluated=collections.Counter()
+
+    # Compare the deployed prefix-pattern path with a strict graph-only ablation.
+    # Only rows with an exact prefix pattern need a second model forward pass.
+    ablation_metrics = {
+        mode: {
+            "evaluated": collections.Counter(),
+            "covered": collections.Counter(),
+            "correct": collections.Counter(),
+            "nll_sum": collections.Counter(),
+            "nll_n": collections.Counter()
+        }
+        for mode in ("pattern_on", "pattern_off")
+    }
+    ablation_compare = {
+        "candidate_lists_identical": collections.Counter(),
+        "top1_agreement": collections.Counter()
+    }
     for lang in ("Hindi","English"):
         rows=eval_rows[lang]
         for start in range(0,len(rows),args.batch_size):
@@ -144,7 +161,8 @@ def main():
             for j,row in enumerate(batch):
                 prefix=row["prefix"]; target=row["target"]
                 pid,exact=pattern_id_for(prefix,vocab,runner.vocab_counts,runner.patterns,runner.pattern_to_id)
-                cand=runner._candidate_ids(prefix[-1] and vocab_to_id[prefix[-1]],pid,len(prefix),exact)
+                last_id=vocab_to_id[prefix[-1]]
+                cand=runner._candidate_ids(last_id,pid,len(prefix),exact)
                 evaluated[lang]+=1
                 if target in cand:
                     candidate_recall[lang]+=1
@@ -157,6 +175,40 @@ def main():
                     logp=torch.log_softmax(scores,dim=0)[loc]
                     candidate_perplexity_sum[lang]+=float((-logp).item())
                     candidate_perplexity_n[lang]+=1
+
+                # Strict ablation: force pattern ID 0 and suppress pattern-slot
+                # candidates. When the deployed prefix already falls back to 0,
+                # reuse its hidden state; no extra model pass is necessary.
+                cand_off=runner._candidate_ids(last_id,0,len(prefix),False)
+                if pid == 0:
+                    hidden_off=hidden[j]
+                else:
+                    x0,nb0,pid0,mask0=runner._build_inputs(
+                        [vocab_to_id[w] for w in prefix],0)
+                    hidden_off=runner.model(x0,nb0,pid0,mask0)[:,-1,:][0]
+                off_ids=torch.tensor(cand_off,dtype=torch.long)
+                scores_off=hidden_off @ runner.model.tok(off_ids).T
+                best_on_id=cand[int(scores.argmax().item())]
+                best_off_id=cand_off[int(scores_off.argmax().item())]
+                if cand == cand_off:
+                    ablation_compare["candidate_lists_identical"][lang]+=1
+                if best_on_id == best_off_id:
+                    ablation_compare["top1_agreement"][lang]+=1
+
+                for mode,candidates,mode_scores in (
+                    ("pattern_on",cand,scores),
+                    ("pattern_off",cand_off,scores_off)
+                ):
+                    stats=ablation_metrics[mode]
+                    stats["evaluated"][lang]+=1
+                    if target in candidates:
+                        stats["covered"][lang]+=1
+                        loc=candidates.index(target)
+                        nll=float((-torch.log_softmax(mode_scores,dim=0)[loc]).item())
+                        stats["nll_sum"][lang]+=nll
+                        stats["nll_n"][lang]+=1
+                        if candidates[int(mode_scores.argmax().item())] == target:
+                            stats["correct"][lang]+=1
     report={
       "status":"PASS",
       "mode":"READ_ONLY_NO_TRAINING_NO_CHECKPOINT_WRITES_NO_QUANTIZATION",
@@ -201,6 +253,28 @@ def main():
         }
       }
     }
+    report["pattern_ablation"] = {
+      "method":"same held-out prefixes and frozen checkpoint; pattern_off forces pattern ID 0 and disables pattern-slot candidates",
+      "weights_or_checkpoint_modified":False,
+      "modes":{},
+      "comparison":{}
+    }
+    for mode in ("pattern_on","pattern_off"):
+        report["pattern_ablation"]["modes"][mode]={"languages":{}}
+        for lang in ("Hindi","English"):
+            st=ablation_metrics[mode]
+            n=st["evaluated"][lang]
+            covered=st["covered"][lang]
+            report["pattern_ablation"]["modes"][mode]["languages"][lang]={
+              "examples":n,
+              "candidate_recall":covered/max(n,1),
+              "candidate_recall_count":covered,
+              "candidate_set_top1_accuracy_all":st["correct"][lang]/max(n,1),
+              "candidate_set_top1_correct":st["correct"][lang],
+              "candidate_set_top1_accuracy_when_target_covered":st["correct"][lang]/max(covered,1),
+              "candidate_set_perplexity_when_target_covered":float(__import__("math").exp(st["nll_sum"][lang]/max(st["nll_n"][lang],1))),
+              "candidate_limit":runner.candidate_limit
+            }
     for lang in ("Hindi","English"):
         n=evaluated[lang]; covered=candidate_recall[lang]
         report["prediction"]["languages"][lang]={
@@ -213,6 +287,11 @@ def main():
           "candidate_set_perplexity_when_target_covered":float(__import__("math").exp(candidate_perplexity_sum[lang]/max(candidate_perplexity_n[lang],1))),
           "candidate_limit":runner.candidate_limit
         }
+    report["pattern_ablation"]["comparison"][lang]={
+      "candidate_lists_identical":ablation_compare["candidate_lists_identical"][lang],
+      "top1_predictions_identical":ablation_compare["top1_agreement"][lang],
+      "examples":evaluated[lang]
+    }
     Path(args.out).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
     print(json.dumps(report,ensure_ascii=False,indent=2))
 
