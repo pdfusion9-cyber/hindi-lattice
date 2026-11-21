@@ -44,7 +44,7 @@ with torch.no_grad():
     top_scores=torch.full((1,5),float("-inf")); top_ids=torch.zeros((1,5),dtype=torch.long)
     for start in range(0,V,8192):
         ids=torch.arange(start,min(start+8192,V),dtype=torch.long)
-        scores=h@m.tok(ids).weight.T
+        scores=h@m.tok.weight[start:min(start+8192,V)].T
         vals,ix=scores.topk(min(5,len(ids)),-1); ix=ix+start
         merged_scores=torch.cat([top_scores,vals],-1); merged_ids=torch.cat([top_ids,ix],-1)
         top_scores,order=merged_scores.topk(5,-1); top_ids=merged_ids.gather(-1,order)
