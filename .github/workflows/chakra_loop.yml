@@ -1,11 +1,10 @@
 name: chakra_loop
 on:
-  workflow_dispatch:
-    inputs:
-      cycle:
-        default: "1"
-      minutes:
-        default: "280"
+  push:
+    branches: [main]
+    paths:
+      - "THAW_TRAINING_WORKFLOWS"
+
 permissions:
   contents: write
   actions: write
@@ -81,19 +80,3 @@ jobs:
             store/
           retention-days: 90
           overwrite: true
-
-  next:
-    needs: train
-    if: needs.train.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: next cycle
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CYCLE=${{ inputs.cycle || 1 }}
-          NEXT=$(( CYCLE + 1 ))
-          echo "agle chakra: $NEXT"
-          CODE=$(curl -sS -o /tmp/o.txt -w "%{http_code}" -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${{ github.repository }}/actions/workflows/chakra_loop.yml/dispatches" -d "{\"ref\":\"main\",\"inputs\":{\"cycle\":\"$NEXT\",\"minutes\":\"280\"}}")
-          echo "HTTP $CODE"
-          if [ "$CODE" != "204" ]; then exit 1; fi
