@@ -1,0 +1,75 @@
+name: real-science-checkpoint-inference
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/expert_inference.py"
+      - "tests/test_real_science_checkpoint.py"
+      - ".github/workflows/real_science_checkpoint_inference.yml"
+permissions:
+  actions: read
+  contents: read
+jobs:
+  science-real-checkpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_RUN_ID: "44889198913"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU PyTorch
+        run: python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Download Science checkpoint parts
+        uses: actions/download-artifact@v4
+        with:
+          name: chakra-expert-science-part-000
+          path: source/part000
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: chakra-expert-science-part-001
+          path: source/part001
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: chakra-expert-science-part-002
+          path: source/part002
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download manifest and part checksums
+        uses: actions/download-artifact@v4
+        with:
+          name: chakra-expert-science-manifest
+          path: source/manifest
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reconstruct and verify checkpoint bytes
+        run: |
+          set -euo pipefail
+          cat source/part000/science.expert.part-000 \
+              source/part001/science.expert.part-001 \
+              source/part002/science.expert.part-002 > science.expert.pt
+          python - <<'PY'
+          import hashlib
+          from pathlib import Path
+          checksum_file = Path("source/manifest/science.SHA256SUMS")
+          assert checksum_file.is_file(), list(Path("source/manifest").iterdir())
+          for line in checksum_file.read_text().splitlines():
+              expected, rel = line.split(maxsplit=1)
+              path = Path(rel.strip().lstrip("*")).name
+              data = (Path("source") / path).read_bytes()
+              actual = hashlib.sha256(data).hexdigest()
+              assert actual == expected, f"checksum mismatch: {path}"
+          print("All three original checkpoint part SHA256 checks: PASS")
+          manifest = Path("source/manifest/science.manifest.json")
+          assert manifest.is_file()
+          print(manifest.read_text())
+          PY
+          test -s science.expert.pt
+      - name: Run real Science strict-load graph and Hindi-English generation
+        run: python tests/test_real_science_checkpoint.py science.expert.pt
