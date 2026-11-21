@@ -151,13 +151,17 @@ class ExpertRunner:
         return (x.to(self.device), nb.to(self.device), pid_tensor.to(self.device),
                 mask.to(self.device))
 
-    def _candidate_ids(self, last_token_id: int, pattern_id: int, position: int) -> list[int]:
+    def _candidate_ids(self, last_token_id: int, pattern_id: int, position: int,
+                       exact_pattern: bool) -> list[int]:
         cands = self.graph.get("cands", {})
         nbrs = self.graph.get("nbrs", {})
         values = _map_get(cands, last_token_id, []) or _map_get(nbrs, last_token_id, [])
         out = list(dict.fromkeys(int(v) for v in values
                                  if 0 <= int(v) < len(self.vocab)))
-        if 0 <= pattern_id < len(self.patterns):
+        # Slot candidates are keyed by a complete training-sentence pattern
+        # and its absolute position. A prompt prefix cannot safely identify
+        # those values; do not inject pattern-0 slots on a failed match.
+        if exact_pattern and 0 <= pattern_id < len(self.patterns):
             out.extend(self.slot_candidates.get((self.patterns[pattern_id], position), []))
         out = list(dict.fromkeys(out))
         if not out:
@@ -174,7 +178,7 @@ class ExpertRunner:
             tokens, self.vocab, self.vocab_counts, self.patterns, self.pattern_to_id)
         x, nb, pid_tensor, mask = self._build_inputs(ids, pid)
         hidden = self.model(x, nb, pid_tensor, mask)[:, -1, :]
-        candidates = self._candidate_ids(ids[-1], pid, len(tokens))
+        candidates = self._candidate_ids(ids[-1], pid, len(tokens), exact_pattern)
         candidate_tensor = torch.tensor(candidates, dtype=torch.long, device=self.device)
         scores = hidden @ self.model.tok(candidate_tensor).T
         if not torch.isfinite(scores).all():
