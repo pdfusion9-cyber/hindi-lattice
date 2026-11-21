@@ -1,9 +1,10 @@
 name: chakra3
 on:
-  workflow_dispatch:
-    inputs:
-      minutes:
-        default: "240"
+  push:
+    branches: [main]
+    paths:
+      - "THAW_TRAINING_WORKFLOWS"
+
 permissions:
   contents: write
   actions: read
