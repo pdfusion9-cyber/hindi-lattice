@@ -1,0 +1,24 @@
+name: expert-router-tests
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/expert_router.py"
+      - "tests/test_expert_router.py"
+      - ".github/workflows/expert_router_tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: run deterministic router tests
+        run: python -m unittest discover -s tests -p "test_expert_router.py" -v
