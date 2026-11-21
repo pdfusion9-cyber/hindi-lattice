@@ -1,11 +1,5 @@
 name: chakra-merge-smoke
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/chakra_merge_smoke.yml"
-      - "tools/merge_chakra.py"
-      - "tools/smoke_merged.py"
   workflow_run:
     workflows: ["chakra_loop"]
     types: [completed]
