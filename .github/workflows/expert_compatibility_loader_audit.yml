@@ -1,0 +1,55 @@
+name: expert-compatibility-loader-audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/audit_expert_compat.py"
+      - "tests/test_expert_compatibility_audit.py"
+      - ".github/workflows/expert_compatibility_loader_audit.yml"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      PACKAGE_RUN_ID: "44889198913"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install CPU PyTorch
+        run: |
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: run read-only source tests
+        run: python -m unittest tests.test_expert_compatibility_audit -v
+      - name: download ten expert packages
+        env:
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p experts
+          for domain in science math reasoning news qa general coding document history geography; do
+            for part in 000 001 002; do
+              gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+                --name "chakra-expert-$domain-part-$part" --dir "experts"
+            done
+            gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name "chakra-expert-$domain-manifest" --dir "experts"
+            cat "experts/$domain.expert.part-000" \
+                "experts/$domain.expert.part-001" \
+                "experts/$domain.expert.part-002" > "experts/$domain.expert.pt"
+          done
+          ls -lh experts/*.expert.pt
+      - name: audit vocab patterns strict loader and real graph inference
+        run: python tools/audit_expert_compat.py --input-dir experts --out expert_compatibility_audit.json
+      - name: upload read-only audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: expert-compatibility-loader-audit
+          path: expert_compatibility_audit.json
+          if-no-files-found: error
+          retention-days: 90
