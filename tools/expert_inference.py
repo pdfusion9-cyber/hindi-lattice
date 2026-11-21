@@ -110,6 +110,11 @@ class ExpertRunner:
         self.nbr_count = int(self.config["nbr"])
         self.candidate_limit = int(self.config.get("cand", 50)) + int(
             self.config.get("pat_cand", 20))
+        self.slot_candidates = {}
+        for row in self.graph.get("slot_cand", []):
+            key = (tuple(row.get("pattern", [])), int(row.get("position", -1)))
+            self.slot_candidates[key] = [int(v) for v in row.get("ids", [])
+                                         if 0 <= int(v) < len(self.vocab)]
         self.model = ExpertModel(
             int(self.ck["V"]), len(self.patterns), int(self.ck["dim"]),
             int(self.ck["layers"]), int(self.ck["heads"]), self.nbr_count,
@@ -146,12 +151,15 @@ class ExpertRunner:
         return (x.to(self.device), nb.to(self.device), pid_tensor.to(self.device),
                 mask.to(self.device))
 
-    def _candidate_ids(self, last_token_id: int) -> list[int]:
+    def _candidate_ids(self, last_token_id: int, pattern_id: int, position: int) -> list[int]:
         cands = self.graph.get("cands", {})
         nbrs = self.graph.get("nbrs", {})
         values = _map_get(cands, last_token_id, []) or _map_get(nbrs, last_token_id, [])
         out = list(dict.fromkeys(int(v) for v in values
                                  if 0 <= int(v) < len(self.vocab)))
+        if 0 <= pattern_id < len(self.patterns):
+            out.extend(self.slot_candidates.get((self.patterns[pattern_id], position), []))
+        out = list(dict.fromkeys(out))
         if not out:
             # Vocab is frequency ordered by the training script.
             out = list(range(min(self.candidate_limit, len(self.vocab))))
@@ -166,7 +174,7 @@ class ExpertRunner:
             tokens, self.vocab, self.vocab_counts, self.patterns, self.pattern_to_id)
         x, nb, pid_tensor, mask = self._build_inputs(ids, pid)
         hidden = self.model(x, nb, pid_tensor, mask)[:, -1, :]
-        candidates = self._candidate_ids(ids[-1])
+        candidates = self._candidate_ids(ids[-1], pid, len(tokens))
         candidate_tensor = torch.tensor(candidates, dtype=torch.long, device=self.device)
         scores = hidden @ self.model.tok(candidate_tensor).T
         if not torch.isfinite(scores).all():
