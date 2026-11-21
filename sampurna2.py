@@ -191,7 +191,7 @@ seqs = [q for q in paths if len(q) >= 3]
 if not seqs:
     print("दो-token context वाले पाथ नहीं मिले", flush=True)
     raise SystemExit(1)
-lengths = [len(q) for q, _ in seqs]
+lengths = [len(q) for q in seqs]
 print(f"अनुक्रम-पाथ: {len(seqs):,} | लंबाई {min(lengths)}-{max(lengths)} | context {a.seq}", flush=True)
 random.shuffle(seqs)
 cut = max(1, int(len(seqs) * 0.9))
