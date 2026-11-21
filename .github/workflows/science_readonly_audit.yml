@@ -52,8 +52,12 @@ jobs:
           manifest_src="$(find out -type f -name "$DOMAIN.manifest.json" -print -quit)"
           test -n "$sums_src"
           test -n "$manifest_src"
-          cp "$sums_src" "out/$DOMAIN.SHA256SUMS"
-          cp "$manifest_src" "out/$DOMAIN.manifest.json"
+          if [ "$sums_src" != "out/$DOMAIN.SHA256SUMS" ]; then
+            cp "$sums_src" "out/$DOMAIN.SHA256SUMS"
+          fi
+          if [ "$manifest_src" != "out/$DOMAIN.manifest.json" ]; then
+            cp "$manifest_src" "out/$DOMAIN.manifest.json"
+          fi
 
           sha256sum -c "out/$DOMAIN.SHA256SUMS"
           cat "out/$DOMAIN.expert.part-000" \
