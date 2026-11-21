@@ -13,6 +13,10 @@ jobs:
   science-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    env:
+      SOURCE_RUN_ID: "44795411621"
+      PACKAGE_RUN_ID: "44889198913"
+      DOMAIN: science
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,13 +26,77 @@ jobs:
         run: |
           python -m pip install -q numpy pyarrow
           python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-      - name: Download original Science checkpoint (read-only)
-        uses: actions/download-artifact@v4
-        with:
-          name: chakra-science
-          path: source
-          run-id: "44795411621"
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download and verify packaged Science expert (read-only)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for part in 000 001 002; do
+            gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name "chakra-expert-$DOMAIN-part-$part" --dir out
+          done
+          gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "chakra-expert-$DOMAIN-manifest" --dir out
+
+          # Artifacts can unpack into nested directories; normalize only the
+          # copied package files in the runner workspace, never source artifacts.
+          for part in 000 001 002; do
+            src="$(find out -type f -name "$DOMAIN.expert.part-$part" -print -quit)"
+            test -n "$src"
+            dst="out/$DOMAIN.expert.part-$part"
+            if [ "$src" != "$dst" ]; then cp "$src" "$dst"; fi
+            test -s "$dst"
+          done
+          sums_src="$(find out -type f -name "$DOMAIN.SHA256SUMS" -print -quit)"
+          manifest_src="$(find out -type f -name "$DOMAIN.manifest.json" -print -quit)"
+          test -n "$sums_src"
+          test -n "$manifest_src"
+          cp "$sums_src" "out/$DOMAIN.SHA256SUMS"
+          cp "$manifest_src" "out/$DOMAIN.manifest.json"
+
+          sha256sum -c "out/$DOMAIN.SHA256SUMS"
+          cat "out/$DOMAIN.expert.part-000" \
+              "out/$DOMAIN.expert.part-001" \
+              "out/$DOMAIN.expert.part-002" > "out/$DOMAIN.expert.pt"
+
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          domain = os.environ["DOMAIN"]
+          source_run = os.environ["SOURCE_RUN_ID"]
+          package_path = Path(f"out/{domain}.expert.pt")
+          manifest_path = Path(f"out/{domain}.manifest.json")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+          digest = hashlib.sha256()
+          with package_path.open("rb") as stream:
+              for block in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+                  digest.update(block)
+          actual_sha = digest.hexdigest()
+
+          if manifest.get("format") != "chakra-independent-expert-v1":
+              raise SystemExit("FAIL: unexpected manifest package format")
+          if manifest.get("domain") != domain:
+              raise SystemExit("FAIL: packaged domain mismatch")
+          if str(manifest.get("source_run_id")) != source_run:
+              raise SystemExit("FAIL: source run provenance mismatch")
+          if manifest.get("output_sha256") != actual_sha:
+              raise SystemExit("FAIL: reconstructed package SHA256 mismatch")
+          print(json.dumps({
+              "status": "PASS",
+              "package_format": manifest["format"],
+              "domain": domain,
+              "source_run_id": source_run,
+              "package_sha256": actual_sha,
+              "parameter_count": manifest.get("parameter_count"),
+              "vocab_size": manifest.get("vocab_size"),
+              "pattern_count": manifest.get("pattern_count")
+          }, ensure_ascii=False, indent=2))
+          PY
       - name: Reconstruct source-style Science corpus
         run: |
           set -euo pipefail
@@ -38,10 +106,9 @@ jobs:
       - name: Run tokenizer, pattern, and held-out prediction audits
         run: |
           set -euo pipefail
-          CKPT="$(find source -type f -name '*.pt' -print -quit)"
-          test -n "$CKPT"
+          test -s "out/$DOMAIN.expert.pt"
           python tools/audit_science_readonly.py \
-            --checkpoint "$CKPT" \
+            --checkpoint "out/$DOMAIN.expert.pt" \
             --corpus data/corpus.txt \
             --max-per-language 80 \
             --batch-size 4 \
