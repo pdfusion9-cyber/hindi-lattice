@@ -1,9 +1,24 @@
 name: loop10
 on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: training minutes per domain
+        required: false
+        default: "180"
   push:
     branches: [main]
     paths:
-      - "THAW_TRAINING_WORKFLOWS"
+      - ".github/workflows/loop10.yml"
+      - "sampurna2.py"
+      - "pack_banao.py"
+      - "loop_fetch.py"
+      - "to_text.py"
+      - "uttar_naapo.py"
+      - "chhota_karo.py"
+      - "jodo_jaal.py"
+  schedule:
+    - cron: '0 */6 * * *'
 
 permissions:
   actions: read
@@ -42,7 +57,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set +e
-          PREV=$(gh run list --workflow loop10.yml --json databaseId,status,conclusion --limit 30 | jq -r --arg current "$GITHUB_RUN_ID" '[.[] | select((.databaseId|tostring)!=$current and .status=="completed")][0].databaseId // empty')
+          PREV=$(gh run list --workflow loop10.yml --json databaseId,status,conclusion --limit 30 | jq -r --arg current "$GITHUB_RUN_ID" '[.[] | select((.databaseId|tostring)!=$current and .status=="completed" and .conclusion=="success")][0].databaseId // empty')
           if [ -n "$PREV" ]; then
             echo "पिछला loop10 run: $PREV"
             gh run download "$PREV" --name "ckpt-${{ matrix.domain }}" --dir . || echo "पुराना checkpoint नहीं मिला; fresh start"
@@ -70,12 +85,15 @@ jobs:
           if [ ! -f ckpt/sampurna.pt ]; then echo "!! CHECKPOINT NAHI BANA -- fail"; exit 1; fi
           echo "checkpoint taiyar"
       - name: measure accuracy
-        if: always()
+        if: success()
         run: |
+          set -euo pipefail
+          mkdir -p store
+          test -s ckpt/sampurna.pt
           python uttar_naapo.py --pack data/gyaan.pack --facts data/gyaan.txt --ckpt ckpt/sampurna.pt --dim 768 --layers 4 --heads 8 --nq 300 --out store/uttar.json 2>&1 | tail -20
           cat store/uttar.json || true
       - name: quantize int8 int4
-        if: always()
+        if: success()
         run: |
           python chhota_karo.py --ckpt ckpt/sampurna.pt --out store --part-mb 90 || echo "quantize skipped"
       - name: save
@@ -106,7 +124,7 @@ jobs:
 
   merge:
     needs: train
-    if: always()
+    if: needs.train.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -131,7 +149,7 @@ jobs:
           ls -lh packs/ || true
           count=$(find packs -maxdepth 1 -name '*.pack' -type f | wc -l)
           echo "वैध पैक फाइलें: $count"
-          if [ "$count" -lt 1 ]; then echo "कोई lattice artifact नहीं"; exit 1; fi
+          if [ "$count" -ne 10 ]; then echo "FAIL: सभी 10 domain packs जरूरी हैं; मिले $count"; exit 1; fi
       - name: merge all lattices and pattern tables
         run: |
           mkdir -p store
