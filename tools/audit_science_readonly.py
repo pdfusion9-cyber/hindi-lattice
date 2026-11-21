@@ -164,11 +164,11 @@ def main():
                 last_id=vocab_to_id[prefix[-1]]
                 cand=runner._candidate_ids(last_id,pid,len(prefix),exact)
                 evaluated[lang]+=1
+                ct=torch.tensor(cand,dtype=torch.long)
+                scores=hidden[j] @ runner.model.tok(ct).T
                 if target in cand:
                     candidate_recall[lang]+=1
                     top1_covered[lang]+=1
-                    ct=torch.tensor(cand,dtype=torch.long)
-                    scores=hidden[j] @ runner.model.tok(ct).T
                     best=int(scores.argmax().item())
                     if cand[best]==target: top1_correct[lang]+=1
                     loc=cand.index(target)
