@@ -1,12 +1,10 @@
 name: loop10
 on:
-  workflow_dispatch:
-    inputs:
-      minutes:
-        description: training minutes
-        default: "180"
-  schedule:
-    - cron: '0 */6 * * *'
+  push:
+    branches: [main]
+    paths:
+      - "THAW_TRAINING_WORKFLOWS"
+
 permissions:
   actions: read
   contents: read
