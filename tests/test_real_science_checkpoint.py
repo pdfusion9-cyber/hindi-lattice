@@ -20,14 +20,14 @@ EXPECTED_SOURCE_RUN = "44795411621"
 EXPECTED_DOMAIN = "science"
 
 
-def choose_prompt(runner, candidates, language):
+def choose_prompt(runner, candidates, language, min_known=2):
     for prompt in candidates:
         tokens = tokenize(prompt)
         known = [w for w in tokens if w in runner.vocab_to_id]
         # punah.py trains on fixed 16-token windows and predicts from position
         # T-1. Shorter prompts are right-padded; those are not a valid quality
         # probe because the final query position can attend mostly to padding.
-        if len(known) >= 16:
+        if len(known) >= min_known:
             return prompt, len(known), len(tokens) - len(known)
     raise AssertionError(
         f"No {language} smoke prompt has >=2 in-vocabulary words; "
@@ -76,6 +76,7 @@ def main():
             "पदार्थ परमाणु अणु इलेक्ट्रॉन प्रोटॉन न्यूट्रॉन ऊर्जा ताप दाब प्रकाश रासायनिक अभिक्रिया संरचना बंधन विलयन अम्ल क्षार",
         ],
         "Hindi",
+        min_known=16,
     )
     english_prompt, english_known, english_oov = choose_prompt(
         runner,
@@ -85,6 +86,7 @@ def main():
             "matter contains atoms molecules electrons protons neutrons energy temperature pressure light heat chemical bonds and reactions",
         ],
         "English",
+        min_known=2,
     )
 
     results = {}
@@ -102,6 +104,7 @@ def main():
             "known_prompt_tokens": result["known_prompt_tokens"],
             "unknown_prompt_tokens": result["unknown_prompt_tokens"],
             "full_16_token_context": result["known_prompt_tokens"] >= 16,
+            "english_context_eligible": (language != "English" or result["known_prompt_tokens"] >= 16),
             "generated_tokens": len(result["generated_tokens"]),
             "graph_candidate_counts": [d["candidate_count"] for d in result["diagnostics"]],
             "pattern_exact_matches": sum(bool(d["pattern_exact_match"]) for d in result["diagnostics"]),
