@@ -29,6 +29,7 @@ ap.add_argument("--budget", type=int, default=12000)
 ap.add_argument("--nbr", type=int, default=8)
 ap.add_argument("--cand", type=int, default=50)
 ap.add_argument("--pat-cand", type=int, default=20)
+ap.add_argument("--pattern-window", type=int, default=8)
 ap.add_argument("--minpat", type=int, default=5)
 ap.add_argument("--res-scale", type=float, default=0.5, help="residual ka bhaar")
 ap.add_argument("--sparse-win", type=int, default=6, help="jaal-sparse dhyan ki khidki (0 = band)")
@@ -65,31 +66,40 @@ nbrs = {x: [y for y, _ in c.most_common(a.nbr)] for x, c in edge.items()}
 cands = {x: [y for y, _ in c.most_common(a.cand)] for x, c in edge.items()}
 print(f"jaal {len(edge):,} sel | kadiya {sum(len(c) for c in edge.values()):,}", flush=True)
 
-STOP = {w for w, c in cnt.items() if c >= 300}
-def pattern(q): return tuple(w if w in STOP else "*" for w in q)
-pat_slots = defaultdict(lambda: defaultdict(Counter)); pat_count = Counter()
-for ws in sents:
-    pt = pattern(ws); pat_count[pt] += 1
-    for i, w in enumerate(ws):
-        if pt[i] == "*":
-            pat_slots[pt][i][w] += 1
-pats = [p for p, c in pat_count.items() if c >= a.minpat]
-pidx = {p: i for i, p in enumerate(pats)}
-slot_cand = {}
-for p in pats:
-    for i in range(len(p)):
-        if p[i] == "*":
-            slot_cand[(p, i)] = [stoi[w] for w, _ in pat_slots[p][i].most_common(a.pat_cand) if w in stoi]
-print(f"pattern {len(pats):,} | slot {len(slot_cand):,}", flush=True)
+STOP = {w for w, c in cnt.items() if c >= 300 and w in stoi}
+PATTERN_WINDOW = max(1, min(int(a.pattern_window), a.seq))
+
+def pattern(ids):
+    suffix = ids[-PATTERN_WINDOW:]
+    return tuple(vocab[token_id] if vocab[token_id] in STOP else "*" for token_id in suffix)
 
 seqs = []
 for ws in sents:
     ids = [stoi[w] for w in ws if w in stoi]
     if len(ids) >= a.seq + 2:
-        seqs.append((ids, pattern(ws)))
+        seqs.append(ids)
 print(f"anukram (kram me): {len(seqs):,}", flush=True)
 if not seqs:
     print("anukram nahi", flush=True); raise SystemExit(1)
+
+# Prefix patterns mirror inference: pattern(prefix), plus a saturated
+# position key matching min(prefix_length, seq_len).
+pat_slots = defaultdict(lambda: defaultdict(Counter)); pat_count = Counter()
+for ids in seqs:
+    for i in range(2, len(ids)):
+        pt = pattern(ids[:i])
+        pos_key = min(i, a.seq)
+        pat_count[pt] += 1
+        pat_slots[pt][pos_key][vocab[ids[i]]] += 1
+pats = [p for p, n in pat_count.items() if n >= a.minpat]
+pidx = {p: i for i, p in enumerate(pats)}
+slot_cand = {}
+for p in pats:
+    for pos_key, candidates in pat_slots[p].items():
+        slot_cand[(p, pos_key)] = [
+            stoi[w] for w, _ in candidates.most_common(a.pat_cand) if w in stoi
+        ]
+print(f"pattern {len(pats):,} | slot {len(slot_cand):,} | prefix-window {PATTERN_WINDOW}", flush=True)
 
 RS = a.res_scale
 
@@ -245,8 +255,9 @@ def mk(rows):
     B = len(rows); T = a.seq; K = a.cand + a.pat_cand
     X = torch.zeros(B, T, dtype=torch.long); NB = torch.zeros(B, T, a.nbr, dtype=torch.long)
     PI = torch.zeros(B, dtype=torch.long); CL = torch.zeros(B, K, dtype=torch.long)
+    CM = torch.zeros(B, K, dtype=torch.bool)
     YC = torch.zeros(B, dtype=torch.long); keep = []
-    for j, (ids, pt) in enumerate(rows):
+    for j, ids in enumerate(rows):
         i = (pos + j * 7) % max(1, len(ids) - 1)
         if i < 1: i = 1
         ctx = ids[max(0, i - T):i]
@@ -254,14 +265,17 @@ def mk(rows):
         X[j, :len(ctx)] = torch.tensor(ctx)
         for t in range(len(ctx)):
             for q, u in enumerate(nbrs.get(ctx[t], [])[:a.nbr]): NB[j, t, q] = u
+        pt = pattern(ids[:i])
+        pos_key = min(i, a.seq)
         PI[j] = pidx.get(pt, 0)
         tgt = ids[i]
-        pool = list(dict.fromkeys(cands.get(ids[i-1], []) + slot_cand.get((pt, i), [])))
+        pool = list(dict.fromkeys(cands.get(ids[i-1], []) + slot_cand.get((pt, pos_key), [])))
         if tgt not in pool: pool.append(tgt)
         if len(pool) > K:
             pool = pool[:K]
             if tgt not in pool: pool[-1] = tgt
         CL[j, :len(pool)] = torch.tensor(pool)
+        CM[j, :len(pool)] = True
         YC[j] = pool.index(tgt); keep.append(j)
     if not keep: return None
     ix = torch.tensor(keep)
@@ -272,7 +286,7 @@ def mk(rows):
         idx = torch.arange(T)
         local = (idx[None, :] >= (idx[:, None] - a.sparse_win)) & (idx[None, :] <= idx[:, None])
         AM[:] = local[None]
-        for j, (ids, pt) in enumerate(rows):
+        for j, ids in enumerate(rows):
             if j not in keep: continue
             jj = keep.index(j)
             i = (pos + j * 7) % max(1, len(ids) - 1)
@@ -282,7 +296,7 @@ def mk(rows):
                 for q in range(t):
                     if ctx[q] in nbrs.get(ctx[t], []): AM[jj, t, q] = True
         AM = AM.unsqueeze(1)
-    return X[ix], NB[ix], PI[ix], CL[ix], YC[ix], AM
+    return X[ix], NB[ix], PI[ix], CL[ix], YC[ix], CM[ix], AM
 
 
 def save_checkpoint():
@@ -310,6 +324,7 @@ def save_checkpoint():
         "config": {
             "nbr": a.nbr, "cand": a.cand, "pat_cand": a.pat_cand,
             "res_scale": RS, "sparse_win": a.sparse_win,
+            "seq": a.seq, "pattern_window": PATTERN_WINDOW,
         },
         "pos": pos + seen,
         "epoch": epoch,
@@ -332,9 +347,11 @@ while step < a.steps and (time.time() - t0) < a.budget:
         print(f"  -- poora kosh ek baar dekh liya (epoch {epoch}) --", flush=True)
     if b is None: continue
     step += 1
-    X, NB, PI, CL, YC, AM = b
+    X, NB, PI, CL, YC, CM, AM = b
     h = m(X, NB, PI, AM)[:, -1, :]
-    loss = F.cross_entropy((h[:, None, :] * m.tok(CL)).sum(-1), YC)
+    logits = (h[:, None, :] * m.tok(CL)).sum(-1)
+    logits = logits.masked_fill(~CM, torch.finfo(logits.dtype).min)
+    loss = F.cross_entropy(logits, YC)
     opt.zero_grad(); loss.backward()
     torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0); opt.step()
     last = loss.item()
@@ -351,13 +368,14 @@ with torch.no_grad():
     for i in range(0, min(len(seqs), 600), 16):
         b = mk(seqs[i:i+16])
         if b is None: continue
-        X, NB, PI, CL, YC, AM = b
+        X, NB, PI, CL, YC, CM, AM = b
         sc = (m(X, NB, PI, AM)[:, -1, :][:, None, :] * m.tok(CL)).sum(-1)
+        sc = sc.masked_fill(~CM, torch.finfo(sc.dtype).min)
         h1 += (sc.argmax(-1) == YC).sum().item()
         h5 += sum(1 for j in range(len(YC)) if YC[j] in sc.topk(5, -1).indices[j])
         tot += len(YC)
 cov = ((pos + seen) / N * 100) if N else 0
-print(f"\ntest ({tot:,}): top1 {h1/max(tot,1)*100:.1f}% | top5 {h5/max(tot,1)*100:.1f}%", flush=True)
+print(f"\ntrain-stream diagnostic ({tot:,}; not held-out): top1 {h1/max(tot,1)*100:.1f}% | top5 {h5/max(tot,1)*100:.1f}%", flush=True)
 print(f"coverage: {cov:.1f}% | epoch {epoch} | kadam {step:,} | |h| {h_norm:.1f}", flush=True)
 os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
 save_checkpoint()
