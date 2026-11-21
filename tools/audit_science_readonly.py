@@ -72,7 +72,8 @@ def main():
                 continue
             prefix_words=[vocab[t] for t in prefix_ids]
             target=ids[i]
-            eval_rows[lang].append({"prefix":prefix_words,"target":target,"sentence_len":len(ws),"oov":len(ws)-len(ids),"position":i})
+            full_pattern=tuple(w if w in stop else "*" for w in ws)
+            eval_rows[lang].append({"prefix":prefix_words,"target":target,"sentence_len":len(ws),"oov":len(ws)-len(ids),"position":i,"full_pattern":full_pattern})
             eval_seen[lang]+=1
             if all(len(v)>=args.max_per_language for v in eval_rows.values()):
                 break
@@ -96,6 +97,8 @@ def main():
     pattern_full_known=0
     slot_full_available=0
     slot_prefix_available=0
+    full_pattern_exact=0
+    full_pattern_slot_available=0
     candidate_recall=collections.Counter()
     top1_correct=collections.Counter()
     top1_covered=collections.Counter()
@@ -115,10 +118,12 @@ def main():
                 # Compare the inference prefix mapping with stored full patterns.
                 pid, exact=pattern_id_for(prefix,vocab,runner.vocab_counts,runner.patterns,runner.pattern_to_id)
                 if exact: pattern_prefix_exact+=1
-                # Candidate slot availability at the target's original position.
-                # The full sentence pattern itself is not reconstructable from prefix-only
-                # data here; pattern-prefix match is the operational inference condition.
-                if exact and (runner.patterns[pid],row["position"]) in runner.slot_candidates:
+                full_pid=runner.pattern_to_id.get(row["full_pattern"])
+                if full_pid is not None:
+                    full_pattern_exact+=1
+                    if (runner.patterns[full_pid],row["position"]) in runner.slot_candidates:
+                        full_pattern_slot_available+=1
+                if exact and (runner.patterns[pid],len(prefix)) in runner.slot_candidates:
                     slot_prefix_available+=1
                 pattern_counts["prefix_exact" if exact else "prefix_fallback"]+=1
                 x,nb,pid_t,mask=runner._build_inputs(prefix,pid)
@@ -142,7 +147,7 @@ def main():
                     if cand[best]==target: top1_correct[lang]+=1
                     loc=cand.index(target)
                     logp=torch.log_softmax(scores,dim=0)[loc]
-                    candidate_perplexity_sum[lang]+=float((-logp).exp().item())
+                    candidate_perplexity_sum[lang]+=float((-logp).item())
                     candidate_perplexity_n[lang]+=1
     report={
       "status":"PASS",
@@ -173,6 +178,8 @@ def main():
       "pattern_audit":{
         "stored_pattern_count":len(runner.patterns),
         "evaluation_prefix_exact_pattern_matches":pattern_prefix_exact,
+        "evaluation_full_sentence_exact_pattern_matches":full_pattern_exact,
+        "full_sentence_slot_candidates_at_target_position":full_pattern_slot_available,
         "evaluation_prefix_pattern_fallbacks":sum(pattern_counts.values())-pattern_prefix_exact,
         "prefix_slot_candidate_hits":slot_prefix_available,
         "note":"Training patterns are built from complete sentences; inference patterns are built from the available prefix. Exact-prefix match rate is reported, not assumed."
@@ -182,7 +189,7 @@ def main():
         "metrics_definition":{
           "candidate_recall_at_configured_limit":"fraction of held-out targets present in the actual inference candidate list; target is never injected",
           "candidate_set_top1_accuracy_all":"correct candidate argmax divided by all held-out examples; missing target counts incorrect",
-          "candidate_set_perplexity":"mean exp(-log p(target)) only where target is present in candidate set; not full-vocabulary perplexity"
+          "candidate_set_perplexity":"exp(mean negative log probability) only where target is present in candidate set; not full-vocabulary perplexity"
         }
       }
     }
@@ -195,7 +202,7 @@ def main():
           "candidate_set_top1_accuracy_all":top1_correct[lang]/max(n,1),
           "candidate_set_top1_correct":top1_correct[lang],
           "candidate_set_top1_accuracy_when_target_covered":top1_correct[lang]/max(covered,1),
-          "candidate_set_perplexity_when_target_covered":candidate_perplexity_sum[lang]/max(candidate_perplexity_n[lang],1),
+          "candidate_set_perplexity_when_target_covered":float(__import__("math").exp(candidate_perplexity_sum[lang]/max(candidate_perplexity_n[lang],1))),
           "candidate_limit":runner.candidate_limit
         }
     Path(args.out).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
