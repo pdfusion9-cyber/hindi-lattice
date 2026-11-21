@@ -87,6 +87,18 @@ class ExpertInferenceTests(unittest.TestCase):
         self.assertEqual(pid, 0)
         self.assertFalse(exact)
 
+    def test_prefix_pattern_window_matches_training_suffix(self):
+        tokens = ["पुराना", "अंश", "नमस्ते", "भारत"]
+        vocab = ["नमस्ते", "भारत", "पुराना", "अंश"]
+        counts = [500, 500, 10, 10]
+        patterns = [("*", "नमस्ते", "भारत")]
+        pattern_to_id = {patterns[0]: 0}
+        pid, exact = pattern_id_for(
+            tokens, vocab, counts, patterns, pattern_to_id, pattern_window=3
+        )
+        self.assertEqual(pid, 0)
+        self.assertTrue(exact)
+
 
 if __name__ == "__main__":
     unittest.main()
