@@ -32,7 +32,7 @@ class ExpertInferenceTests(unittest.TestCase):
                 "nbrs": {"0": [1, 2], "1": [0, 2], "2": [0, 1], "3": [1, 2]},
                 "cands": {"1": [2, 3], "2": [3, 0]},
                 "slot_cand": [
-                    {"pattern": ["*", "*", "*"], "position": 2, "ids": [3]}
+                    {"pattern": ["*", "*", "*"], "position": 2, "ids": [0]}
                 ],
             },
             "config": {
@@ -65,6 +65,16 @@ class ExpertInferenceTests(unittest.TestCase):
             self.assertTrue(
                 all(torch.isfinite(torch.tensor(d["score"])) for d in result["diagnostics"])
             )
+
+    def test_unmatched_pattern_does_not_use_pattern_slot_candidates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "science.expert.pt"
+            self.make_checkpoint(path)
+            runner = ExpertRunner(path)
+            # Graph candidates remain; pattern-slot ID 0 is not trusted on
+            # a prefix with no exact full-sentence pattern match.
+            self.assertEqual(runner._candidate_ids(1, 0, 2, False), [2, 3])
+            self.assertEqual(runner._candidate_ids(1, 0, 2, True), [2, 3, 0])
 
     def test_unmatched_pattern_falls_back_to_zero(self):
         pid, exact = pattern_id_for(
