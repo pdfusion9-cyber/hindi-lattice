@@ -1,0 +1,79 @@
+name: checkpoint-export-split
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/checkpoint_export_split.yml"
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: checkpoint-export-split
+  cancel-in-progress: false
+jobs:
+  split-checkpoints:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      max-parallel: 2
+      fail-fast: false
+      matrix:
+        domain: [science, math, reasoning, news, qa, general, coding, document, history, geography]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Select latest successful CHAKRA run
+        id: source
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          RID="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow chakra_loop --status completed --json databaseId,conclusion,createdAt --limit 30 | python -c 'import json,sys; a=[x for x in json.load(sys.stdin) if x["conclusion"]=="success"]; a.sort(key=lambda x:x["createdAt"],reverse=True); print(a[0]["databaseId"] if a else "")')"
+          test -n "$RID"
+          echo "run_id=$RID" >> "$GITHUB_OUTPUT"
+          echo "Selected source run $RID"
+      - name: Download and split domain checkpoint
+        env:
+          GH_TOKEN: \${{ github.token }}
+          RUN_ID: \${{ steps.source.outputs.run_id }}
+          DOMAIN: \${{ matrix.domain }}
+        run: |
+          set -euo pipefail
+          mkdir -p "work/$DOMAIN/raw" "work/$DOMAIN/parts"
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name "chakra-$DOMAIN" --dir "work/$DOMAIN/raw"
+          CK="work/$DOMAIN/raw/ckpt/sampurna.pt"
+          test -s "$CK"
+          split -b 350m -d -a 3 "$CK" "work/$DOMAIN/parts/$DOMAIN.part."
+          (cd "work/$DOMAIN/parts" && sha256sum *.part.* > SHA256SUMS)
+          printf '%s\n' "$RUN_ID" > "work/$DOMAIN/parts/SOURCE_RUN_ID"
+          ls -lh "work/$DOMAIN/parts"
+      - name: Upload part 000
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-\${{ matrix.domain }}-part-000
+          path: work/\${{ matrix.domain }}/parts/\${{ matrix.domain }}.part.000
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload part 001
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-\${{ matrix.domain }}-part-001
+          path: work/\${{ matrix.domain }}/parts/\${{ matrix.domain }}.part.001
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload part 002
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-\${{ matrix.domain }}-part-002
+          path: work/\${{ matrix.domain }}/parts/\${{ matrix.domain }}.part.002
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload checksums and source metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-\${{ matrix.domain }}-manifest
+          path: |
+            work/\${{ matrix.domain }}/parts/SHA256SUMS
+            work/\${{ matrix.domain }}/parts/SOURCE_RUN_ID
+          retention-days: 7
