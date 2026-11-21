@@ -1,0 +1,55 @@
+name: science-readonly-audits
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/audit_science_readonly.py"
+      - ".github/workflows/science_readonly_audit.yml"
+permissions:
+  actions: read
+  contents: read
+jobs:
+  science-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install read-only audit dependencies
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Download original Science checkpoint (read-only)
+        uses: actions/download-artifact@v4
+        with:
+          name: chakra-science
+          path: source
+          run-id: "44795411621"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Reconstruct source-style Science corpus
+        run: |
+          set -euo pipefail
+          python loop_fetch.py --shard 3 --domain science
+          python to_text.py --dir data --out data/corpus.txt --max-chars 600000000
+          test -s data/corpus.txt
+      - name: Run tokenizer, pattern, and held-out prediction audits
+        run: |
+          set -euo pipefail
+          CKPT="$(find source -type f -name '*.pt' -print -quit)"
+          test -n "$CKPT"
+          python tools/audit_science_readonly.py \
+            --checkpoint "$CKPT" \
+            --corpus data/corpus.txt \
+            --max-per-language 80 \
+            --batch-size 4 \
+            --out science_readonly_audit.json
+      - name: Upload audit report only
+        uses: actions/upload-artifact@v4
+        with:
+          name: science-readonly-audit-report
+          path: science_readonly_audit.json
+          if-no-files-found: error
+          retention-days: 90
