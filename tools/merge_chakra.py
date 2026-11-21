@@ -67,6 +67,7 @@ def main():
     ap.add_argument("--domain", default="")
     ap.add_argument("--final-output", default="")
     ap.add_argument("--report", default="out/merge_report.json")
+    ap.add_argument("--source-run-id", default="")
     args = ap.parse_args()
 
     if args.finalize_only:
@@ -114,6 +115,7 @@ def main():
             "base_graph": ck.get("graph"),
             "base_config": ck.get("config", {}),
             "domains": [],
+            "source_run_id": args.source_run_id or "unknown",
             "architecture": {k: list(v.shape) for k, v in model.items()},
         }
         token_hits = len(vocab)
