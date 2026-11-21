@@ -35,7 +35,7 @@ jobs:
       - name: select latest successful CHAKRA run
         id: source
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           RUN_ID="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow chakra_loop --status completed --json databaseId,conclusion,createdAt --limit 30 | python -c 'import json,sys; a=[x for x in json.load(sys.stdin) if x["conclusion"]=="success"]; a.sort(key=lambda x:x["createdAt"],reverse=True); print(a[0]["databaseId"] if a else "")')"
@@ -44,8 +44,8 @@ jobs:
           echo "Selected CHAKRA run: $RUN_ID"
       - name: download, verify, and merge all ten checkpoints sequentially
         env:
-          RUN_ID: \${{ steps.source.outputs.run_id }}
-          GH_TOKEN: \${{ github.token }}
+          RUN_ID: ${{ steps.source.outputs.run_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p out checkpoints
@@ -64,7 +64,7 @@ jobs:
       - name: publish experimental merged model and reports
         uses: actions/upload-artifact@v4
         with:
-          name: chakra-merged-experimental-\${{ steps.source.outputs.run_id }}
+          name: chakra-merged-experimental-${{ steps.source.outputs.run_id }}
           path: |
             out/merged_model.pt
             out/merge_report.json
