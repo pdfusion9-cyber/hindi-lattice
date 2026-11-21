@@ -1,0 +1,231 @@
+name: chakra-expert-bank-verify
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/chakra_expert_bank_verify.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify-expert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        domain: [science, math, reasoning, news, qa, general, coding, document, history, geography]
+    env:
+      SOURCE_RUN_ID: "44795411621"
+      PACKAGE_RUN_ID: "44889198913"
+      DOMAIN: ${{ matrix.domain }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install CPU PyTorch
+        run: python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: download original source checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: chakra-${{ matrix.domain }}
+          path: source
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: download expert parts and checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for part in 000 001 002; do
+            gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name "chakra-expert-$DOMAIN-part-$part" --dir "out"
+          done
+          gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name "chakra-expert-$DOMAIN-manifest" --dir "out"
+          ls -lh out
+      - name: verify part checksums, reassemble and compare with source
+        run: |
+          set -euo pipefail
+          test -s "source/ckpt/sampurna.pt"
+          test -s "out/$DOMAIN.SHA256SUMS"
+          test -s "out/$DOMAIN.manifest.json"
+          (cd out && sha256sum -c "$DOMAIN.SHA256SUMS")
+          cat "out/$DOMAIN.expert.part-000" \
+              "out/$DOMAIN.expert.part-001" \
+              "out/$DOMAIN.expert.part-002" > "out/$DOMAIN.expert.pt"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          import torch
+
+          domain = os.environ["DOMAIN"]
+          source_path = Path("source/ckpt/sampurna.pt")
+          package_path = Path(f"out/{domain}.expert.pt")
+          manifest_path = Path(f"out/{domain}.manifest.json")
+
+          def sha256(path):
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  for block in iter(lambda: f.read(8 * 1024 * 1024), b""):
+                      h.update(block)
+              return h.hexdigest()
+
+          def same(a, b, path="metadata"):
+              if isinstance(a, torch.Tensor) or isinstance(b, torch.Tensor):
+                  if not (isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor)):
+                      raise AssertionError(f"{path}: tensor type mismatch")
+                  if a.dtype != b.dtype or tuple(a.shape) != tuple(b.shape) or not torch.equal(a, b):
+                      raise AssertionError(f"{path}: tensor differs")
+                  return
+              if isinstance(a, dict) or isinstance(b, dict):
+                  if not (isinstance(a, dict) and isinstance(b, dict)) or set(a) != set(b):
+                      raise AssertionError(f"{path}: dict keys differ")
+                  for k in a:
+                      same(a[k], b[k], f"{path}.{k}")
+                  return
+              if isinstance(a, (list, tuple)) or isinstance(b, (list, tuple)):
+                  if type(a) is not type(b) or len(a) != len(b):
+                      raise AssertionError(f"{path}: sequence shape/type differs")
+                  for i, (x, y) in enumerate(zip(a, b)):
+                      same(x, y, f"{path}[{i}]")
+                  return
+              if a != b:
+                  raise AssertionError(f"{path}: value differs")
+
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          output_hash = sha256(package_path)
+          if output_hash != manifest["output_sha256"]:
+              raise SystemExit("reassembled package SHA256 does not match manifest")
+
+          source = torch.load(source_path, map_location="cpu", weights_only=False)
+          packaged = torch.load(package_path, map_location="cpu", weights_only=False)
+          if packaged.get("format") != "chakra-independent-expert-v1":
+              raise SystemExit("unexpected package format")
+          if packaged.get("domain") != domain:
+              raise SystemExit("domain label mismatch")
+          if packaged.get("source_run_id") != os.environ["SOURCE_RUN_ID"]:
+              raise SystemExit("source run ID mismatch")
+          if packaged["provenance"]["source_checkpoint_sha256"] != sha256(source_path):
+              raise SystemExit("source checkpoint SHA256 mismatch")
+
+          source_state = source["m"]
+          package_state = packaged["m"]
+          if set(source_state) != set(package_state):
+              raise SystemExit("model tensor keys differ")
+          parameter_count = 0
+          state_hash = hashlib.sha256()
+          for name in sorted(source_state):
+              a, b = source_state[name], package_state[name]
+              if a.dtype != b.dtype or tuple(a.shape) != tuple(b.shape):
+                  raise SystemExit(f"tensor metadata mismatch: {name}")
+              if not torch.equal(a, b):
+                  raise SystemExit(f"tensor values changed in packaging: {name}")
+              if a.is_floating_point() and not torch.isfinite(b).all().item():
+                  raise SystemExit(f"non-finite parameter tensor: {name}")
+              parameter_count += b.numel()
+              state_hash.update(name.encode("utf-8") + b"\\0")
+              state_hash.update(b.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes())
+
+          if parameter_count != manifest["parameter_count"]:
+              raise SystemExit("parameter count differs from manifest")
+          if packaged["V"] != source["V"] or packaged["vocab"] != source["vocab"]:
+              raise SystemExit("vocabulary mismatch")
+          if packaged["pats"] != source["pats"]:
+              raise SystemExit("pattern metadata mismatch")
+          same(source.get("graph"), packaged.get("graph"), "graph")
+          same(source.get("config", {}), packaged.get("config", {}), "config")
+          for key in ("dim", "layers", "heads"):
+              if int(source[key]) != int(packaged[key]):
+                  raise SystemExit(f"architecture mismatch: {key}")
+
+          report = {
+              "domain": domain,
+              "status": "PASS",
+              "source_run_id": os.environ["SOURCE_RUN_ID"],
+              "package_run_id": os.environ["PACKAGE_RUN_ID"],
+              "parameter_count": parameter_count,
+              "source_checkpoint_sha256": sha256(source_path),
+              "reassembled_package_sha256": output_hash,
+              "model_state_sha256": state_hash.hexdigest(),
+              "tensor_count": len(source_state),
+              "vocab_size": len(packaged["vocab"]),
+              "pattern_count": len(packaged["pats"]),
+              "graph_fields": sorted(packaged["graph"].keys()) if isinstance(packaged.get("graph"), dict) else [],
+              "source_weights_exact": True,
+              "graph_metadata_exact": True
+          }
+          Path(f"out/{domain}.verification.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          PY
+      - name: upload domain verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: expert-verify-report-${{ matrix.domain }}
+          path: out/${{ matrix.domain }}.verification.json
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    needs: verify-expert
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: download all domain reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: expert-verify-report-*
+          path: reports
+          merge-multiple: true
+      - name: verify 10 experts, total parameters and uniqueness
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import glob, json
+          from pathlib import Path
+
+          files = sorted(glob.glob("reports/*.verification.json"))
+          if len(files) != 10:
+              raise SystemExit(f"expected 10 reports, found {len(files)}")
+          reports = [json.loads(Path(p).read_text(encoding="utf-8")) for p in files]
+          expected = {"science","math","reasoning","news","qa","general","coding","document","history","geography"}
+          if {r["domain"] for r in reports} != expected:
+              raise SystemExit("domain set mismatch")
+          if any(r["status"] != "PASS" for r in reports):
+              raise SystemExit("one or more experts did not pass verification")
+          total = sum(r["parameter_count"] for r in reports)
+          hashes = [r["model_state_sha256"] for r in reports]
+          unique = len(set(hashes))
+          if total != 1846340608:
+              raise SystemExit(f"parameter sum mismatch: {total}")
+          if unique != 10:
+              raise SystemExit(f"expected 10 distinct model weight states; found {unique}")
+          report = {
+              "status": "PASS",
+              "verified_experts": len(reports),
+              "distinct_model_weight_states": unique,
+              "total_parameters": total,
+              "fp32_parameter_bytes": sum(r["parameter_count"] * 4 for r in reports),
+              "experts": reports
+          }
+          Path("chakra_expert_bank_verification.json").write_text(
+              json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+          print(json.dumps(report, ensure_ascii=False, indent=2))
+          PY
+      - name: publish consolidated audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: chakra-expert-bank-verification
+          path: chakra_expert_bank_verification.json
+          if-no-files-found: error
+          retention-days: 90
