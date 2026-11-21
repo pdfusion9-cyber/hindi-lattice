@@ -59,12 +59,15 @@ jobs:
           from pathlib import Path
           checksum_file = Path("source/manifest/science.SHA256SUMS")
           assert checksum_file.is_file(), list(Path("source/manifest").iterdir())
-          for line in checksum_file.read_text().splitlines():
+          entries = checksum_file.read_text().splitlines()
+          assert len(entries) == 3, f"expected 3 checksum entries, got {len(entries)}"
+          for line in entries:
               expected, rel = line.split(maxsplit=1)
-              path = Path(rel.strip().lstrip("*")).name
-              data = (Path("source") / path).read_bytes()
-              actual = hashlib.sha256(data).hexdigest()
-              assert actual == expected, f"checksum mismatch: {path}"
+              filename = Path(rel.strip().lstrip("*")).name
+              matches = list(Path("source").rglob(filename))
+              assert len(matches) == 1, f"expected one downloaded file for {filename}, got {matches}"
+              actual = hashlib.sha256(matches[0].read_bytes()).hexdigest()
+              assert actual == expected, f"checksum mismatch: {filename}"
           print("All three original checkpoint part SHA256 checks: PASS")
           manifest = Path("source/manifest/science.manifest.json")
           assert manifest.is_file()
