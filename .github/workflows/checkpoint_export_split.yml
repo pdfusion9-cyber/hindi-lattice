@@ -3,7 +3,8 @@ on:
   push:
     branches: [main]
     paths:
-      - ".github/workflows/checkpoint_export_split.yml"
+      - "THAW_TRAINING_WORKFLOWS"
+
 permissions:
   actions: read
   contents: read
