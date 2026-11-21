@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Read-only Science checkpoint audit. Never trains, saves, or mutates weights."""
 from __future__ import annotations
-import argparse, collections, hashlib, json, re
+import argparse, collections, hashlib, json, re, sys
 from pathlib import Path
 import torch
+
+# Make repository-root imports work when this file is executed as a script.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
 from tools.expert_inference import ExpertRunner, TOKEN_RE, pattern_id_for
 
 SOURCE_RUN = "44795411621"
@@ -34,6 +40,8 @@ def main():
         raise SystemExit("FAIL: unexpected expert domain/source provenance")
     vocab=runner.vocab
     vocab_to_id=runner.vocab_to_id
+    stop={w for i,w in enumerate(vocab)
+          if i < len(runner.vocab_counts) and int(runner.vocab_counts[i]) >= 300}
     counts=collections.Counter()
     train_hash_lines=[]
     accepted=0
@@ -91,7 +99,6 @@ def main():
             roundtrip_tokens+=c
             if vocab[idx]==w: roundtrip_ok+=c
 
-    stop={w for w,c in zip(vocab,runner.vocab_counts) if c>=300}
     pattern_counts=collections.Counter()
     pattern_prefix_exact=0
     pattern_full_known=0
@@ -126,7 +133,8 @@ def main():
                 if exact and (runner.patterns[pid],len(prefix)) in runner.slot_candidates:
                     slot_prefix_available+=1
                 pattern_counts["prefix_exact" if exact else "prefix_fallback"]+=1
-                x,nb,pid_t,mask=runner._build_inputs(prefix,pid)
+                prefix_ids=[vocab_to_id[w] for w in prefix]
+                x,nb,pid_t,mask=runner._build_inputs(prefix_ids,pid)
                 tensors.append((x,nb,pid_t,mask))
             x=torch.cat([z[0] for z in tensors],dim=0)
             nb=torch.cat([z[1] for z in tensors],dim=0)
