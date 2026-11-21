@@ -1,9 +1,10 @@
 name: punah10
 on:
-  workflow_dispatch:
-    inputs:
-      minutes:
-        default: "230"
+  push:
+    branches: [main]
+    paths:
+      - "THAW_TRAINING_WORKFLOWS"
+
 permissions:
   contents: write
   actions: read
