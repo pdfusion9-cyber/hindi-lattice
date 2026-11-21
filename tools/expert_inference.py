@@ -32,12 +32,14 @@ def _map_get(mapping: dict, key: int, default=None):
 
 
 def pattern_id_for(tokens: list[str], vocab: list[str], vocab_counts: list[int],
-                   patterns: list, pattern_to_id: dict) -> tuple[int, bool]:
-    """Return exact training-style pattern ID; unknown/incomplete -> safe ID 0."""
+                   patterns: list, pattern_to_id: dict,
+                   pattern_window: int = 0) -> tuple[int, bool]:
+    """Return an exact prefix-pattern ID; 0 means safe fallback, not a match."""
     counts = {w: int(vocab_counts[i]) for i, w in enumerate(vocab)
               if i < len(vocab_counts)}
     stop = {w for w, count in counts.items() if count >= 300}
-    pattern = tuple(w if w in stop else "*" for w in tokens)
+    source = tokens[-pattern_window:] if pattern_window > 0 else tokens
+    pattern = tuple(w if w in stop else "*" for w in source)
     idx = pattern_to_id.get(pattern)
     if idx is None:
         return 0, False
@@ -105,7 +107,12 @@ class ExpertRunner:
         self.vocab_counts = list(self.ck.get("vocab_counts") or [])
         self.graph = self.ck.get("graph") or {}
         self.config = self.ck.get("config") or {}
-        self.seq_len = 16  # punah.py default and training shape
+        self.seq_len = int(self.config.get("seq", 16))
+        self.pattern_window = int(self.config.get("pattern_window", 0))
+        if not 1 <= self.seq_len <= 256:
+            raise ValueError(f"Unsupported checkpoint sequence length: {self.seq_len}")
+        if self.pattern_window < 0:
+            raise ValueError("pattern_window must be >= 0")
         self.sparse_win = int(self.config.get("sparse_win", 6))
         self.nbr_count = int(self.config["nbr"])
         self.candidate_limit = int(self.config.get("cand", 50)) + int(
@@ -158,9 +165,8 @@ class ExpertRunner:
         values = _map_get(cands, last_token_id, []) or _map_get(nbrs, last_token_id, [])
         out = list(dict.fromkeys(int(v) for v in values
                                  if 0 <= int(v) < len(self.vocab)))
-        # Slot candidates are keyed by a complete training-sentence pattern
-        # and its absolute position. A prompt prefix cannot safely identify
-        # those values; do not inject pattern-0 slots on a failed match.
+        # Slot candidates use the same suffix-pattern and saturated position
+        # scheme as training. Never use pattern-0 slots after a failed match.
         if exact_pattern and 0 <= pattern_id < len(self.patterns):
             out.extend(self.slot_candidates.get((self.patterns[pattern_id], position), []))
         out = list(dict.fromkeys(out))
@@ -174,11 +180,14 @@ class ExpertRunner:
         ids = [self.vocab_to_id[w] for w in tokens if w in self.vocab_to_id]
         if len(ids) < 2:
             raise ValueError("At least two in-vocabulary prompt tokens are required")
+        known_tokens = [self.vocab[token_id] for token_id in ids]
         pid, exact_pattern = pattern_id_for(
-            tokens, self.vocab, self.vocab_counts, self.patterns, self.pattern_to_id)
+            known_tokens, self.vocab, self.vocab_counts, self.patterns,
+            self.pattern_to_id, self.pattern_window)
         x, nb, pid_tensor, mask = self._build_inputs(ids, pid)
         hidden = self.model(x, nb, pid_tensor, mask)[:, -1, :]
-        candidates = self._candidate_ids(ids[-1], pid, len(tokens), exact_pattern)
+        position = min(len(ids), self.seq_len)
+        candidates = self._candidate_ids(ids[-1], pid, position, exact_pattern)
         candidate_tensor = torch.tensor(candidates, dtype=torch.long, device=self.device)
         scores = hidden @ self.model.tok(candidate_tensor).T
         if not torch.isfinite(scores).all():
@@ -213,7 +222,7 @@ class ExpertRunner:
             "text": " ".join(generated),
             "diagnostics": diagnostics,
             "notice": ("Greedy graph-candidate continuation; not a validated answer-quality "
-                       "benchmark. Pattern ID falls back to 0 when no exact pattern matches."),
+                       "benchmark. Pattern ID falls back to 0 when no exact prefix-pattern matches."),
         }
 
 
