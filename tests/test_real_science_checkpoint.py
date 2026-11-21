@@ -24,7 +24,10 @@ def choose_prompt(runner, candidates, language):
     for prompt in candidates:
         tokens = tokenize(prompt)
         known = [w for w in tokens if w in runner.vocab_to_id]
-        if len(known) >= 2:
+        # punah.py trains on fixed 16-token windows and predicts from position
+        # T-1. Shorter prompts are right-padded; those are not a valid quality
+        # probe because the final query position can attend mostly to padding.
+        if len(known) >= 16:
             return prompt, len(known), len(tokens) - len(known)
     raise AssertionError(
         f"No {language} smoke prompt has >=2 in-vocabulary words; "
@@ -68,20 +71,18 @@ def main():
     hindi_prompt, hindi_known, hindi_oov = choose_prompt(
         runner,
         [
-            "परमाणु अणु ऊर्जा रासायनिक अभिक्रिया पदार्थ",
-            "रासायनिक अभिक्रिया में ऊर्जा परिवर्तन",
-            "परमाणु संरचना और पदार्थ",
-            "ऊर्जा पदार्थ अणु परमाणु",
+            "परमाणु पदार्थ का सूक्ष्म कण है और रासायनिक अभिक्रिया में ऊर्जा का परिवर्तन ताप दाब तथा प्रकाश के कारण हो सकता है",
+            "रासायनिक अभिक्रिया में परमाणु अणु ऊर्जा पदार्थ संरचना इलेक्ट्रॉन प्रोटॉन न्यूट्रॉन बंधन तापमान दाब विलयन अम्ल क्षार उत्प्रेरक",
+            "पदार्थ परमाणु अणु इलेक्ट्रॉन प्रोटॉन न्यूट्रॉन ऊर्जा ताप दाब प्रकाश रासायनिक अभिक्रिया संरचना बंधन विलयन अम्ल क्षार",
         ],
         "Hindi",
     )
     english_prompt, english_known, english_oov = choose_prompt(
         runner,
         [
-            "chemical reaction energy atom molecule",
-            "matter energy reaction atomic structure",
-            "atom molecule chemical reaction",
-            "energy matter molecule reaction",
+            "the atom is part of matter and energy can change during a chemical reaction with heat pressure and light",
+            "chemical reaction atom molecule energy matter structure electron proton neutron bond temperature pressure solution acid base catalyst",
+            "matter contains atoms molecules electrons protons neutrons energy temperature pressure light heat chemical bonds and reactions",
         ],
         "English",
     )
@@ -100,6 +101,7 @@ def main():
             "generated_text": result["text"],
             "known_prompt_tokens": result["known_prompt_tokens"],
             "unknown_prompt_tokens": result["unknown_prompt_tokens"],
+            "full_16_token_context": result["known_prompt_tokens"] >= 16,
             "generated_tokens": len(result["generated_tokens"]),
             "graph_candidate_counts": [d["candidate_count"] for d in result["diagnostics"]],
             "pattern_exact_matches": sum(bool(d["pattern_exact_match"]) for d in result["diagnostics"]),
