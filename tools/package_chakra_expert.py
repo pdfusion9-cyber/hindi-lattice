@@ -35,7 +35,7 @@ def main() -> None:
         raise SystemExit(f"missing/empty checkpoint: {src}")
 
     ck = torch.load(src, map_location="cpu", weights_only=False)
-    required = ("m", "V", "dim", "layers", "heads", "vocab", "pats", "graph", "config")
+    required = ("m", "V", "dim", "layers", "heads", "vocab", "pats")
     missing = [k for k in required if k not in ck]
     if missing:
         raise SystemExit(f"{args.domain}: missing fields: {missing}")
@@ -75,8 +75,8 @@ def main() -> None:
         "vocab_counts": ck.get("vocab_counts"),
         "pats": ck["pats"],
         "pat_counts": ck.get("pat_counts"),
-        "graph": ck["graph"],
-        "config": ck["config"],
+        "graph": ck.get("graph"),
+        "config": ck.get("config", {}),
         "step": int(ck.get("step", 0)),
         "parameter_count": int(parameters),
         "parameter_dtypes_numel": dtype_counts,
@@ -100,7 +100,7 @@ def main() -> None:
         "parameter_bytes": sum(t.numel() * t.element_size() for t in model.values()),
         "vocab_size": int(ck["V"]),
         "pattern_count": len(ck["pats"]),
-        "graph_fields": sorted(ck["graph"].keys()) if isinstance(ck["graph"], dict) else [],
+        "graph_fields": sorted(ck["graph"].keys()) if isinstance(ck.get("graph"), dict) else [],
         "model_config": {
             "dim": int(ck["dim"]), "layers": int(ck["layers"]), "heads": int(ck["heads"])
         },
