@@ -157,26 +157,37 @@ for old, new in remap.items():
 print(f"जाल: {len(nbrs):,} सेल से कड़ियाँ (पैक से)", flush=True)
 
 # ---------------- पैटर्न-तालिका ----------------
-STOP = {w for w, c in cnt.items() if c >= 300}
-def pattern(q): return tuple(w if w in STOP else "*" for w in q)
+STOP = {token_id for token_id, count in cnt.items() if count >= 300}
+PATTERN_WINDOW = max(1, min(int(a.seq), 8))
+
+def pattern(prefix):
+    suffix = prefix[-PATTERN_WINDOW:]
+    return tuple(token_id if token_id in STOP else "*" for token_id in suffix)
+
+# Build pattern slots from the prefix available at prediction time, not from
+# the complete future sentence. Positions saturate at the model context size.
 pat_slots = defaultdict(lambda: defaultdict(Counter)); pat_count = Counter()
 for q in paths:
-    pt = pattern(q); pat_count[pt] += 1
-    for i, w in enumerate(q):
-        if pt[i] == "*": pat_slots[pt][i][w] += 1
-pats = [x for x, c in pat_count.items() if c >= a.minpat]
+    for i in range(2, len(q)):
+        pt = pattern(q[:i])
+        pos_key = min(i, a.seq)
+        pat_count[pt] += 1
+        pat_slots[pt][pos_key][q[i]] += 1
+pats = [x for x, count in pat_count.items() if count >= a.minpat]
 pidx = {x: i for i, x in enumerate(pats)}
 slot_cand = {}
 for pt in pats:
-    for i in range(len(pt)):
-        if pt[i] == "*":
-            slot_cand[(pt, i)] = [w for w, _ in pat_slots[pt][i].most_common(a.pat_cand) if w in remap.values() or True]
-print(f"पैटर्न {len(pats):,} | स्लॉट {len(slot_cand):,}", flush=True)
+    for pos_key, candidates in pat_slots[pt].items():
+        slot_cand[(pt, pos_key)] = [
+            token_id for token_id, _ in candidates.most_common(a.pat_cand)
+            if 0 <= token_id < V
+        ]
+print(f"पैटर्न {len(pats):,} | स्लॉट {len(slot_cand):,} | prefix-window {PATTERN_WINDOW}", flush=True)
 
 # ---------------- अनुक्रम ----------------
 # पैक में पाथ 4-25 शब्दों के होते हैं; seq केवल अधिकतम context-window है।
 # हर उदाहरण को पूरे पाथ से sample करें, न कि seq+2 लंबाई वाले पाथ तक सीमित करें।
-seqs = [(q, pattern(q)) for q in paths if len(q) >= 3]
+seqs = [q for q in paths if len(q) >= 3]
 if not seqs:
     print("दो-token context वाले पाथ नहीं मिले", flush=True)
     raise SystemExit(1)
@@ -263,28 +274,31 @@ def mk(rows):
     B = len(rows); T = a.seq; K = a.cand + a.pat_cand
     X = torch.zeros(B, T, dtype=torch.long); NB = torch.zeros(B, T, a.nbr, dtype=torch.long)
     PI = torch.zeros(B, dtype=torch.long); CL = torch.zeros(B, K, dtype=torch.long)
-    YC = torch.zeros(B, dtype=torch.long); keep = []
-    for j, (ids, pt) in enumerate(rows):
+    CM = torch.zeros(B, K, dtype=torch.bool)
+    YC = torch.full((B,), -1, dtype=torch.long); keep = []
+    for j, ids in enumerate(rows):
         i = random.randrange(2, len(ids))
         ctx = ids[max(0, i-T):i]
         if len(ctx) < 2: continue
         X[j, :len(ctx)] = torch.tensor(ctx)
         for t in range(len(ctx)):
             for q, u in enumerate(nbrs.get(ctx[t], [])[:a.nbr]): NB[j, t, q] = u
+        pt = pattern(ids[:i])
+        pos_key = min(i, a.seq)
         PI[j] = pidx.get(pt, 0)
         tgt = ids[i]
-        pool = list(dict.fromkeys(cands.get(ids[i-1], []) + slot_cand.get((pt, i), [])))
-        if tgt not in pool:
-            pool.append(tgt)
-        if len(pool) > K:
-            pool = pool[:K]
-            if tgt not in pool:          # काटने से लक्ष्य न गिरे
-                pool[-1] = tgt
+        pool = list(dict.fromkeys(cands.get(ids[i-1], []) + slot_cand.get((pt, pos_key), [])))
+        pool = [v for v in pool if 0 <= v < V][:K]
+        if not pool:
+            pool = list(range(min(K, V)))
         CL[j, :len(pool)] = torch.tensor(pool)
-        YC[j] = pool.index(tgt); keep.append(j)
+        CM[j, :len(pool)] = True
+        if tgt in pool:
+            YC[j] = pool.index(tgt)
+        keep.append(j)
     if not keep: return None
     ix = torch.tensor(keep)
-    return X[ix], NB[ix], PI[ix], CL[ix], YC[ix]
+    return X[ix], NB[ix], PI[ix], CL[ix], YC[ix], CM[ix]
 
 
 t0 = time.time(); last = 0.0; step = step0
@@ -292,9 +306,14 @@ while step < a.steps and (time.time() - t0) < a.budget:
     step += 1
     b = mk(random.sample(train, min(a.batch, len(train))))
     if b is None: continue
-    X, NB, PI, CL, YC = b
+    X, NB, PI, CL, YC, CM = b
     h = m(X, NB, PI)[:, -1, :]
-    loss = F.cross_entropy((h[:, None, :] * m.tok(CL)).sum(-1), YC)
+    logits = (h[:, None, :] * m.tok(CL)).sum(-1)
+    logits = logits.masked_fill(~CM, torch.finfo(logits.dtype).min)
+    valid = YC >= 0
+    if not valid.any():
+        continue
+    loss = F.cross_entropy(logits[valid], YC[valid])
     opt.zero_grad(); loss.backward()
     torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0); opt.step()
     last = loss.item()
@@ -302,19 +321,24 @@ while step < a.steps and (time.time() - t0) < a.budget:
         print(f"  कदम {step:,} | loss {last:.3f}", flush=True)
     if step % 2000 == 0:
         os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
-        torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": vocab_tokens, "pats": pats, "use": use}, a.ckpt)
+        torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": vocab_tokens, "pats": pats, "use": use,
+           "seq": a.seq, "pattern_window": PATTERN_WINDOW}, a.ckpt)
 
 m.eval(); h1 = h5 = tot = 0
 with torch.no_grad():
     for i in range(0, min(len(test), 1500), 32):
         b = mk(test[i:i+32])
         if b is None: continue
-        X, NB, PI, CL, YC = b
+        X, NB, PI, CL, YC, CM = b
         sc = (m(X, NB, PI)[:, -1, :][:, None, :] * m.tok(CL)).sum(-1)
-        h1 += (sc.argmax(-1) == YC).sum().item()
-        h5 += sum(1 for j in range(len(YC)) if YC[j] in sc.topk(5, -1).indices[j])
+        sc = sc.masked_fill(~CM, torch.finfo(sc.dtype).min)
+        valid = YC >= 0
+        h1 += ((sc.argmax(-1) == YC) & valid).sum().item()
+        topk = sc.topk(min(5, sc.shape[-1]), -1).indices
+        h5 += sum(1 for j in range(len(YC)) if valid[j] and YC[j] in topk[j])
         tot += len(YC)
-print(f"\nपरीक्षा ({tot:,}): पहले 1 में {h1/max(tot,1)*100:.1f}% | पहले 5 में {h5/max(tot,1)*100:.1f}%", flush=True)
+print(f"\nheld-out candidate evaluation ({tot:,}; target-miss counts wrong): Top-1 {h1/max(tot,1)*100:.1f}% | Top-5 {h5/max(tot,1)*100:.1f}%", flush=True)
 os.makedirs(os.path.dirname(a.ckpt) or ".", exist_ok=True)
-torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": vocab_tokens, "pats": pats, "use": use}, a.ckpt)
+torch.save({"m": m.state_dict(), "o": opt.state_dict(), "step": step, "V": V, "dim": a.dim, "layers": a.layers, "heads": a.heads, "vocab": vocab_tokens, "pats": pats, "use": use,
+           "seq": a.seq, "pattern_window": PATTERN_WINDOW}, a.ckpt)
 print(f"सहेजा: {a.ckpt} (कदम {step:,})", flush=True)
