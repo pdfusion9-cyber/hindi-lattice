@@ -129,6 +129,66 @@ def main():
         "candidate_lists_identical": collections.Counter(),
         "top1_agreement": collections.Counter()
     }
+
+    # Retrieval ablations: all candidates come from checkpoint graph metadata
+    # (plus an optional frequency-ranked backfill). Targets are never injected.
+    retrieval_limits = (70, 140, 280)
+    retrieval_strategies = (
+        "last_token_graph",
+        "context_recent_union",
+        "context_rrf",
+        "context_rrf_freq_backfill"
+    )
+    retrieval_metrics = {
+        strategy: {
+            limit: {
+                "examples": 0, "covered": 0, "correct": 0,
+                "reciprocal_rank_sum": 0.0, "nll_sum": 0.0,
+                "nll_count": 0, "candidate_count_sum": 0
+            }
+            for limit in retrieval_limits
+        }
+        for strategy in retrieval_strategies
+    }
+
+    def graph_successors(token_id):
+        values = _map_get(runner.graph.get("cands", {}), token_id, [])
+        if not values:
+            values = _map_get(runner.graph.get("nbrs", {}), token_id, [])
+        return list(dict.fromkeys(
+            int(v) for v in (values or [])
+            if 0 <= int(v) < len(vocab)
+        ))
+
+    def retrieval_list(prefix_ids, strategy, limit):
+        if strategy == "last_token_graph":
+            values = graph_successors(prefix_ids[-1])
+        elif strategy == "context_recent_union":
+            values = []
+            seen = set()
+            for token_id in reversed(prefix_ids):
+                for candidate in graph_successors(token_id):
+                    if candidate not in seen:
+                        seen.add(candidate)
+                        values.append(candidate)
+        else:
+            fused_score = collections.defaultdict(float)
+            insertion_order = {}
+            for distance, token_id in enumerate(reversed(prefix_ids)):
+                for rank, candidate in enumerate(graph_successors(token_id)):
+                    fused_score[candidate] += 1.0 / ((distance + 1) * (rank + 1))
+                    if candidate not in insertion_order:
+                        insertion_order[candidate] = len(insertion_order)
+            values = sorted(
+                fused_score,
+                key=lambda candidate: (-fused_score[candidate], insertion_order[candidate])
+            )
+            if strategy == "context_rrf_freq_backfill":
+                seen = set(values)
+                values.extend(token_id for token_id in range(len(vocab)) if token_id not in seen)
+        if not values:
+            values = list(range(min(limit, len(vocab))))
+        return values[:limit]
     for lang in ("Hindi","English"):
         rows=eval_rows[lang]
         for start in range(0,len(rows),args.batch_size):
@@ -209,6 +269,32 @@ def main():
                         stats["nll_n"][lang]+=1
                         if candidates[int(mode_scores.argmax().item())] == target:
                             stats["correct"][lang]+=1
+
+                # Score fixed retrieval lists against the same frozen hidden state.
+                prefix_ids=[vocab_to_id[w] for w in prefix]
+                for strategy in retrieval_strategies:
+                    for limit in retrieval_limits:
+                        candidates = retrieval_list(prefix_ids,strategy,limit)
+                        ids_tensor=torch.tensor(candidates,dtype=torch.long)
+                        candidate_scores=hidden[j] @ runner.model.tok(ids_tensor).T
+                        if not torch.isfinite(candidate_scores).all():
+                            raise RuntimeError("Non-finite retrieval candidate scores")
+                        ranked=torch.argsort(candidate_scores,descending=True)
+                        stats=retrieval_metrics[strategy][limit]
+                        stats["examples"]+=1
+                        stats["candidate_count_sum"]+=len(candidates)
+                        if target in candidates:
+                            stats["covered"]+=1
+                            target_index=candidates.index(target)
+                            rank_pos=(ranked==target_index).nonzero(as_tuple=False)
+                            target_rank=int(rank_pos[0].item())+1
+                            stats["reciprocal_rank_sum"]+=1.0/target_rank
+                            stats["nll_sum"]+=float(
+                                (-torch.log_softmax(candidate_scores,dim=0)[target_index]).item()
+                            )
+                            stats["nll_count"]+=1
+                            if int(ranked[0].item())==target_index:
+                                stats["correct"]+=1
     report={
       "status":"PASS",
       "mode":"READ_ONLY_NO_TRAINING_NO_CHECKPOINT_WRITES_NO_QUANTIZATION",
@@ -253,6 +339,37 @@ def main():
         }
       }
     }
+    report["candidate_retrieval_experiment"] = {
+      "method":"same held-out examples and frozen checkpoint; graph-derived candidate sets; no target injection",
+      "weights_or_checkpoint_modified":False,
+      "candidate_limits":list(retrieval_limits),
+      "metrics_definition":{
+        "candidate_recall":"fraction of examples whose true next token is present in the candidate set",
+        "candidate_set_top1_accuracy_all":"correct candidate argmax divided by all examples; target misses count incorrect",
+        "mean_reciprocal_rank_all":"mean reciprocal rank; target misses contribute zero",
+        "candidate_set_perplexity_when_target_covered":"exp(mean negative log probability) for covered examples only; not full-vocabulary perplexity",
+        "average_candidate_count":"mean candidate IDs scored per example"
+      },
+      "strategies":{}
+    }
+    for strategy in retrieval_strategies:
+        report["candidate_retrieval_experiment"]["strategies"][strategy]={}
+        for limit in retrieval_limits:
+            st=retrieval_metrics[strategy][limit]
+            n=st["examples"]
+            covered=st["covered"]
+            report["candidate_retrieval_experiment"]["strategies"][strategy][str(limit)]={
+              "examples":n,
+              "candidate_recall":covered/max(n,1),
+              "candidate_recall_count":covered,
+              "candidate_set_top1_accuracy_all":st["correct"]/max(n,1),
+              "candidate_set_top1_correct":st["correct"],
+              "mean_reciprocal_rank_all":st["reciprocal_rank_sum"]/max(n,1),
+              "candidate_set_top1_accuracy_when_target_covered":st["correct"]/max(covered,1),
+              "candidate_set_perplexity_when_target_covered":float(__import__("math").exp(st["nll_sum"]/max(st["nll_count"],1))),
+              "average_candidate_count":st["candidate_count_sum"]/max(n,1)
+            }
+
     report["pattern_ablation"] = {
       "method":"same held-out prefixes and frozen checkpoint; pattern_off forces pattern ID 0 and disables pattern-slot candidates",
       "weights_or_checkpoint_modified":False,
