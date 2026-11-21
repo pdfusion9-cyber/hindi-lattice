@@ -32,16 +32,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p experts
+          # Fetch all 40 small artifacts in one CLI operation rather than
+          # repeatedly listing the same run's artifacts for every split.
+          gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --pattern "chakra-expert-*" --dir "experts"
           for domain in science math reasoning news qa general coding document history geography; do
             for part in 000 001 002; do
-              gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-                --name "chakra-expert-$domain-part-$part" --dir "experts"
+              src="$(find experts -type f -name "$domain.expert.part-$part" -print -quit)"
+              test -n "$src" || { echo "MISSING_PART:$domain:$part"; exit 1; }
+              cat "$src" >> "experts/$domain.expert.pt"
             done
-            gh run download "$PACKAGE_RUN_ID" --repo "$GITHUB_REPOSITORY" \
-              --name "chakra-expert-$domain-manifest" --dir "experts"
-            cat "experts/$domain.expert.part-000" \
-                "experts/$domain.expert.part-001" \
-                "experts/$domain.expert.part-002" > "experts/$domain.expert.pt"
+            test -s "experts/$domain.expert.pt" || exit 1
           done
           ls -lh experts/*.expert.pt
       - name: audit vocab patterns strict loader and real graph inference
