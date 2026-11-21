@@ -1,29 +1,10 @@
 name: train
 on:
-  workflow_dispatch:
-    inputs:
-      domain:
-        description: "डोमेन: science/math/reasoning/news/qa/general/coding/document"
-        default: "science"
-      shard:
-        description: "कर्सर (0-7)"
-        default: "0"
-      dim:
-        description: "आयाम"
-        default: "256"
-      steps:
-        description: "कुल कदम"
-        default: "300000"
-      articles:
-        description: "विकिपीडिया लेख"
-        default: "40000"
-  schedule:
-    - cron: "0 */6 * * *"
   push:
     branches: [main]
     paths:
-      - "fetch_domain.py"
-      - ".github/workflows/train.yml"
+      - "THAW_TRAINING_WORKFLOWS"
+
 permissions:
   contents: write
 concurrency:
