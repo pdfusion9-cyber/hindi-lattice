@@ -287,11 +287,11 @@ def main():
           "candidate_set_perplexity_when_target_covered":float(__import__("math").exp(candidate_perplexity_sum[lang]/max(candidate_perplexity_n[lang],1))),
           "candidate_limit":runner.candidate_limit
         }
-    report["pattern_ablation"]["comparison"][lang]={
-      "candidate_lists_identical":ablation_compare["candidate_lists_identical"][lang],
-      "top1_predictions_identical":ablation_compare["top1_agreement"][lang],
-      "examples":evaluated[lang]
-    }
+        report["pattern_ablation"]["comparison"][lang]={
+          "candidate_lists_identical":ablation_compare["candidate_lists_identical"][lang],
+          "top1_predictions_identical":ablation_compare["top1_agreement"][lang],
+          "examples":evaluated[lang]
+        }
     Path(args.out).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
     print(json.dumps(report,ensure_ascii=False,indent=2))
 
