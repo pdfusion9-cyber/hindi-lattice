@@ -1,9 +1,23 @@
 name: chakra_loop
 on:
+  workflow_dispatch:
+    inputs:
+      cycle:
+        description: rotating data cycle
+        required: false
+        default: "1"
+      minutes:
+        description: training minutes per domain
+        required: false
+        default: "280"
   push:
     branches: [main]
     paths:
-      - "THAW_TRAINING_WORKFLOWS"
+      - ".github/workflows/chakra_loop.yml"
+      - "punah.py"
+      - "loop_fetch.py"
+      - "to_text.py"
+      - "chakra_lo.py"
 
 permissions:
   contents: write
