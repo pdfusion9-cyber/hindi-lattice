@@ -14,8 +14,14 @@ def test_tiny_reference_forward_backward():
     loss = result["logits"].float().square().mean() + result["router_aux_loss"]
     assert torch.isfinite(loss)
     loss.backward()
-    grads = [p.grad for p in model.parameters() if p.requires_grad]
-    assert grads and all(g is not None and torch.isfinite(g).all() for g in grads)
+    trainable = [p for p in model.parameters() if p.requires_grad]
+    grads = [p.grad for p in trainable if p.grad is not None]
+    # Sparse Top-2 routing intentionally leaves unselected experts without gradients.
+    # Require finite gradients for every parameter that participated in this batch,
+    # and verify that the shared path and router are trainable.
+    assert grads and all(torch.isfinite(g).all() for g in grads)
+    assert model.embed.weight.grad is not None
+    assert model.layers[0].router.proj.weight.grad is not None
     assert count_parameters(model) > 0
 
 def test_top2_router_weights_are_normalized():
