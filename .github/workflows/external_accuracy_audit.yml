@@ -1,0 +1,88 @@
+name: external-accuracy-audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Completed Loop10 run ID containing ckpt-* and pack-* artifacts"
+        required: true
+        type: string
+      questions:
+        description: "External test examples per domain"
+        required: false
+        default: "500"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  evaluate:
+    name: external accuracy (${{ matrix.domain }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - {domain: science, shard: 0, test_shard: 4}
+          - {domain: math, shard: 1, test_shard: 5}
+          - {domain: reasoning, shard: 2, test_shard: 6}
+          - {domain: news, shard: 3, test_shard: 7}
+          - {domain: qa, shard: 4, test_shard: 0}
+          - {domain: general, shard: 5, test_shard: 1}
+          - {domain: coding, shard: 6, test_shard: 2}
+          - {domain: document, shard: 7, test_shard: 3}
+          - {domain: history, shard: 0, test_shard: 4}
+          - {domain: geography, shard: 1, test_shard: 5}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install evaluator dependencies
+        run: |
+          python -m pip install -q numpy pyarrow
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
+      - name: download exact checkpoint and training pack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name "ckpt-${{ matrix.domain }}" --dir checkpoint
+          gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name "pack-${{ matrix.domain }}" --dir lattice
+          CKPT=$(find checkpoint -name sampurna.pt -type f -print -quit)
+          PACK=$(find lattice -name '*.pack' -type f -print -quit)
+          test -s "$CKPT"
+          test -s "$PACK"
+          echo "CKPT=$CKPT" >> "$GITHUB_ENV"
+          echo "PACK=$PACK" >> "$GITHUB_ENV"
+          echo "checkpoint bytes: $(stat -c%s "$CKPT")"
+          echo "training pack bytes: $(stat -c%s "$PACK")"
+      - name: fetch disjoint Hindi FineWeb-2 shard
+        run: |
+          set -euo pipefail
+          mkdir -p external
+          FILE=$(printf "%03d_00000.parquet" "${{ matrix.test_shard }}")
+          URL="https://huggingface.co/datasets/HuggingFaceFW/fineweb-2/resolve/main/data/hin_Deva/train/$FILE"
+          curl -fL --retry 3 "$URL" -o "external/$FILE"
+          test -s "external/$FILE"
+          echo "TEST_PARQUET=external/$FILE" >> "$GITHUB_ENV"
+      - name: evaluate without target injection
+        env:
+          DOMAIN: ${{ matrix.domain }}
+          TEST_SHARD: ${{ matrix.test_shard }}
+        run: |
+          set -euo pipefail
+          python tools/external_accuracy.py --pack "$PACK" --ckpt "$CKPT" --test-parquet "$TEST_PARQUET" --nq "${{ inputs.questions }}" --out "results/${{ matrix.domain }}.json" --threads 4
+      - name: upload accuracy result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accuracy-${{ matrix.domain }}
+          path: results/
+          if-no-files-found: ignore
+          retention-days: 30
