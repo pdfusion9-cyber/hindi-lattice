@@ -1,0 +1,189 @@
+[
+  {
+    "expert_id": 0,
+    "name": "doc_editing",
+    "datasets": [
+      "grammarly/coedit"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 1,
+    "name": "doc_creation",
+    "datasets": [
+      "teknium/OpenHermes-2.5"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 2,
+    "name": "summarization",
+    "datasets": [
+      "ccdv/govreport-summarization",
+      "FiscalNote/billsum"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 3,
+    "name": "reading_qa",
+    "datasets": [
+      "HuggingFaceM4/DocumentVQA"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 4,
+    "name": "read_aloud",
+    "datasets": [
+      "ai4bharat/indicvoices_r",
+      "mythicinfinity/libritts"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 5,
+    "name": "user_guidance",
+    "datasets": [
+      "HuggingFaceFW/fineweb-edu",
+      "teknium/OpenHermes-2.5"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 6,
+    "name": "legal_contracts",
+    "datasets": [
+      "awinml/legalbench-rag"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 7,
+    "name": "legal_compliance",
+    "datasets": [
+      "kaushik-harsh-99/Indian-legal-data-v3",
+      "opennyaiorg/InJudgements_dataset"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 8,
+    "name": "professional_comms",
+    "datasets": [
+      "teknium/OpenHermes-2.5"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 9,
+    "name": "tables_ledgers",
+    "datasets": [
+      "ajimeno/PubTabNet"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 10,
+    "name": "ocr_pdf_layout",
+    "datasets": [
+      "allenai/olmOCR-mix-0225"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 11,
+    "name": "hindi_indic_docs",
+    "datasets": [
+      "ai4bharat/sangraha",
+      "ai4bharat/IndicCorpV2"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 12,
+    "name": "translation",
+    "datasets": [
+      "facebook/flores",
+      "openlanguagedata/flores_plus"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 13,
+    "name": "citations_dola",
+    "datasets": [
+      "sarthak-wiz01/legalbench"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 14,
+    "name": "technical_academic",
+    "datasets": [
+      "allenai/olmOCR-mix-0225"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 15,
+    "name": "hippocampal_d2l",
+    "datasets": [
+      "pszemraj/govreport-summarization-8192"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 16,
+    "name": "self_correction_mnl",
+    "datasets": [
+      "grammarly/coedit",
+      "teknium/OpenHermes-2.5"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 17,
+    "name": "coconut_planning",
+    "datasets": [
+      "launch/gov_report_qs"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 18,
+    "name": "bg_gate_early_exit",
+    "datasets": [
+      "curated_mixture_from_all_domains"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  },
+  {
+    "expert_id": 19,
+    "name": "fabric_swarm_tools",
+    "datasets": [
+      "hiyouga/glaive-function-calling-v2-sharegpt"
+    ],
+    "training_enabled": false,
+    "license_review_required": true
+  }
+]
