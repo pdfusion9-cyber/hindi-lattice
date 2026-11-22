@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   package-expert:
+    if: false # FROZEN: no CHAKRA training/runner jobs until explicitly thawed
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
