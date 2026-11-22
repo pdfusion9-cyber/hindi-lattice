@@ -1,0 +1,53 @@
+{
+  "model_type": "neurocore_edge_moe",
+  "architecture_version": "0.1.0-scaffold",
+  "status": "UNTRAINED_INITIALIZATION_ONLY",
+  "vocab_size": 65536,
+  "hidden_size": 2048,
+  "num_hidden_layers": 24,
+  "num_experts": 20,
+  "experts_per_token": 2,
+  "expert_intermediate_size": 1024,
+  "attention_heads": 16,
+  "kv_heads": 4,
+  "sliding_window": 2048,
+  "global_attention_layers": [
+    5,
+    11,
+    17,
+    23
+  ],
+  "recurrent_state_size": 128,
+  "router": "BG-Gate_top2",
+  "router_aux_loss_coefficient": 0.01,
+  "activation": "relu2",
+  "weight_target": "ternary_1.58bit",
+  "activation_target": "int8",
+  "mobile_runtime_targets": [
+    "Android_NNAPI_or_vendor_NPU",
+    "iOS_CoreML",
+    "CPU_bitnet_or_TMAC"
+  ],
+  "memory": {
+    "target_artifact_mb": 580,
+    "note": "580 MB is a target, not a verified size. Packed 1.58-bit weights alone consume about 562.9 MB at 2.85B parameters, before scales, embeddings metadata, tokenizer, and runtime. The accompanying architecture report estimates 0.68-0.75 GB."
+  },
+  "training": {
+    "enabled": false,
+    "runner_count": 20,
+    "shard_strategy": "one domain/expert adapter shard per runner; shared-backbone updates require a separate coordinated stage",
+    "checkpoint_format": "safetensors",
+    "optimizer": "AdamW_or_Adafactor",
+    "gradient_checkpointing": true,
+    "mixed_precision": "bf16_or_fp16",
+    "dataset_streaming": true
+  },
+  "parameter_budget_estimate": {
+    "target_total_parameters": 2850000000,
+    "estimated_shared_parameters": 837000000,
+    "estimated_all_expert_parameters": 2013265920,
+    "estimated_active_expert_parameters_per_token": 201326592,
+    "estimated_total_active_parameters_per_token": 1038000000,
+    "note": "Analytical estimate only; verify exact count from instantiated modules before training."
+  }
+}
