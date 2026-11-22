@@ -1,28 +1,19 @@
 name: loop10
+
+# FROZEN by request: no training and no scheduled runs.
+# The workflow-file push launches a short sentinel matrix to cancel
+# any older loop10 jobs via the existing per-domain concurrency keys.
 on:
   workflow_dispatch:
-    inputs:
-      minutes:
-        description: training minutes per domain
-        required: false
-        default: "180"
   push:
     branches: [main]
     paths:
       - ".github/workflows/loop10.yml"
-      - "sampurna2.py"
-      - "pack_banao.py"
-      - "loop_fetch.py"
-      - "to_text.py"
-      - "uttar_naapo.py"
-      - "chhota_karo.py"
-      - "jodo_jaal.py"
-  schedule:
-    - cron: '0 */6 * * *'
 
 permissions:
   actions: read
   contents: read
+
 jobs:
   train:
     strategy:
@@ -30,148 +21,30 @@ jobs:
       max-parallel: 10
       matrix:
         include:
-          - {domain: science, shard: 0}
-          - {domain: math, shard: 1}
-          - {domain: reasoning, shard: 2}
-          - {domain: news, shard: 3}
-          - {domain: qa, shard: 4}
-          - {domain: general, shard: 5}
-          - {domain: coding, shard: 6}
-          - {domain: document, shard: 7}
-          - {domain: history, shard: 8}
-          - {domain: geography, shard: 9}
+          - {domain: science}
+          - {domain: math}
+          - {domain: reasoning}
+          - {domain: news}
+          - {domain: qa}
+          - {domain: general}
+          - {domain: coding}
+          - {domain: document}
+          - {domain: history}
+          - {domain: geography}
     runs-on: ubuntu-latest
-    timeout-minutes: 280
-    concurrency: loop10-${{ matrix.domain }}
+    timeout-minutes: 5
+    concurrency:
+      group: loop10-${{ matrix.domain }}
+      cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: deps
+      - name: Freeze runner slot
         run: |
-          python -m pip install -q numpy pyarrow
-          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-      - name: restore previous compatible-domain checkpoint
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set +e
-          PREV=$(gh run list --workflow loop10.yml --json databaseId,status,conclusion --limit 30 | jq -r --arg current "$GITHUB_RUN_ID" '[.[] | select((.databaseId|tostring)!=$current and .status=="completed" and .conclusion=="success")][0].databaseId // empty')
-          if [ -n "$PREV" ]; then
-            echo "पिछला loop10 run: $PREV"
-            gh run download "$PREV" --name "ckpt-${{ matrix.domain }}" --dir . || echo "पुराना checkpoint नहीं मिला; fresh start"
-          else
-            echo "पिछला completed run नहीं; fresh start"
-          fi
-      - name: fetch data
-        run: |
-          python loop_fetch.py --shard ${{ matrix.shard }} --domain ${{ matrix.domain }}
-          python to_text.py --dir data --out data/corpus.txt --max-chars 600000000
-          wc -l data/corpus.txt
-      - name: build own lattice
-        run: |
-          python pack_banao.py --text data/corpus.txt --out data/gyaan.pack --max-paths 800000
-          ls -lh data/gyaan.pack
-      - name: train from own lattice + pattern table
-        run: |
-          set -o pipefail
-          MIN=${{ inputs.minutes || 180 }}
-          mkdir -p ckpt
-          echo "=== shuru: $MIN minute, budget $((MIN*60)) sec ==="
-          python sampurna2.py --pack data/gyaan.pack --facts data/gyaan.txt --dim 768 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget $((MIN*60)) --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt ckpt/sampurna.pt --threads 4 2>&1 | tail -200
-          echo "=== khatam. ckpt me kya hai: ==="
-          ls -lh ckpt/ || echo "ckpt khali"
-          if [ ! -f ckpt/sampurna.pt ]; then echo "!! CHECKPOINT NAHI BANA -- fail"; exit 1; fi
-          echo "checkpoint taiyar"
-      - name: measure accuracy
-        if: success()
-        run: |
-          set -euo pipefail
-          mkdir -p store
-          test -s ckpt/sampurna.pt
-          python uttar_naapo.py --pack data/gyaan.pack --facts data/gyaan.txt --ckpt ckpt/sampurna.pt --dim 768 --layers 4 --heads 8 --nq 300 --out store/uttar.json 2>&1 | tail -20
-          cat store/uttar.json || true
-      - name: quantize int8 int4
-        if: success()
-        run: |
-          python chhota_karo.py --ckpt ckpt/sampurna.pt --out store --part-mb 90 || echo "quantize skipped"
-      - name: save
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ckpt-${{ matrix.domain }}
-          path: |
-            ckpt/
-            store/
-          retention-days: 30
-          overwrite: true
-      - name: stage lattice artifact for merge
-        if: always()
-        run: |
-          mkdir -p artifact
-          if [ -s data/gyaan.pack ]; then cp data/gyaan.pack artifact/${{ matrix.domain }}.pack; fi
-          if [ -s data/gyaan.txt ]; then cp data/gyaan.txt artifact/${{ matrix.domain }}.txt; fi
-      - name: upload lattice artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pack-${{ matrix.domain }}
-          path: artifact/
-          if-no-files-found: error
-          retention-days: 30
-          overwrite: true
+          echo "FROZEN: ${{ matrix.domain }} training is disabled."
+          echo "No data fetch, training, quantization, merge, or checkpoint upload will run."
 
   merge:
+    if: false
     needs: train
-    if: needs.train.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: deps
-        run: |
-          python -m pip install -q numpy pyarrow
-          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
-      - name: download this-run lattice artifacts
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          pattern: pack-*
-          path: packs/
-          merge-multiple: true
-      - name: verify downloaded lattices
-        run: |
-          echo "डाउनलोड किए गए पैक:"
-          ls -lh packs/ || true
-          count=$(find packs -maxdepth 1 -name '*.pack' -type f | wc -l)
-          echo "वैध पैक फाइलें: $count"
-          if [ "$count" -ne 10 ]; then echo "FAIL: सभी 10 domain packs जरूरी हैं; मिले $count"; exit 1; fi
-      - name: merge all lattices and pattern tables
-        run: |
-          mkdir -p store
-          python jodo_jaal.py --packs packs/*.pack --out store/merged.pack --pat-out store/merged_pats.json 2>&1 | tail -30
-          cat packs/*.txt > store/merged_gyaan.txt 2>/dev/null || true
-          sort -u store/merged_gyaan.txt -o store/merged_gyaan.txt 2>/dev/null || true
-          ls -lh store/
-      - name: train one merged model
-        run: |
-          set -o pipefail
-          test -s store/merged.pack
-          python sampurna2.py --pack store/merged.pack --facts store/merged_gyaan.txt --dim 768 --layers 4 --heads 8 --seq 24 --batch 16 --steps 500000 --budget 3000 --nbr 8 --cand 50 --pat-cand 20 --lr 1e-4 --ckpt store/merged_model.pt --threads 4 2>&1 | tail -80
-          test -s store/merged_model.pt
-      - name: make int4 variant
-        run: |
-          python chhota_karo.py --ckpt store/merged_model.pt --out store --part-mb 90 || echo "quantize skipped"
-          ls -lh store/
-      - name: publish merged model
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: merged-model
-          path: store/
-          retention-days: 90
-          overwrite: true
+      - run: echo "Disabled while training is frozen."
