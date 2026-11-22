@@ -46,7 +46,18 @@
       "expert_merge",
       "router_calibration",
       "distillation_and_quantization"
-    ]
+    ],
+    "public_runner_preflight": {
+      "runner": "ubuntu-24.04",
+      "runner_type": "GitHub-hosted public standard",
+      "device": "cpu",
+      "max_parallel_jobs": 20,
+      "session_minutes": 280,
+      "job_timeout_minutes": 350,
+      "checkpoint_cadence_optimizer_steps": 250,
+      "mode": "preflight-only; no model training is dispatched by this commit"
+    },
+    "dataset_approval_file": "models/neurocore_edge/dataset_approval.json"
   },
   "parameter_budget_estimate": {
     "total_parameters": 2869448704,

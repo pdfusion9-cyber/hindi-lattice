@@ -1,0 +1,79 @@
+name: NeuroCore Public Runner Preflight (20 CPU jobs)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'models/neurocore_edge/**'
+      - '.github/workflows/neurocore_public_preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-runner:
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        runner_id: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check public runner capacity
+        run: |
+          python - <<'PY'
+          import os, shutil
+          ram = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+          disk = shutil.disk_usage(".").free
+          report = {
+              "runner": "GitHub-hosted ubuntu-24.04 public standard",
+              "cpu_count": os.cpu_count(),
+              "ram_gib": round(ram / 2**30, 2),
+              "free_disk_gib": round(disk / 2**30, 2),
+              "gpu_available": False,
+          }
+          print(report)
+          if (os.cpu_count() or 0) < 4:
+              raise SystemExit("FAIL: fewer than four CPU cores")
+          if ram < 12 * 2**30:
+              raise SystemExit("FAIL: less than 12 GiB host RAM")
+          if disk < 6 * 2**30:
+              raise SystemExit("FAIL: less than 6 GiB free disk")
+          PY
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Tiny CPU BF16 forward/backward and Adafactor smoke
+        env:
+          OMP_NUM_THREADS: '4'
+          MKL_NUM_THREADS: '4'
+        run: |
+          python - <<'PY'
+          import torch
+          torch.set_num_threads(4)
+          model = torch.nn.Sequential(
+              torch.nn.Linear(96, 128), torch.nn.GELU(), torch.nn.Linear(128, 32)
+          )
+          optimizer = torch.optim.Adafactor(
+              model.parameters(), lr=1e-3, weight_decay=0.0, foreach=False
+          )
+          x = torch.randn(4, 8, 96)
+          target = torch.randint(0, 32, (4, 8))
+          optimizer.zero_grad(set_to_none=True)
+          with torch.autocast(device_type="cpu", dtype=torch.bfloat16):
+              logits = model(x)
+              loss = torch.nn.functional.cross_entropy(logits.reshape(-1, 32), target.reshape(-1))
+          if not torch.isfinite(loss):
+              raise SystemExit("FAIL: non-finite CPU loss")
+          loss.backward()
+          torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+          optimizer.step()
+          print({"status": "PUBLIC_CPU_TRAIN_STEP_PASS", "torch": torch.__version__,
+                 "loss": float(loss.detach())})
+          PY
