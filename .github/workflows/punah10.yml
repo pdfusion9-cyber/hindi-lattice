@@ -10,6 +10,7 @@ permissions:
   actions: read
 jobs:
   train:
+    if: false # FROZEN: training disabled by project request
     strategy:
       fail-fast: false
       max-parallel: 10
