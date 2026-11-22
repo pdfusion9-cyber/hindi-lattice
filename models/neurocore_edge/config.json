@@ -1,20 +1,19 @@
 {
   "model_type": "neurocore_edge_moe",
-  "architecture_version": "0.1.0-scaffold",
+  "architecture_version": "0.2.0-pytorch-reference",
   "status": "UNTRAINED_INITIALIZATION_ONLY",
   "vocab_size": 65536,
   "hidden_size": 2048,
   "num_hidden_layers": 24,
   "num_experts": 20,
   "experts_per_token": 2,
-  "expert_intermediate_size": 1024,
+  "expert_intermediate_size": 660,
   "attention_heads": 16,
   "kv_heads": 4,
   "sliding_window": 2048,
   "global_attention_layers": [
-    5,
-    11,
-    17,
+    7,
+    15,
     23
   ],
   "recurrent_state_size": 128,
@@ -40,14 +39,20 @@
     "optimizer": "AdamW_or_Adafactor",
     "gradient_checkpointing": true,
     "mixed_precision": "bf16_or_fp16",
-    "dataset_streaming": true
+    "dataset_streaming": true,
+    "stages": [
+      "shared_backbone_pretrain",
+      "independent_expert_shards",
+      "expert_merge",
+      "router_calibration",
+      "distillation_and_quantization"
+    ]
   },
   "parameter_budget_estimate": {
-    "target_total_parameters": 2850000000,
-    "estimated_shared_parameters": 837000000,
-    "estimated_all_expert_parameters": 2013265920,
-    "estimated_active_expert_parameters_per_token": 201326592,
-    "estimated_total_active_parameters_per_token": 1038000000,
-    "note": "Analytical estimate only; verify exact count from instantiated modules before training."
-  }
+    "total_parameters": 2869448704,
+    "active_parameters_per_token": 1117671424,
+    "raw_1_58bit_weights_mb_decimal": 566.72,
+    "note": "Exact PyTorch meta-device module count; raw 1.58-bit arithmetic only, excluding scales, tokenizer, alignment and runtime. Architecture code is a reference implementation; W1.58A8 packing is not yet implemented."
+  },
+  "shared_intermediate_size": 3456
 }
