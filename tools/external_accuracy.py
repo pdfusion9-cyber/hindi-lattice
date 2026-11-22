@@ -174,8 +174,9 @@ class Model(nn.Module):
 
 
 def sentence_tokens(text):
-    for segment in re.split(r"[\n।.!?]+", text):
-        tokens = re.findall(r"[^\s,;:?!।]+", segment)
+    # Match pack_banao.py exactly: tokenize each input line with the training regex.
+    for line in text.splitlines():
+        tokens = re.findall(r"[^\s।,?!]+", line)
         if 4 <= len(tokens) <= 25:
             yield tokens
 
