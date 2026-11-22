@@ -19,9 +19,9 @@
   "recurrent_state_size": 128,
   "router": "BG-Gate_top2",
   "router_aux_loss_coefficient": 0.01,
-  "activation": "relu2",
-  "weight_target": "ternary_1.58bit",
-  "activation_target": "int8",
+  "activation": "SwiGLU_reference",
+  "weight_target": "ternary_1.58bit_after_training",
+  "activation_target": "ReLU2_after_architecture_validation",
   "mobile_runtime_targets": [
     "Android_NNAPI_or_vendor_NPU",
     "iOS_CoreML",
@@ -29,7 +29,7 @@
   ],
   "memory": {
     "target_artifact_mb": 580,
-    "note": "580 MB is a target, not a verified size. Packed 1.58-bit weights alone consume about 562.9 MB at 2.85B parameters, before scales, embeddings metadata, tokenizer, and runtime. The accompanying architecture report estimates 0.68-0.75 GB."
+    "note": "580 MB is an aspiration, not a verified artifact size. Exact PyTorch reference model has 2,869,448,704 parameters; 1.58-bit packed weights alone are about 566.72 MB decimal before scales, tokenizer, metadata and runtime. The supplied report estimates 0.68-0.75 GB."
   },
   "training": {
     "enabled": false,
