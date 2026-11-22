@@ -517,5 +517,22 @@
       "approved": false,
       "review_note": "Default deny. Pin HF revision/config/splits and verify license, commercial training, public redistribution, PII, consent and schema before approval."
     }
-  ]
+  ],
+  "approved_training_artifacts": [],
+  "approved_tokenizers": [],
+  "approval_policy": {
+    "rule": "Default deny. Every stage-specific tokenized corpus and tokenizer must be explicitly approved by exact SHA-256 before training.",
+    "artifact_fields": [
+      "stage",
+      "expert_id",
+      "sha256",
+      "approved",
+      "approval_id"
+    ],
+    "tokenizer_fields": [
+      "sha256",
+      "approved",
+      "approval_id"
+    ]
+  }
 }

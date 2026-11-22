@@ -1,8 +1,12 @@
-name: NeuroCore Reference Model Tests
+name: NeuroCore Canonical Reference Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, neurocore-v0.3.2-canonical-20261122]
+    paths:
+      - 'models/neurocore_edge/**'
+      - '.github/workflows/neurocore_public_tests.yml'
+  pull_request:
     paths:
       - 'models/neurocore_edge/**'
       - '.github/workflows/neurocore_public_tests.yml'
@@ -25,24 +29,33 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
           python -m pip install pytest
-      - name: Compile reference source
+      - name: Compile model source
         run: python -m py_compile models/neurocore_edge/*.py
-      - name: Run tiny reference-model tests
-        working-directory: models/neurocore_edge
+      - name: Run reference-model tests
         env:
+          PYTHONPATH: models/neurocore_edge
           OMP_NUM_THREADS: '2'
           MKL_NUM_THREADS: '2'
-        run: python -m pytest -q test_reference_model.py
-      - name: Verify training and dataset gates remain closed
+        run: |
+          if [ -d models/neurocore_edge/tests ]; then
+            python -m pytest -q models/neurocore_edge/tests
+          else
+            python -m pytest -q models/neurocore_edge/test_reference_model.py
+          fi
+      - name: Verify default-deny gates
         run: |
           python - <<'PY'
           import json
-          p=json.load(open("models/neurocore_edge/config.json"))
+          from pathlib import Path
+          p=json.loads(Path("models/neurocore_edge/config.json").read_text())
           assert p["status"] == "UNTRAINED_INITIALIZATION_ONLY"
           assert p["training"]["enabled"] is False
+          assert p["training"]["quantization_enabled"] is False
           assert p["num_experts"] == 20 and p["experts_per_token"] == 2
-          d=json.load(open("models/neurocore_edge/dataset_approval.json"))
+          assert p["expected_total_parameters"] == 3074885656
+          d=json.loads(Path("models/neurocore_edge/dataset_approval.json").read_text())
           assert d["status"] == "ALL_DATASETS_PENDING_REVIEW"
+          assert not d["approved_training_artifacts"] and not d["approved_tokenizers"]
           assert all(row["approved"] is False for row in d["datasets"])
-          print("REFERENCE_CONFIG_AND_DATASET_GATE_PASS")
+          print("CANONICAL_CONFIG_AND_DEFAULT_DENY_GATES_PASS")
           PY

@@ -1,60 +1,30 @@
-# NeuroCore-Edge (scaffold only)
+# NeuroCore-Edge v0.3.2 — canonical reference source
 
-Status: **UNTRAINED / NO CHECKPOINT / TRAINING DISABLED**.
+**State: untrained architecture/reference implementation. No trained checkpoint exists. Training, dataset approval, continuous training and quantization remain disabled.**
 
-This directory defines a mobile-first sparse MoE reference architecture for the
-Fabric Swarm document-processing application. It is not yet a usable assistant.
+## Canonical architecture contract
 
-## Architecture target
+- 3,074,885,656 unique parameters, intended to be verified by PyTorch meta-device counting with tied embedding/output weights counted once.
+- 20 distinct sparse experts per unique block; normal inference/training routes Top-2.
+- Sandwich execution: 2 prelude + 4 unique core blocks repeated 5 times + 2 coda = 24 effective operations over 8 unique parameterized blocks.
+- RoPE grouped-query causal attention (16 query heads / 4 KV heads), sliding-window mask, recurrent reference memory cell, gated ReLU-squared expert MLPs.
 
-- 20 domain experts, BG-Gate top-2 routing per token.
-- Shared hidden size 2048, 24 layers, 16 query heads / 4 KV heads.
-- Expert gated MLPs with ReLU^2; target ternary 1.58-bit weights and INT8 activations.
-- Bounded recurrent working-memory reference block; production Gated-DeltaNet/Mamba,
-  sliding-window attention, SnapKV, and device-specific NPU kernels remain TODO.
-- Mobile runtime targets: Android NNAPI/vendor NPU, iOS Core ML, and CPU fallback.
-- Dataset-to-expert mapping: `expert_manifest.json`.
+## Training pipeline contract
 
-## Important size reality check
+- Shared stage trains shared backbone while expert tensors are frozen.
+- Expert stage starts from the exact completed shared checkpoint and trains only one selected expert ID across all unique blocks.
+- Checkpoints must preserve model, optimizer, scheduler, RNG and data cursor state and reject mismatched config/tokenizer/dataset/base fingerprints.
+- Strict merge requires exactly one completed shard for every expert ID 0–19 and exact tensor keys/shapes/dtypes/finiteness.
+- Held-out evaluation reports Hindi and English next-token Top-1 accuracy, NLL and perplexity separately.
 
-The 580 MB target is not guaranteed. At 2.85B parameters, raw 1.58-bit packing
-alone is about 562.9 MB (decimal), before scale metadata, embeddings, tokenizer,
-routing tables, alignment, and runtime. The uploaded NeuroCore-Edge report itself
-estimates a 0.68-0.75 GB weight footprint for its 3B MoE reference model (page 6).
-The config records 580 MB as an aspiration, not a verified deliverable.
+## Fail-closed gates
 
-The reference model code uses ordinary PyTorch tensors. It does not implement
-native ternary packing, quantization kernels, production attention, or mobile
-export yet. A small CPU smoke test is provided; do not instantiate the 3B
-configuration on a phone until the packed runtime exists.
+- config.json keeps training disabled; explicit CLI opt-in alone does not approve data.
+- Dataset approval manifest defaults every dataset to pending and has empty exact-SHA approval lists for tokenized corpora and tokenizer.
+- Training must reject any tokenized corpus or tokenizer whose exact SHA-256 is not uniquely approved for its stage/expert.
+- CI never launches training. CPU preflight is not evidence of 3B training capacity.
+- Quantization and mobile export remain disabled until packing kernels, calibration, parity, memory, latency, energy and thermal tests pass.
 
-## 20-runner training plan (not enabled)
+## Evidence boundary
 
-1. Each runner streams only its assigned expert-domain data and writes a shard
-   with a common tokenizer/config fingerprint.
-2. Shared-backbone updates must be coordinated; independent expert runs alone
-   do not train a coherent 3B MoE.
-3. Merge only compatible shards after schema, tokenizer, tensor-shape, license,
-   and validation checks.
-4. Run staged distillation, calibration, INT8 activation calibration, ternary
-   weight conversion, then Android/iOS export.
-5. Keep optimizer state and raw training data off the mobile artifact.
-
-GitHub-hosted runners are not guaranteed to provide GPUs or enough RAM for this
-model. A runner matrix is orchestration, not a promise of 20 concurrent GPU
-machines. Confirm actual runner hardware/quota before any training is enabled.
-
-## Safety and data governance
-
-Dataset names are proposed sources from the project brief, not a verified
-license/compliance clearance. Verify each dataset's license, terms, provenance,
-PII policy, and jurisdictional suitability before streaming. Legal outputs must
-be labeled as drafting/information, not legal advice; jurisdiction and source
-citations must be explicit. TTS requires separate speech/audio model assets.
-
-## Smoke test
-
-```bash
-python -m pip install torch
-python models/neurocore_edge/modeling_neurocore_edge.py
-```
+A successful syntax check, tiny CPU test or meta-device parameter count is architecture/test evidence only. It is not evidence of convergence, language accuracy, trained checkpoints or mobile readiness.

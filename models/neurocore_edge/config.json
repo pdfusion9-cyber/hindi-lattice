@@ -1,69 +1,46 @@
 {
   "model_type": "neurocore_edge_moe",
-  "architecture_version": "0.2.0-pytorch-reference",
+  "architecture_version": "0.3.2-canonical",
   "status": "UNTRAINED_INITIALIZATION_ONLY",
   "vocab_size": 65536,
   "hidden_size": 2048,
-  "num_hidden_layers": 24,
   "num_experts": 20,
   "experts_per_token": 2,
-  "expert_intermediate_size": 660,
+  "expert_intermediate_size": 2899,
   "attention_heads": 16,
   "kv_heads": 4,
   "sliding_window": 2048,
-  "global_attention_layers": [
-    7,
-    15,
-    23
-  ],
   "recurrent_state_size": 128,
-  "router": "BG-Gate_top2",
+  "num_control_codes": 127,
+  "prelude_layers": 2,
+  "core_unique_layers": 4,
+  "core_repeats": 5,
+  "coda_layers": 2,
+  "rope_theta": 10000,
   "router_aux_loss_coefficient": 0.01,
-  "activation": "SwiGLU_reference",
-  "weight_target": "ternary_1.58bit_after_training",
-  "activation_target": "ReLU2_after_architecture_validation",
-  "mobile_runtime_targets": [
-    "Android_NNAPI_or_vendor_NPU",
-    "iOS_CoreML",
-    "CPU_bitnet_or_TMAC"
-  ],
-  "memory": {
-    "target_artifact_mb": 580,
-    "note": "580 MB is an aspiration, not a verified artifact size. Exact PyTorch reference model has 2,869,448,704 parameters; 1.58-bit packed weights alone are about 566.72 MB decimal before scales, tokenizer, metadata and runtime. The supplied report estimates 0.68-0.75 GB."
+  "effective_layers": 24,
+  "unique_layers": 8,
+  "router": "BG-Gate_top2",
+  "attention": "RoPE_GQA_sliding_causal",
+  "expert_activation": "ReLU_squared_gated_MLP",
+  "expected_total_parameters": 3074885656,
+  "parameter_budget_estimate": {
+    "total_parameters": 3074885656,
+    "raw_bf16_weight_size_gb_decimal": 6.149771312,
+    "raw_1_58bit_weight_size_mb_decimal": 607.28991706,
+    "note": "Arithmetic estimates only; not a packed model artifact."
   },
   "training": {
     "enabled": false,
-    "runner_count": 20,
-    "shard_strategy": "one domain/expert adapter shard per runner; shared-backbone updates require a separate coordinated stage",
-    "checkpoint_format": "safetensors",
-    "optimizer": "AdamW_or_Adafactor",
-    "gradient_checkpointing": true,
-    "mixed_precision": "bf16_or_fp16",
-    "dataset_streaming": true,
-    "stages": [
-      "shared_backbone_pretrain",
-      "independent_expert_shards",
-      "expert_merge",
-      "router_calibration",
-      "distillation_and_quantization"
-    ],
-    "public_runner_preflight": {
-      "runner": "ubuntu-24.04",
-      "runner_type": "GitHub-hosted public standard",
-      "device": "cpu",
-      "max_parallel_jobs": 20,
-      "session_minutes": 280,
-      "job_timeout_minutes": 350,
-      "checkpoint_cadence_optimizer_steps": 250,
-      "mode": "preflight-only; no model training is dispatched by this commit"
-    },
-    "dataset_approval_file": "models/neurocore_edge/dataset_approval.json"
-  },
-  "parameter_budget_estimate": {
-    "total_parameters": 2869448704,
-    "active_parameters_per_token": 1117671424,
-    "raw_1_58bit_weights_mb_decimal": 566.72,
-    "note": "Exact PyTorch meta-device module count; raw 1.58-bit arithmetic only, excluding scales, tokenizer, alignment and runtime. Architecture code is a reference implementation; W1.58A8 packing is not yet implemented."
-  },
-  "shared_intermediate_size": 3456
+    "status": "BLOCKED_PENDING_DATASET_AND_TOKENIZER_APPROVAL",
+    "checkpoint_cadence_optimizer_steps": 250,
+    "session_minutes": 280,
+    "optimizer": "Adafactor",
+    "default_dtype": "bf16",
+    "dataset_approval_file": "models/neurocore_edge/dataset_approval.json",
+    "tokenized_input_format": "JSONL rows with input_ids, optional control_id and lang",
+    "merge_requires_exactly": 20,
+    "quantization_enabled": false,
+    "continuous_training_enabled": false
+  }
 }
