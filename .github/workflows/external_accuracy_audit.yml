@@ -12,6 +12,10 @@ on:
         required: false
         default: "500"
         type: string
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/external_accuracy_audit.yml"
 
 permissions:
   actions: read
@@ -49,7 +53,7 @@ jobs:
       - name: download exact checkpoint and training pack
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_RUN: ${{ inputs.run_id }}
+          SOURCE_RUN: ${{ inputs.run_id || '44930215301' }}
         run: |
           set -euo pipefail
           gh run download "$SOURCE_RUN" --repo "$GITHUB_REPOSITORY" --name "ckpt-${{ matrix.domain }}" --dir checkpoint
@@ -77,7 +81,7 @@ jobs:
           TEST_SHARD: ${{ matrix.test_shard }}
         run: |
           set -euo pipefail
-          python tools/external_accuracy.py --pack "$PACK" --ckpt "$CKPT" --test-parquet "$TEST_PARQUET" --nq "${{ inputs.questions }}" --out "results/${{ matrix.domain }}.json" --threads 4
+          python tools/external_accuracy.py --pack "$PACK" --ckpt "$CKPT" --test-parquet "$TEST_PARQUET" --nq "${{ inputs.questions || '500' }}" --out "results/${{ matrix.domain }}.json" --threads 4
       - name: upload accuracy result
         if: always()
         uses: actions/upload-artifact@v4
