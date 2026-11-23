@@ -38,6 +38,20 @@ jobs:
           OMP_NUM_THREADS: '2'
           MKL_NUM_THREADS: '2'
         run: python -m pytest -q test_reference_model.py
+      - name: Run synthetic-only end-to-end training and resume test
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python synthetic_training_smoke.py --report-path synthetic_training_report.json --steps 40
+          python -m pytest -q test_synthetic_training_smoke.py
+      - name: Upload synthetic training report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-synthetic-training-smoke
+          path: models/neurocore_edge/synthetic_training_report.json
+          if-no-files-found: error
       - name: Run dataset schema adapter tests
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_dataset_schema_adapters.py
