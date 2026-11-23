@@ -52,6 +52,20 @@ jobs:
           name: neurocore-synthetic-training-smoke
           path: models/neurocore_edge/synthetic_training_report.json
           if-no-files-found: error
+      - name: Run synthetic Hindi byte-level baseline
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python hindi_synthetic_baseline.py --report-path hindi_synthetic_report.json --steps 160
+          python -m pytest -q test_hindi_synthetic_baseline.py
+      - name: Upload Hindi synthetic baseline report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-hindi-synthetic-baseline
+          path: models/neurocore_edge/hindi_synthetic_report.json
+          if-no-files-found: error
       - name: Run dataset schema adapter tests
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_dataset_schema_adapters.py
