@@ -88,6 +88,8 @@ def test_gov_report_qs_actual_huggingface_dictionary_of_lists_schema():
     assert "## Decision (depth 2)" in x[0]
     assert "What happened?" in x[0]
     assert "Parent question-summary index: 0" in x[1]
+    assert "\\n" not in x[0]
+    assert "\n## Decision (depth 2)" in x[0]
     assert "The agency decided the matter." in x[1]
 
 
