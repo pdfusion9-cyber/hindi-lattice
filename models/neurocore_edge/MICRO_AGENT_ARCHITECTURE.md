@@ -33,10 +33,19 @@ transition matrix, or claim to reproduce the paper's experiments.
 | Medium | 2 | 1 | 2 | Yes | Yes |
 | Hard | 3 | 2 | 3 | Yes | Yes |
 
-These are initial engineering limits, not empirically optimized values. The current
-reference controller records a bounded behavior sequence. It does not yet implement
-parallel workers, token accounting, deadlines, retries, tool execution or persistent
-memory.
+These are initial engineering limits, not empirically optimized values. The reference
+runtime now supports bounded parallel dispatch, a deadline, cooperative cancellation,
+and per-agent output caps. Input/output character counts are only a proxy until a real
+model tokenizer is connected. Overrides may tighten but cannot exceed the balanced
+policy ceilings. A Python thread cannot be forcibly terminated; handlers must poll
+the execution context and exit cooperatively. The prototype does not yet implement
+model-token accounting, retries, external tool execution or persistent memory.
+
+| Difficulty | Max total input chars (fan-out charged) | Max output chars / agent | Deadline | Max workers |
+|---|---:|---:|---:|---:|
+| Simple | 4,000 | 4,000 | 3 s | 1 |
+| Medium | 8,000 | 6,000 | 6 s | 2 |
+| Hard | 16,000 | 8,000 | 12 s | 3 |
 
 ## Shared contracts
 
@@ -69,8 +78,9 @@ Run from this directory:
 
     python -m unittest -v test_micro_agent_runtime.py
 
-Tests cover bounded routing, behavior sequencing, missing handlers, identity
-validation, evidence-reference presence and conservative synthesis.
+Tests cover bounded routing, behavior sequencing, parallel dispatch, cooperative
+timeout signalling, input/output budgets, handler failures, identity validation,
+evidence-reference presence and conservative synthesis.
 
 ## Explicit non-goals
 
