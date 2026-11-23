@@ -58,6 +58,7 @@ class TaskState:
     findings: list[AgentResult] = field(default_factory=list)
     verification_status: str = "pending"
     final_response: Optional[str] = None
+    resource_usage: Optional[ResourceUsage] = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,50 @@ BALANCED_POLICIES: Mapping[Difficulty, BudgetPolicy] = {
     Difficulty.MEDIUM: BudgetPolicy(2, 1, 2, True, True),
     Difficulty.HARD: BudgetPolicy(3, 2, 3, True, True),
 }
+
+
+@dataclass(frozen=True)
+class ExecutionBudget:
+    """Character-count proxy until a real model tokenizer is connected."""
+    max_agents: int
+    max_input_chars_total: int
+    max_output_chars_per_agent: int
+    timeout_seconds: float
+    max_workers: int
+
+
+EXECUTION_BUDGETS: Mapping[Difficulty, ExecutionBudget] = {
+    Difficulty.SIMPLE: ExecutionBudget(1, 4000, 4000, 3.0, 1),
+    Difficulty.MEDIUM: ExecutionBudget(2, 8000, 6000, 6.0, 2),
+    Difficulty.HARD: ExecutionBudget(3, 16000, 8000, 12.0, 3),
+}
+
+
+@dataclass
+class AgentExecutionContext:
+    """Cooperative cancellation/deadline signal for a host-provided handler."""
+    deadline_monotonic: float
+    cancellation_event: object
+
+    def is_cancelled(self) -> bool:
+        import time
+        return self.cancellation_event.is_set() or time.monotonic() >= self.deadline_monotonic
+
+    def raise_if_cancelled(self) -> None:
+        if self.is_cancelled():
+            raise TimeoutError("agent execution deadline exceeded or cancelled")
+
+
+@dataclass(frozen=True)
+class ResourceUsage:
+    agent_calls: int
+    completed_agents: int
+    failed_agents: int
+    timed_out_agents: int
+    input_chars_charged: int
+    output_chars: int
+    elapsed_seconds: float
+    budget_profile: str
 
 
 DEFAULT_AGENT_SPECS = (
@@ -147,7 +192,7 @@ class ReasoningController:
         return tuple(modes)
 
 
-AgentCallable = Callable[[AgentTask], AgentResult]
+AgentCallable = Callable[[AgentTask, AgentExecutionContext], AgentResult]
 
 
 class MicroAgentOrchestrator:
@@ -166,22 +211,162 @@ class MicroAgentOrchestrator:
         return state
 
     def execute(self, state: TaskState) -> TaskState:
-        state.status = TaskStatus.RUNNING
-        for agent_id in state.selected_agents:
+        """Sequential compatibility path with the same two-argument handler contract."""
+        return self.execute_parallel(state, max_workers=1)
+
+    def execute_parallel(
+        self,
+        state: TaskState,
+        *,
+        timeout_seconds: Optional[float] = None,
+        max_workers: Optional[int] = None,
+        max_input_chars_total: Optional[int] = None,
+        max_output_chars_per_agent: Optional[int] = None,
+    ) -> TaskState:
+        """Dispatch bounded independent handlers concurrently.
+
+        Timeouts are cooperative: handlers must periodically call
+        context.raise_if_cancelled() or inspect context.is_cancelled().
+        Python cannot safely force-stop a running thread. The caller returns
+        at the deadline, signals cancellation and marks those results NEEDS_REVIEW.
+        """
+        import time
+        from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+        from threading import Event
+
+        policy = EXECUTION_BUDGETS[state.task.difficulty]
+        timeout = policy.timeout_seconds if timeout_seconds is None else timeout_seconds
+        worker_limit = policy.max_workers if max_workers is None else max_workers
+        input_limit = policy.max_input_chars_total if max_input_chars_total is None else max_input_chars_total
+        output_limit = policy.max_output_chars_per_agent if max_output_chars_per_agent is None else max_output_chars_per_agent
+        if timeout <= 0 or worker_limit < 1 or input_limit < 1 or output_limit < 1:
+            raise ValueError("execution budget values must be positive")
+
+        selected = list(state.selected_agents)
+        if len(selected) > policy.max_agents:
+            state.status = TaskStatus.NEEDS_REVIEW
+            state.findings = [AgentResult(
+                task_id=state.task.task_id, agent_id="orchestrator",
+                status=TaskStatus.NEEDS_REVIEW,
+                result="Selected agent count exceeds the difficulty budget.",
+                limitations=("No handlers were executed.",),
+                requires_review=True,
+            )]
+            state.resource_usage = ResourceUsage(0, 0, 0, 0, 0, 0, 0.0, state.task.budget_profile)
+            return state
+
+        charged_input = len(state.task.user_input) * len(selected)
+        if charged_input > input_limit:
+            state.status = TaskStatus.NEEDS_REVIEW
+            state.findings = [AgentResult(
+                task_id=state.task.task_id, agent_id="orchestrator",
+                status=TaskStatus.NEEDS_REVIEW,
+                result="Input character budget exceeded before dispatch.",
+                limitations=(f"charged={charged_input}; limit={input_limit}",),
+                requires_review=True,
+            )]
+            state.resource_usage = ResourceUsage(0, 0, 0, 0, charged_input, 0, 0.0, state.task.budget_profile)
+            return state
+
+        started = time.monotonic()
+        deadline = started + timeout
+        contexts = {agent_id: AgentExecutionContext(deadline, Event()) for agent_id in selected}
+        results: dict[str, AgentResult] = {}
+        futures = {}
+        submitted = []
+
+        for agent_id in selected:
             handler = self.handlers.get(agent_id)
             if handler is None:
-                state.findings.append(AgentResult(
+                results[agent_id] = AgentResult(
                     task_id=state.task.task_id, agent_id=agent_id,
                     status=TaskStatus.NEEDS_REVIEW,
                     result="No runtime handler registered for this agent.",
                     limitations=("Role contract only; host handler is absent.",),
                     requires_review=True,
-                ))
-                continue
-            result = handler(state.task)
-            if result.task_id != state.task.task_id or result.agent_id != agent_id:
-                raise ValueError("agent result identity does not match dispatched task")
-            state.findings.append(result)
+                )
+            else:
+                submitted.append(agent_id)
+
+        pool = ThreadPoolExecutor(max_workers=min(worker_limit, max(1, len(submitted))))
+        try:
+            for agent_id in submitted:
+                futures[pool.submit(self.handlers[agent_id], state.task, contexts[agent_id])] = agent_id
+
+            pending = set(futures)
+            timed_out = 0
+            while pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    done = set()
+                else:
+                    done, _ = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+                if not done:
+                    for future in list(pending):
+                        agent_id = futures[future]
+                        contexts[agent_id].cancellation_event.set()
+                        future.cancel()
+                        results[agent_id] = AgentResult(
+                            task_id=state.task.task_id, agent_id=agent_id,
+                            status=TaskStatus.NEEDS_REVIEW,
+                            result="Agent execution timed out; cooperative cancellation was signalled.",
+                            limitations=("A running Python thread cannot be forcibly terminated.",),
+                            requires_review=True,
+                        )
+                        timed_out += 1
+                    pending.clear()
+                    break
+
+                for future in done:
+                    pending.discard(future)
+                    agent_id = futures[future]
+                    try:
+                        result = future.result()
+                        if not isinstance(result, AgentResult):
+                            raise TypeError("handler must return AgentResult")
+                        if result.task_id != state.task.task_id or result.agent_id != agent_id:
+                            raise ValueError("agent result identity does not match dispatched task")
+                        if len(result.result) > output_limit:
+                            result = AgentResult(
+                                task_id=result.task_id, agent_id=result.agent_id,
+                                status=TaskStatus.NEEDS_REVIEW,
+                                result="Agent output exceeded the character budget.",
+                                evidence_refs=result.evidence_refs,
+                                limitations=result.limitations + (f"output_chars={len(result.result)}; limit={output_limit}",),
+                                requires_review=True,
+                            )
+                        results[agent_id] = result
+                    except Exception as exc:
+                        results[agent_id] = AgentResult(
+                            task_id=state.task.task_id, agent_id=agent_id,
+                            status=TaskStatus.FAILED,
+                            result=f"Agent handler failed: {type(exc).__name__}",
+                            limitations=("Handler exception details are omitted from user-facing state.",),
+                            requires_review=True,
+                        )
+        finally:
+            # Do not block the caller after the global deadline. Cooperative
+            # handlers should observe their cancellation event and exit promptly.
+            pool.shutdown(wait=False, cancel_futures=True)
+
+        state.findings = [results[agent_id] for agent_id in selected if agent_id in results]
+        completed = sum(item.status == TaskStatus.COMPLETED and not item.requires_review for item in state.findings)
+        failed = sum(item.status == TaskStatus.FAILED for item in state.findings)
+        timed_out_count = sum(
+            item.status == TaskStatus.NEEDS_REVIEW and "timed out" in item.result.lower()
+            for item in state.findings
+        )
+        output_chars = sum(len(item.result) for item in state.findings)
+        state.resource_usage = ResourceUsage(
+            agent_calls=len(submitted),
+            completed_agents=completed,
+            failed_agents=failed,
+            timed_out_agents=timed_out_count,
+            input_chars_charged=charged_input,
+            output_chars=output_chars,
+            elapsed_seconds=round(time.monotonic() - started, 6),
+            budget_profile=state.task.budget_profile,
+        )
         state.status = (
             TaskStatus.NEEDS_REVIEW
             if any(item.requires_review or item.status != TaskStatus.COMPLETED for item in state.findings)
