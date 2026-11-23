@@ -241,6 +241,10 @@ class MicroAgentOrchestrator:
         output_limit = policy.max_output_chars_per_agent if max_output_chars_per_agent is None else max_output_chars_per_agent
         if timeout <= 0 or worker_limit < 1 or input_limit < 1 or output_limit < 1:
             raise ValueError("execution budget values must be positive")
+        if (timeout > policy.timeout_seconds or worker_limit > policy.max_workers
+                or input_limit > policy.max_input_chars_total
+                or output_limit > policy.max_output_chars_per_agent):
+            raise ValueError("execution overrides may tighten, but cannot exceed, the balanced policy")
 
         selected = list(state.selected_agents)
         if len(selected) > policy.max_agents:
@@ -336,6 +340,8 @@ class MicroAgentOrchestrator:
                                 requires_review=True,
                             )
                         results[agent_id] = result
+                    except ValueError:
+                        raise
                     except Exception as exc:
                         results[agent_id] = AgentResult(
                             task_id=state.task.task_id, agent_id=agent_id,
