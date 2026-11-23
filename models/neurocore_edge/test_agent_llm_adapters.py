@@ -95,7 +95,7 @@ class AdapterTests(unittest.TestCase):
                          required_capabilities=("planning",))
         result = PlanningAgentAdapter(provider)(task, context())
         self.assertEqual(result.status, TaskStatus.COMPLETED)
-        self.assertIn("कोई बाहरी कार्रवाई", result.limitations[0])
+        self.assertIn("no external action was executed", result.limitations[0])
 
     def test_planning_rejects_forward_dependency(self):
         provider = FakeProvider({
