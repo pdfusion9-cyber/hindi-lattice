@@ -72,6 +72,17 @@ jobs:
       - name: Run corpus builder gate tests
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_prepare_expert_corpus.py
+      - name: Validate fail-closed dataset approval policy
+        working-directory: models/neurocore_edge
+        run: |
+          python dataset_approval_policy.py --report-path dataset_approval_policy_report.json
+          python -m pytest -q test_dataset_approval_policy.py
+      - name: Upload dataset approval policy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-dataset-approval-policy
+          path: models/neurocore_edge/dataset_approval_policy_report.json
+          if-no-files-found: error
       - name: Audit Hugging Face dataset metadata, splits and sample schemas
         working-directory: models/neurocore_edge
         run: python verify_dataset_metadata.py
