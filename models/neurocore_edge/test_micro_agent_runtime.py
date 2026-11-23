@@ -35,7 +35,7 @@ class MicroAgentRuntimeTests(unittest.TestCase):
         task = make_task("hello", required_capabilities=("language",))
         state = MicroAgentOrchestrator().plan(task)
         agent_id = state.selected_agents[0]
-        handler = lambda t: AgentResult("wrong", agent_id, TaskStatus.COMPLETED, "bad")
+        handler = lambda t, context: AgentResult("wrong", agent_id, TaskStatus.COMPLETED, "bad")
         with self.assertRaises(ValueError):
             MicroAgentOrchestrator(handlers={agent_id: handler}).execute(state)
 
