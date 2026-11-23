@@ -139,13 +139,13 @@ class HybridAgentEndToEndTests(unittest.TestCase):
         source_ref = "samagra-library"
         source_material = [{
             "ref": source_ref,
-            "title": "Samagra Shiksha — Library grant for promoting reading habits",
-            "url": "https://samagra.education.gov.in/library.html",
+            "title": "Samagra Shiksha — Revised Guidelines for Library Grant and Promoting Reading in Schools (28 October 2021)",
+            "url": "https://samagra.education.gov.in/docs/revised_guidelines_for_promotion_Library_Reading%20.pdf",
             "text": (
-                "Schools must devote one period a week to library reading. "
+                "The Government of India Ministry of Education revised guidelines dated 28 October 2021 require a minimum of two library periods per week for every class. "
                 "If there is no separate library room, a reading corner may be created. "
-                "Readers' Clubs and activities such as storytelling, story writing, "
-                "poetry reading and sharing stories are recommended."
+                "Readers' Clubs or Topic Circles may be set up, with activities including "
+                "story or poem reading, storytelling, story writing, poetry writing and wall magazines."
             ),
         }]
         task = make_task(
@@ -185,7 +185,7 @@ class HybridAgentEndToEndTests(unittest.TestCase):
                         ),
                         "language": "hi",
                         "notes": [
-                            "सप्ताह में एक निर्धारित पुस्तकालय-अवधि रखें।",
+                            "हर कक्षा के लिए सप्ताह में कम-से-कम दो पुस्तकालय-अवधियाँ निर्धारित करें।",
                             "अलग कमरा न होने पर सुलभ पठन-कोना बनाएं।",
                             "कहानी, कविता और पुस्तक-साझाकरण जैसी गतिविधियाँ चलाएँ।",
                         ],
@@ -199,9 +199,9 @@ class HybridAgentEndToEndTests(unittest.TestCase):
                     payload = {
                         "findings": [
                             {
-                                "claim": "विद्यालय में सप्ताह में एक पुस्तकालय-अवधि रखी जानी चाहिए।",
+                                "claim": "विद्यालय की हर कक्षा के लिए सप्ताह में कम-से-कम दो पुस्तकालय-अवधियाँ निर्धारित होनी चाहिए।",
                                 "evidence_refs": [source_ref],
-                                "support_note": "दिए गए सरकारी पृष्ठ पर सप्ताह में एक अवधि का उल्लेख है।",
+                                "support_note": "28 अक्टूबर 2021 के संशोधित सरकारी दिशानिर्देश हर कक्षा के लिए सप्ताह में कम-से-कम दो पुस्तकालय-अवधियाँ बताते हैं।",
                             },
                             {
                                 "claim": "अलग पुस्तकालय-कक्ष न होने पर पठन-कोना बनाया जा सकता है।",
@@ -230,7 +230,7 @@ class HybridAgentEndToEndTests(unittest.TestCase):
                             {"step": "प्रधानाध्यापक और शिक्षक उपलब्ध स्थान तथा विद्यार्थियों की जरूरतें तय करें।", "depends_on": []},
                             {"step": "आयु-अनुकूल पुस्तकों और स्थानीय भाषा की सामग्री की सूची बनाएं।", "depends_on": [1]},
                             {"step": "अलग कक्ष न हो तो पठन-कोना तैयार करें और पुस्तकें सुलभ रखें।", "depends_on": [1, 2]},
-                            {"step": "समय-सारणी में हर सप्ताह एक पुस्तकालय-अवधि निर्धारित करें।", "depends_on": [3]},
+                            {"step": "समय-सारणी में हर कक्षा के लिए हर सप्ताह कम-से-कम दो पुस्तकालय-अवधियाँ निर्धारित करें।", "depends_on": [3]},
                             {"step": "पाठक क्लब बनाकर कहानी-कथन, कविता-पाठ और पुस्तक-साझाकरण करें।", "depends_on": [3]},
                             {"step": "पुस्तक निर्गम और गतिविधियों का सरल रजिस्टर रखकर मासिक समीक्षा करें।", "depends_on": [2, 4, 5]},
                         ],
@@ -239,7 +239,7 @@ class HybridAgentEndToEndTests(unittest.TestCase):
                             "नियमित पुस्तकालय-अवधि के लिए समय-सारणी में जगह न मिलना।",
                         ],
                         "success_criteria": [
-                            "हर सप्ताह पुस्तकालय-अवधि आयोजित हो।",
+                            "हर कक्षा के लिए हर सप्ताह कम-से-कम दो पुस्तकालय-अवधियाँ आयोजित हों।",
                             "पठन-कोने/पुस्तकालय का उपयोग और पुस्तक निर्गम दर्ज हो।",
                             "स्थानीय अनुदान व खरीद नियम लागू करने से पहले वर्तमान आदेश से सत्यापित हों।",
                         ],
