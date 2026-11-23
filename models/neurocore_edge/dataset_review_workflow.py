@@ -76,7 +76,7 @@ def main():
     registry = json.loads(args.registry.read_text(encoding="utf-8"))
     packet = build_packet(registry)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8")
+    args.output.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"sources": packet["source_count"], "assignments": packet["assignment_count"],
         "approved_sources": 0, "approved_assignments": 0, "gates": packet["gate_status"]}, indent=2))
 
