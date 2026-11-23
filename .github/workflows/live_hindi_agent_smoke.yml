@@ -1,0 +1,47 @@
+name: Live Hindi Agent Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: OpenAI-compatible API base URL (endpoint ending in /v1 or /chat/completions)
+        required: true
+        type: string
+      model:
+        description: Provider model identifier
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hybrid-micro-agent-architecture-20261123
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run bounded live Hindi multi-agent test
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ inputs.base_url }}
+          LLM_MODEL: ${{ inputs.model }}
+        working-directory: models/neurocore_edge
+        run: |
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "::error::Repository secret LLM_API_KEY is not configured."
+            exit 2
+          fi
+          python live_hindi_e2e_smoke.py --report-path live_hindi_e2e_report.json
+      - name: Upload live evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-hindi-agent-e2e-report
+          path: models/neurocore_edge/live_hindi_e2e_report.json
+          if-no-files-found: ignore
