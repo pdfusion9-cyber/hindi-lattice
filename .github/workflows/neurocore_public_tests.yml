@@ -33,6 +33,9 @@ jobs:
           OMP_NUM_THREADS: '2'
           MKL_NUM_THREADS: '2'
         run: python -m pytest -q test_reference_model.py
+      - name: Run dataset schema adapter tests
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_dataset_schema_adapters.py
       - name: Verify training and dataset gates remain closed
         run: |
           python - <<'PY'
