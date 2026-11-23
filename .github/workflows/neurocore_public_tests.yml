@@ -66,7 +66,7 @@ jobs:
           OMP_NUM_THREADS: '1'
           MKL_NUM_THREADS: '1'
         run: |
-          python hindi_qa_dialogue_smoke.py --report-path hindi_qa_dialogue_report.json --steps 500
+          python hindi_qa_dialogue_smoke.py --report-path hindi_qa_dialogue_report.json --steps 1200
           python -m pytest -q test_hindi_qa_dialogue_smoke.py
       - name: Upload Hindi QA and dialogue report
         uses: actions/upload-artifact@v4
