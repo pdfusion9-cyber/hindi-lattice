@@ -1,0 +1,79 @@
+{
+  "review_date": "2026-11-23",
+  "scope": "Four sources with missing SPDX/license metadata in HF audit",
+  "notice": "Research triage only, not legal advice or dataset approval. No registry approval fields changed.",
+  "sources": [
+    {
+      "dataset_id": "HuggingFaceM4/DocumentVQA",
+      "decision": "HOLD_DO_NOT_INGEST",
+      "commercial_training_approved": false,
+      "registry_approval_changed": false,
+      "reason": "Document images and answers; item-level rights, privacy/PII and redistribution permissions not established.",
+      "evidence_urls": [
+        "https://arxiv.org/abs/2007.00398",
+        "https://www.industrydocuments.ucsf.edu/"
+      ],
+      "audit_revision": "a44195f8f989c10d06ab4ccc98ffe9cdb6d928e4",
+      "next_required": [
+        "Document-level provenance and rights",
+        "Privacy/PII/confidentiality screening",
+        "Commercial training and redistribution permissions"
+      ]
+    },
+    {
+      "dataset_id": "ai4bharat/IndicCorpV2",
+      "decision": "CONDITIONAL_HOLD_HUMAN_LEGAL_REVIEW",
+      "commercial_training_approved": false,
+      "registry_approval_changed": false,
+      "reason": "IndicCorp v2 paper reports CC0 for released corpus; source mix/upstream rights, takedowns and precise scope remain to be reconciled.",
+      "evidence_urls": [
+        "https://arxiv.org/abs/2212.05409"
+      ],
+      "audit_revision": "2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f",
+      "next_required": [
+        "Exact CC0 grant and scope",
+        "Source inventory and upstream rights",
+        "Opt-out/takedown/privacy review",
+        "Immutable revision pin"
+      ]
+    },
+    {
+      "dataset_id": "ccdv/govreport-summarization",
+      "decision": "CONDITIONAL_CANDIDATE_CANONICAL_RELEASE_ONLY",
+      "commercial_training_approved": false,
+      "registry_approval_changed": false,
+      "reason": "Canonical LAUNCH GovReport release materials describe CC BY 4.0; third-party ccdv mirror metadata is unlicensed and mirror identity/record fidelity must be established.",
+      "evidence_urls": [
+        "https://launch.cs.illinois.edu/govreport/"
+      ],
+      "audit_revision": "4e21184e01ae8017e2c036e180fe5e541fef60a0",
+      "next_required": [
+        "Canonical archive and notices",
+        "Attribution/share-alike obligations review",
+        "Underlying report rights",
+        "Mirror fidelity or use canonical release"
+      ]
+    },
+    {
+      "dataset_id": "teknium/OpenHermes-2.5",
+      "decision": "EXCLUDE_PENDING_SOURCE_BY_SOURCE_CLEARANCE",
+      "commercial_training_approved": false,
+      "registry_approval_changed": false,
+      "reason": "Mixed source datasets and model-generated conversations; upstream terms, provenance, personal/sensitive data and output permissions not established by dataset card.",
+      "evidence_urls": [
+        "https://huggingface.co/datasets/teknium/OpenHermes-2.5"
+      ],
+      "audit_revision": "b82037821055c377bed0d495e72e46de3bc72e84",
+      "next_required": [
+        "Full source-by-source inventory",
+        "Upstream commercial training rights",
+        "Generated output provenance/terms",
+        "PII/sensitive data screening"
+      ]
+    }
+  ],
+  "expert_dataset_approval_rows": 27,
+  "approved_rows": 0,
+  "corpus_preparation_gate": "CLOSED",
+  "production_training_gate": "CLOSED"
+}
