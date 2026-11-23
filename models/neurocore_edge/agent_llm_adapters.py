@@ -49,7 +49,7 @@ def _json_object(value: str) -> dict:
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError as exc:
-        raise ValueError("provider response must be one JSON object") from exc
+        raise ValueError("provider response must be valid JSON object") from exc
     if not isinstance(parsed, dict):
         raise ValueError("provider response root must be a JSON object")
     return parsed
