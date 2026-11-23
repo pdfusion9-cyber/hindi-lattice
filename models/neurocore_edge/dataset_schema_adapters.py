@@ -64,7 +64,7 @@ def _gov_qs(r:dict)->list[str]:
    if not body:
     raise SchemaAdapterError(f"document section {i} has no paragraph text")
    depth=depths[i] if depths else 1
-   out_sections.append(f"## {title or f'Section {i+1}'} (depth {depth})\\n{body}")
+   out_sections.append(f"## {title or f'Section {i+1}'} (depth {depth})\n{body}")
  elif isinstance(sections,list):
   out_sections=[]
   for i,s in enumerate(sections):
@@ -77,10 +77,10 @@ def _gov_qs(r:dict)->list[str]:
     raise SchemaAdapterError(f"document section {i} has invalid type")
    if not body:
     raise SchemaAdapterError(f"document section {i} has no body")
-   out_sections.append(f"## {title}\\n{body}")
+   out_sections.append(f"## {title}\n{body}")
  else:
   raise SchemaAdapterError("gov_report_qs requires document_sections dictionary-of-lists or list")
- doc="\\n\\n".join(out_sections)
+ doc="\n\n".join(out_sections)
  pairs=r.get("question_summary_pairs",r.get("qa_pairs",r.get("pairs")))
  pair_rows=[]
  if isinstance(pairs,dict):
@@ -108,9 +108,9 @@ def _gov_qs(r:dict)->list[str]:
   question=_first(p,("question","query"))
   summary=_first(p,("summary","answer","response"))
   parent=p.get("parent_pair_index",-1)
-  prompt=doc+"\\n\\n"+question
+  prompt=doc+"\n\n"+question
   if parent not in (None,-1,"-1"):
-   prompt+=f"\\nParent question-summary index: {parent}"
+   prompt+=f"\nParent question-summary index: {parent}"
   out.append(_pair("long_document_planning_and_summary",prompt,summary))
  return out
 def _translation(r:dict)->str:
