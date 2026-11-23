@@ -66,6 +66,20 @@ jobs:
           name: neurocore-hindi-synthetic-baseline
           path: models/neurocore_edge/hindi_synthetic_report.json
           if-no-files-found: error
+      - name: Run synthetic autoregressive Hindi byte language model
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python hindi_autoregressive_lm_smoke.py --report-path hindi_autoregressive_lm_report.json --steps 240
+          python -m pytest -q test_hindi_autoregressive_lm_smoke.py
+      - name: Upload autoregressive Hindi language model report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-hindi-autoregressive-lm-smoke
+          path: models/neurocore_edge/hindi_autoregressive_lm_report.json
+          if-no-files-found: error
       - name: Run dataset schema adapter tests
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_dataset_schema_adapters.py
