@@ -1,4 +1,5 @@
 """Deterministic hybrid micro-agent control-plane reference; no model calls or training."""
+from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, Mapping, Optional, Sequence
