@@ -14,8 +14,13 @@ def test_tiny_reference_forward_backward():
     loss = result["logits"].float().square().mean() + result["router_aux_loss"]
     assert torch.isfinite(loss)
     loss.backward()
-    grads = [p.grad for p in model.parameters() if p.requires_grad]
-    assert grads and all(g is not None and torch.isfinite(g).all() for g in grads)
+    # Top-2 sparse routing intentionally leaves inactive experts without
+    # gradients. Require at least one finite gradient and validate every
+    # gradient that is present instead of incorrectly requiring dense grads.
+    grads = [p.grad for p in model.parameters() if p.requires_grad and p.grad is not None]
+    assert grads and all(torch.isfinite(g).all() for g in grads)
+    assert any(".experts." in name and p.grad is not None
+               for name, p in model.named_parameters())
     assert count_parameters(model) > 0
 
 def test_top2_router_weights_are_normalized():
