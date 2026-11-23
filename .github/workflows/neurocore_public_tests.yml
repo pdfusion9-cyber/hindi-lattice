@@ -36,6 +36,9 @@ jobs:
       - name: Run dataset schema adapter tests
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_dataset_schema_adapters.py
+      - name: Run corpus builder gate tests
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_prepare_expert_corpus.py
       - name: Verify training and dataset gates remain closed
         run: |
           python - <<'PY'
