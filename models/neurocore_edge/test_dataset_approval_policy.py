@@ -35,6 +35,12 @@ def _approved_row(expert_id=0, dataset_id="example/hindi-source"):
         "schema_adapter_version": "1.0.0",
         "text_model_compatible": True,
         "legal_review_reference": "LEGAL-REVIEW-0001",
+        "rights_reviewer": "qualified-rights-reviewer",
+        "rights_review_date": "2026-11-23",
+        "rights_review_reference": "RIGHTS-REVIEW-0001",
+        "domain_reviewer": "qualified-domain-reviewer",
+        "domain_review_date": "2026-11-23",
+        "domain_review_reference": "DOMAIN-REVIEW-0001",
     }
 
 
@@ -123,3 +129,30 @@ def test_non_https_rights_evidence_cannot_open_gate():
     assert report["registry_valid"] is False
     assert report["corpus_preparation_gate"] == "CLOSED"
     assert any("rights_basis_url must use HTTPS" in message for message in report["errors"])
+
+
+
+def test_approved_row_requires_independent_rights_and_domain_reviewers():
+    row = _approved_row()
+    row["domain_reviewer"] = row["rights_reviewer"]
+    payload = _registry([row], "APPROVED_FOR_COMMERCIAL_TRAINING")
+
+    report = validate_registry(payload)
+
+    assert report["registry_valid"] is False
+    assert report["corpus_preparation_gate"] == "CLOSED"
+    assert any("two distinct people" in message for message in report["errors"])
+
+
+def test_approved_row_requires_both_review_dates_and_references():
+    row = _approved_row()
+    row["rights_review_date"] = "not-a-date"
+    row["domain_review_reference"] = ""
+    payload = _registry([row], "APPROVED_FOR_COMMERCIAL_TRAINING")
+
+    report = validate_registry(payload)
+
+    assert report["registry_valid"] is False
+    assert report["corpus_preparation_gate"] == "CLOSED"
+    assert any("rights_review_date must be a valid" in message for message in report["errors"])
+    assert any("approved row requires domain_review_reference" in message for message in report["errors"])
