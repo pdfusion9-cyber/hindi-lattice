@@ -66,7 +66,7 @@ jobs:
           name: neurocore-hindi-synthetic-baseline
           path: models/neurocore_edge/hindi_synthetic_report.json
           if-no-files-found: error
-      - name: Run synthetic autoregressive Hindi byte language model
+      - name: Run synthetic autoregressive Hindi Unicode code-point language model
         working-directory: models/neurocore_edge
         env:
           OMP_NUM_THREADS: '1'
