@@ -57,6 +57,23 @@ Mismatched task or agent identities are rejected.
 The host must provide explicit handler callables. A role without a registered handler
 is reported as needs_review; no answer is fabricated.
 
+## Provider-neutral domain adapters
+
+`agent_llm_adapters.py` defines typed request/reply contracts and adapters for:
+
+- **Hindi:** natural-language response with language, notes, confidence and review metadata.
+- **Research:** synthesis strictly against caller-supplied `context.source_material`;
+  every finding must cite an ID in that supplied allow-list. Missing sources force
+  review; invented IDs are rejected.
+- **Planning:** ordered steps, dependencies, risks and success criteria. It creates
+  plans only and does not execute tools or external actions.
+
+The host injects a provider callable through `build_domain_handlers(provider)`.
+No API key, provider SDK, network client or model endpoint is stored in this repository.
+The provider must honor the cooperative execution context. These adapters validate
+the returned JSON schema; they do not independently establish factual truth or source
+entailment. Fake-provider unit tests run offline in CI; no paid API call is made.
+
 ## Verification boundary
 
 EvidenceVerifier checks only that evidence IDs appear in a supplied allow-list and
@@ -77,10 +94,12 @@ as untrusted data rather than executable instructions.
 Run from this directory:
 
     python -m unittest -v test_micro_agent_runtime.py
+    python -m unittest -v test_agent_llm_adapters.py
 
 Tests cover bounded routing, behavior sequencing, parallel dispatch, cooperative
 timeout signalling, input/output budgets, handler failures, identity validation,
-evidence-reference presence and conservative synthesis.
+evidence-reference presence, structured adapter schemas, supplied-source citation
+allow-lists, planning dependencies and conservative synthesis.
 
 ## Explicit non-goals
 
@@ -93,9 +112,9 @@ evidence-reference presence and conservative synthesis.
 
 ## Next milestones
 
-1. Add timeout/cancellation and deterministic token/compute accounting.
-2. Add host adapters for actual domain experts with typed schemas.
-3. Add claim-level evidence verification and prompt-injection tests.
-4. Evaluate on held-out synthetic Hindi tasks against a single-agent baseline.
+1. Connect a host-owned provider client and secrets manager; add provider integration tests.
+2. Add claim-level evidence verification and adversarial prompt-injection tests.
+3. Evaluate on held-out synthetic Hindi tasks against a single-agent baseline.
+4. Add measured token/latency accounting using the connected provider's tokenizer and usage metadata.
 5. Only after measured benefit, consider learning a transition policy from reviewed
    trajectories. Keep dataset rights approvals separate from synthetic tests.
