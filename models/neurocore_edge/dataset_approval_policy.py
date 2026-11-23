@@ -52,6 +52,12 @@ APPROVAL_TEXT_FIELDS = (
     "schema_fingerprint",
     "schema_adapter_version",
     "legal_review_reference",
+    "rights_reviewer",
+    "rights_review_date",
+    "rights_review_reference",
+    "domain_reviewer",
+    "domain_review_date",
+    "domain_review_reference",
 )
 APPROVAL_TRUE_FLAGS = (
     "commercial_training_allowed",
@@ -154,13 +160,21 @@ def validate_registry(payload: Any) -> dict[str, Any]:
             for field in ("rights_basis_url", "source_provenance_url"):
                 if _nonempty(row.get(field)) and not _is_https(row.get(field)):
                     row_errors.append(f"{field} must use HTTPS")
-            if _nonempty(row.get("review_date")):
-                try:
-                    parsed = date.fromisoformat(row["review_date"].strip())
-                    if parsed.isoformat() != row["review_date"].strip():
-                        row_errors.append("review_date must use YYYY-MM-DD format")
-                except ValueError:
-                    row_errors.append("review_date must be a valid YYYY-MM-DD date")
+            for date_field in ("review_date", "rights_review_date", "domain_review_date"):
+                if _nonempty(row.get(date_field)):
+                    try:
+                        parsed = date.fromisoformat(row[date_field].strip())
+                        if parsed.isoformat() != row[date_field].strip():
+                            row_errors.append(f"{date_field} must use YYYY-MM-DD format")
+                    except ValueError:
+                        row_errors.append(f"{date_field} must be a valid YYYY-MM-DD date")
+            if (
+                _nonempty(row.get("rights_reviewer"))
+                and _nonempty(row.get("domain_reviewer"))
+                and row["rights_reviewer"].strip().casefold()
+                    == row["domain_reviewer"].strip().casefold()
+            ):
+                row_errors.append("rights_reviewer and domain_reviewer must be two distinct people")
             if _nonempty(row.get("schema_fingerprint")) and not SHA256.fullmatch(
                 row["schema_fingerprint"].strip()
             ):
