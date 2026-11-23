@@ -68,3 +68,38 @@ def test_unknown_fails_closed():
 def test_catalog():
     assert ADAPTER_VERSION == "1.0.0"
     assert adapter_family("hiyouga/glaive-function-calling-v2-sharegpt") == "ordered_chat_tool_v1"
+
+def test_gov_report_qs_actual_huggingface_dictionary_of_lists_schema():
+    # Mirrors the documented paragraph/document config feature shape.
+    x = adapt_row("launch/gov_report_qs", {
+        "document_sections": {
+            "title": ["Background", "Decision"],
+            "paragraphs": ["Facts and context.", "The agency issued a decision."],
+            "depth": [1, 2],
+        },
+        "question_summary_pairs": {
+            "question": ["What happened?", "What was decided?"],
+            "summary": ["The report describes events.", "The agency decided the matter."],
+            "parent_pair_index": [-1, 0],
+        },
+    }, 17)
+    assert len(x) == 2
+    assert "## Background (depth 1)" in x[0]
+    assert "## Decision (depth 2)" in x[0]
+    assert "What happened?" in x[0]
+    assert "Parent question-summary index: 0" in x[1]
+    assert "The agency decided the matter." in x[1]
+
+
+def test_legalbench_task_schema_input_output():
+    x = adapt_row("sarthak-wiz01/legalbench", {
+        "input": "Is the forum-selection clause enforceable?",
+        "output": "The clause is enforceable on these facts.",
+        "text": "Contract facts and the relevant clause.",
+        "answer": "The clause is enforceable on these facts.",
+        "slice": "personal_jurisdiction",
+        "index": 3,
+    }, 13)[0]
+    assert "Is the forum-selection clause enforceable?" in x
+    assert "Contract facts and the relevant clause." in x
+    assert "The clause is enforceable on these facts." in x
