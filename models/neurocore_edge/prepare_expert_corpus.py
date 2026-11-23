@@ -117,7 +117,8 @@ def open_stream(dataset_id: str, approval: dict[str, Any], split: str):
     )
 
 def write_split(dataset_id: str, expert_id: int, stream, train, valid,
-                *, route_hash_to_validation: bool, max_examples: int) -> tuple[int, int, int]:
+                *, route_hash_to_validation: bool, force_validation: bool = False,
+                max_examples: int) -> tuple[int, int, int]:
     rows_seen = train_count = valid_count = 0
     for index, item in enumerate(stream):
         try:
@@ -130,7 +131,7 @@ def write_split(dataset_id: str, expert_id: int, stream, train, valid,
             raise SystemExit(f"SCHEMA_REFUSED {dataset_id} row {index}: {exc}") from exc
         if not examples:
             raise SystemExit(f"SCHEMA_REFUSED {dataset_id} row {index}: empty adapter output")
-        to_valid = route_hash_to_validation and deterministic_holdout(dataset_id, index, examples)
+        to_valid = force_validation or (route_hash_to_validation and deterministic_holdout(dataset_id, index, examples))
         target = valid if to_valid else train
         target.write("\n\n".join(examples) + "\n\n")
         if to_valid:
@@ -181,7 +182,8 @@ def prepare_corpus(manifest_path: Path, approval_path: Path, expert_id: int,
                     valid_stream = open_stream(dataset_id, approval, validation_split)
                     valid_rows, _, valid_count = write_split(
                         dataset_id, expert_id, valid_stream, train, valid,
-                        route_hash_to_validation=False, max_examples=max_examples,
+                        route_hash_to_validation=False, force_validation=True,
+                        max_examples=max_examples,
                     )
                     if rows < 1 or valid_rows < 1:
                         raise SystemExit(
