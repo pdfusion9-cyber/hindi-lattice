@@ -1,6 +1,11 @@
 name: NeuroCore Reference Model Tests
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'models/neurocore_edge/**'
+      - '.github/workflows/neurocore_public_tests.yml'
   push:
     branches: [main]
     paths:
@@ -39,6 +44,15 @@ jobs:
       - name: Run corpus builder gate tests
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_prepare_expert_corpus.py
+      - name: Audit Hugging Face dataset metadata, splits and sample schemas
+        working-directory: models/neurocore_edge
+        run: python verify_dataset_metadata.py
+      - name: Upload dataset verification report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-dataset-verification
+          path: models/neurocore_edge/dataset_verification_report.json
+          if-no-files-found: error
       - name: Verify training and dataset gates remain closed
         run: |
           python - <<'PY'

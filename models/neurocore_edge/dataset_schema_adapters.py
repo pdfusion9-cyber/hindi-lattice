@@ -47,27 +47,78 @@ def _gov(r:dict)->str:
  return _pair("document_summarization",_first(r,("report","document","article","text","content")),_first(r,("summary","highlights","target")))
 def _gov_qs(r:dict)->list[str]:
  sections=r.get("document_sections",r.get("sections"))
- if not isinstance(sections,list):raise SchemaAdapterError("gov_report_qs requires document_sections list")
- out_sections=[]
- for i,s in enumerate(sections):
-  if isinstance(s,str):title,body=f"Section {i+1}",s.strip()
-  elif isinstance(s,dict):title=_first(s,("heading","title","section_title","name")) or f"Section {i+1}";body=_first(s,("text","content","body","paragraph"))
-  else:raise SchemaAdapterError(f"document section {i} has invalid type")
-  if not body:raise SchemaAdapterError(f"document section {i} has no body")
-  out_sections.append(f"## {title}\n{body}")
+ if isinstance(sections,dict):
+  titles=sections.get("title",[])
+  paragraphs=sections.get("paragraphs",[])
+  depths=sections.get("depth",[])
+  if not isinstance(titles,list) or not isinstance(paragraphs,list):
+   raise SchemaAdapterError("gov_report_qs document_sections.title/paragraphs must be lists")
+  if len(titles)!=len(paragraphs):
+   raise SchemaAdapterError("gov_report_qs section title/paragraph counts differ")
+  if depths and (not isinstance(depths,list) or len(depths)!=len(titles)):
+   raise SchemaAdapterError("gov_report_qs section depth count differs")
+  out_sections=[]
+  for i,(title,body) in enumerate(zip(titles,paragraphs)):
+   title=_text(title)
+   body=_text(body)
+   if not body:
+    raise SchemaAdapterError(f"document section {i} has no paragraph text")
+   depth=depths[i] if depths else 1
+   out_sections.append(f"## {title or f'Section {i+1}'} (depth {depth})\n{body}")
+ elif isinstance(sections,list):
+  out_sections=[]
+  for i,s in enumerate(sections):
+   if isinstance(s,str):
+    title,body=f"Section {i+1}",s.strip()
+   elif isinstance(s,dict):
+    title=_first(s,("heading","title","section_title","name")) or f"Section {i+1}"
+    body=_first(s,("text","content","body","paragraph","paragraphs"))
+   else:
+    raise SchemaAdapterError(f"document section {i} has invalid type")
+   if not body:
+    raise SchemaAdapterError(f"document section {i} has no body")
+   out_sections.append(f"## {title}\n{body}")
+ else:
+  raise SchemaAdapterError("gov_report_qs requires document_sections dictionary-of-lists or list")
+ doc="\n\n".join(out_sections)
  pairs=r.get("question_summary_pairs",r.get("qa_pairs",r.get("pairs")))
- if not out_sections or not isinstance(pairs,list) or not pairs:raise SchemaAdapterError("gov_report_qs requires question_summary_pairs")
- doc="\n\n".join(out_sections);out=[]
- for i,p in enumerate(pairs):
-  if not isinstance(p,dict):raise SchemaAdapterError(f"question-summary pair {i} is not an object")
-  out.append(_pair("long_document_planning_and_summary",doc+"\n\n"+_first(p,("question","query")),_first(p,("summary","answer","response"))))
+ pair_rows=[]
+ if isinstance(pairs,dict):
+  questions=pairs.get("question",[])
+  summaries=pairs.get("summary",[])
+  parents=pairs.get("parent_pair_index",[])
+  if not isinstance(questions,list) or not isinstance(summaries,list):
+   raise SchemaAdapterError("gov_report_qs question_summary_pairs.question/summary must be lists")
+  if len(questions)!=len(summaries):
+   raise SchemaAdapterError("gov_report_qs question/summary pair counts differ")
+  if parents and (not isinstance(parents,list) or len(parents)!=len(questions)):
+   raise SchemaAdapterError("gov_report_qs parent_pair_index count differs")
+  pair_rows=[{"question":q,"summary":s,"parent_pair_index":parents[i] if parents else -1}
+             for i,(q,s) in enumerate(zip(questions,summaries))]
+ elif isinstance(pairs,list):
+  pair_rows=pairs
+ else:
+  raise SchemaAdapterError("gov_report_qs requires question_summary_pairs dictionary-of-lists or list")
+ if not out_sections or not pair_rows:
+  raise SchemaAdapterError("gov_report_qs requires non-empty document sections and question-summary pairs")
+ out=[]
+ for i,p in enumerate(pair_rows):
+  if not isinstance(p,dict):
+   raise SchemaAdapterError(f"question-summary pair {i} is not an object")
+  question=_first(p,("question","query"))
+  summary=_first(p,("summary","answer","response"))
+  parent=p.get("parent_pair_index",-1)
+  prompt=doc+"\n\n"+question
+  if parent not in (None,-1,"-1"):
+   prompt+=f"\nParent question-summary index: {parent}"
+  out.append(_pair("long_document_planning_and_summary",prompt,summary))
  return out
 def _translation(r:dict)->str:
  src=_first(r,("source","src","sentence","translation_source"));tgt=_first(r,("target","tgt","translation","sentence_target"))
  sl=_first(r,("source_lang","src_lang","language1","lang1"));tl=_first(r,("target_lang","tgt_lang","language2","lang2"))
  return _pair("translation",(f"[{sl}] " if sl else "")+src,(f"[{tl}] " if tl else "")+tgt)
 def _legal(r:dict)->str:
- q=_first(r,("question","query","instruction","issue"));ctx=_first(r,("context","facts","case_text","judgment","judgement","opinion","document","text"));a=_first(r,("answer","response","holding","reasoning","rationale","output"))
+ q=_first(r,("input","question","query","instruction","issue"));ctx=_first(r,("context","facts","case_text","judgment","judgement","opinion","document","text"));a=_first(r,("answer","response","holding","reasoning","rationale","output"))
  return _pair("legal_research_not_legal_advice",(ctx+"\n\n" if ctx else "")+q,a)
 def adapt_row(dataset_id:str,row:dict,expert_id:int)->list[str]:
  if not isinstance(row,dict):raise SchemaAdapterError("dataset row must be an object")
