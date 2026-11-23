@@ -60,6 +60,20 @@ jobs:
         run: |
           python hindi_synthetic_baseline.py --report-path hindi_synthetic_report.json --steps 160
           python -m pytest -q test_hindi_synthetic_baseline.py
+      - name: Run supervised synthetic Hindi QA and dialogue smoke
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python hindi_qa_dialogue_smoke.py --report-path hindi_qa_dialogue_report.json --steps 500
+          python -m pytest -q test_hindi_qa_dialogue_smoke.py
+      - name: Upload Hindi QA and dialogue report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-hindi-qa-dialogue-smoke
+          path: models/neurocore_edge/hindi_qa_dialogue_report.json
+          if-no-files-found: error
       - name: Upload Hindi synthetic baseline report
         uses: actions/upload-artifact@v4
         with:
