@@ -29,3 +29,29 @@ def test_shared_source_is_reviewed_once_but_assignments_remain_separate():
 def test_wrong_assignment_count_fails_closed():
     with pytest.raises(ValueError, match="expected 27"):
         build_packet({"datasets":[{"expert_id":1,"expert_name":"one","dataset_id":"org/one"}]})
+
+
+def test_cli_writes_valid_parseable_json(tmp_path):
+    import subprocess
+    import sys
+
+    output = tmp_path / "dataset_human_review_packet.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "dataset_review_workflow.py"),
+            "--output",
+            str(output),
+        ],
+        check=True,
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    packet = json.loads(output.read_text(encoding="utf-8"))
+    assert packet["source_count"] == 21
+    assert packet["assignment_count"] == 27
+    assert packet["approved_source_count"] == 0
+    assert packet["approved_assignment_count"] == 0
+    assert packet["gate_status"]["corpus_preparation"] == "CLOSED"
+    assert packet["gate_status"]["production_training"] == "CLOSED"
