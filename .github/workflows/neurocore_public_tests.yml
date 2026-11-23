@@ -35,6 +35,9 @@ jobs:
       - name: Run hybrid micro-agent control-plane tests
         working-directory: models/neurocore_edge
         run: python -m unittest -v test_micro_agent_runtime.py
+      - name: Run provider-neutral domain adapter tests
+        working-directory: models/neurocore_edge
+        run: python -m unittest -v test_agent_llm_adapters.py
       - name: Run tiny reference-model tests
         working-directory: models/neurocore_edge
         env:
