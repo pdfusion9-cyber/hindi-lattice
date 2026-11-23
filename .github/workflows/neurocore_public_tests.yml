@@ -97,6 +97,9 @@ jobs:
         run: |
           python build_dataset_review_matrix.py --report-path dataset_review_matrix_report.json
           python -m pytest -q test_build_dataset_review_matrix.py
+      - name: Validate external dataset rights triage
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_external_dataset_rights_review.py
       - name: Upload dataset review matrix
         uses: actions/upload-artifact@v4
         with:
