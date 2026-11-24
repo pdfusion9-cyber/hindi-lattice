@@ -134,6 +134,7 @@ def main() -> None:
     parser.add_argument("--report", type=Path, default=Path("reports/neurocore-corpus-training.json"))
     parser.add_argument("--checkpoint", type=Path, default=Path("artifacts/neurocore-corpus-checkpoint.pt"))
     parser.add_argument("--expected-blob-sha", default=EXPECTED_CORPUS_BLOB)
+    parser.add_argument("--resume-checkpoint", type=Path, default=None)
     args = parser.parse_args()
 
     if args.steps < 1 or args.batch_size < 1 or args.sequence_length < 4:
@@ -175,6 +176,46 @@ def main() -> None:
     )
     model = NeuroCoreEdgeForCausalLM(cfg).cpu()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+    resume_from_step = 0
+    resume_used = False
+    if args.resume_checkpoint is not None:
+        resume_path = args.resume_checkpoint
+        if not resume_path.is_file():
+            raise FileNotFoundError(f"resume checkpoint not found: {resume_path}")
+        try:
+            saved = torch.load(resume_path, map_location="cpu", weights_only=True)
+        except TypeError:
+            saved = torch.load(resume_path, map_location="cpu")
+        if not isinstance(saved, dict):
+            raise ValueError("resume checkpoint must be a mapping")
+        if saved.get("model_id") != "neurocore_edge_native_reference":
+            raise ValueError("resume checkpoint model ID mismatch")
+        if saved.get("config") != vars(cfg):
+            raise ValueError("resume checkpoint model config mismatch")
+        if saved.get("corpus_git_blob_sha1") != actual_blob:
+            raise ValueError("resume checkpoint corpus Git blob SHA mismatch")
+        if saved.get("corpus_sha256") != corpus_summary["sha256"]:
+            raise ValueError("resume checkpoint corpus content SHA256 mismatch")
+        provenance = saved.get("provenance", {})
+        if provenance.get("external_model_weights_used") is not False:
+            raise ValueError("resume checkpoint provenance includes external weights")
+        if provenance.get("open_source_model_integrated") is not False:
+            raise ValueError("resume checkpoint provenance includes an external model")
+        if saved.get("production_training_gate") != "CLOSED":
+            raise ValueError("resume checkpoint production gate is not closed")
+        model.load_state_dict(saved["model_state_dict"], strict=True)
+        if not isinstance(saved.get("optimizer_state_dict"), dict):
+            raise ValueError("resume checkpoint has no optimizer state")
+        optimizer.load_state_dict(saved["optimizer_state_dict"])
+        resume_from_step = int(saved.get("step", 0))
+        if resume_from_step < 1:
+            raise ValueError("resume checkpoint step must be positive")
+        resume_used = True
+        print(
+            f"resume_checkpoint={resume_path} resumed_from_step={resume_from_step} "
+            f"model_parameters={count_parameters(model)}",
+            flush=True,
+        )
     trainable_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
     initial_train = evaluate(
@@ -192,7 +233,8 @@ def main() -> None:
     validation_curve = []
     started = time.perf_counter()
     model.train()
-    for step in range(1, args.steps + 1):
+    for local_step in range(1, args.steps + 1):
+        step = resume_from_step + local_step
         starts = torch.randint(0, upper, (args.batch_size,), generator=generator)
         x, y = make_batch(train_stream, starts, args.sequence_length)
         output = model(x)
@@ -204,7 +246,7 @@ def main() -> None:
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         losses.append(float(loss.detach().item()))
-        if step % 100 == 0 or step == args.steps:
+        if local_step % 100 == 0 or local_step == args.steps:
             val = evaluate(
                 model, valid_stream, batch_size=args.batch_size,
                 seq_len=args.sequence_length, batches=20,
@@ -248,11 +290,15 @@ def main() -> None:
         },
         "training": {
             "steps": args.steps,
+            "resumed_from_step": resume_from_step,
+            "total_steps": resume_from_step + args.steps,
+            "resume_used": resume_used,
             "batch_size": args.batch_size,
             "sequence_length": args.sequence_length,
             "optimizer": "AdamW",
             "learning_rate": args.learning_rate,
             "tokens_processed": args.steps * args.batch_size * args.sequence_length,
+            "total_tokens_processed": (resume_from_step + args.steps) * args.batch_size * args.sequence_length,
             "elapsed_seconds": elapsed,
             "training_tokens_per_second": (
                 args.steps * args.batch_size * args.sequence_length / elapsed
@@ -290,7 +336,7 @@ def main() -> None:
         "config": vars(cfg),
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
-        "step": args.steps,
+        "step": resume_from_step + args.steps,
         "corpus_git_blob_sha1": actual_blob,
         "corpus_sha256": corpus_summary["sha256"],
         "seed": args.seed,
@@ -302,7 +348,9 @@ def main() -> None:
     args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({
         "status": report["status"],
-        "steps": args.steps,
+        "steps_this_run": args.steps,
+        "total_steps": resume_from_step + args.steps,
+        "resume_used": resume_used,
         "parameters": report["model_parameter_count"],
         "initial_validation_loss": initial_valid,
         "final_validation_loss": final_valid,
