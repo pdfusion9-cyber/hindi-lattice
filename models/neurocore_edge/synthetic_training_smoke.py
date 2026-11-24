@@ -139,6 +139,11 @@ def run_experiment(
         raise ValueError("steps must be >=10 for a meaningful loss-reduction check")
 
     previous_threads = torch.get_num_threads()
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        # PyTorch inter-op thread count is immutable after parallel work starts.
+        pass
     torch.set_num_threads(cpu_threads)
     try:
         torch.manual_seed(seed)
@@ -257,6 +262,7 @@ def run_experiment(
             "experiment": "neurocore_tiny_end_to_end_training_v1",
             "device": "cpu",
             "cpu_threads": cpu_threads,
+            "interop_threads": 1,
             "seed": seed,
             "model_config": checkpoint["model_config"],
             "parameter_count": count_parameters(model),
