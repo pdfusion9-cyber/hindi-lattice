@@ -27,7 +27,8 @@ def test_selected_expert_plan_fits_but_requires_other_experts_to_be_unloaded():
         profile=profile(), shared_backbone_parameters=872_000_000,
         expert_parameters=[110_000_000] * 20, runner_count=20,
     )
-    assert plan["status"] == "CPU_TRAINING_PLAN_APPROVED"
+    assert plan["status"] == "CPU_TRAINING_PLAN_BLOCKED"
+    assert any("shared-backbone AdamW" in item for item in plan["blockers"])
     assert len(plan["expert_workers"]) == 20
     assert all(row["other_expert_weights_loaded"] is False for row in plan["expert_workers"])
     assert all(len(row["expert_ids"]) == 1 for row in plan["runner_assignments"])
@@ -44,6 +45,7 @@ def test_shared_backbone_adamw_is_reported_as_separate_single_runner_blocker():
     )
     assert plan["shared_base_stage"]["fits_single_runner_safe_memory"] is False
     assert plan["shared_base_stage"]["status"] == "BLOCKED"
+    assert any("shared-backbone AdamW" in item for item in plan["blockers"])
 
 
 def test_low_memory_expert_worker_is_fail_closed():
