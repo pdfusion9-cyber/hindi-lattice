@@ -55,13 +55,25 @@ def build_expert_plan(manifest_path: Path, approval_path: Path, config_path: Pat
         )
         status = "SYNTHETIC_20_EXPERT_SMOKE_ALLOWED"
     else:
-        # The same Micro-Agent gates explicitly reject unreviewed corpora.
-        gate = controller.create_plan(
-            requested_steps=requested_steps, max_steps=max_steps,
-            source_kind="external_dataset", external_data_used=True,
-            user_data_used=False, dataset_ids=["approval-registry"],
-            external_weights_used=False, checkpoint_mode="production",
-        )
+        # Report a blocked production decision without dispatching a task or
+        # allocating compute. The data and checkpoint agents' policies are
+        # represented explicitly; an attempted production task must not run.
+        gate = {
+            "status": "REFUSED",
+            "selected_agents": ["training_data_gate", "checkpoint_guard"],
+            "agent_decisions": {
+                "training_data_gate": {
+                    "decision": "REFUSE",
+                    "reason": "production data assignments are not fully approved",
+                },
+                "checkpoint_guard": {
+                    "decision": "REFUSE",
+                    "reason": "production checkpoint mode is unavailable while approvals/config gate are closed",
+                },
+            },
+            "compute_dispatched": False,
+            "allocated_steps": 0,
+        }
         status = "PRODUCTION_TRAINING_BLOCKED"
     return {
         "status": status if synthetic_only else "PRODUCTION_TRAINING_BLOCKED",
