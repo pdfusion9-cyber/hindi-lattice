@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "generated_at_utc": "2026-11-24T12:25:34Z",
+  "workflow_run_id": 45393356664,
+  "scope": "bounded text-only sample inspection; no full dataset downloads",
+  "sources": {
+    "ai4bharat/IndicCorpV2": {
+      "status": "SAMPLE_INSPECTED",
+      "revision": "2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f",
+      "config": "indiccorp_v2",
+      "split": "hin_Deva",
+      "file": "data/hi-1.txt",
+      "sample_method": "3 HTTP Range windows, 256 KiB each",
+      "bytes_read": 786432,
+      "shard_size_bytes": 26661096882,
+      "sample_count": 15,
+      "unique_nonempty_texts": 15,
+      "duplicate_exact_text_count": 0,
+      "mean_text_chars": 267.13,
+      "min_text_chars": 45,
+      "max_text_chars": 1193,
+      "mean_devanagari_letter_fraction": 0.9909,
+      "mean_latin_letter_fraction": 0.0091,
+      "rows_with_email_patterns": 0,
+      "rows_with_url_patterns": 0,
+      "rows_with_phone_patterns": 0,
+      "rows_with_aadhaar_like_patterns": 0,
+      "raw_text_persisted": false,
+      "interpretation": "Strong Devanagari signal in this tiny sample; no tested PII-like patterns detected. This is not a corpus-wide quality or privacy guarantee."
+    },
+    "ai4bharat/sangraha": {
+      "status": "INSPECTION_BLOCKED",
+      "config": "verified",
+      "split": "hin",
+      "method": "Hugging Face datasets-server rows API, requested 5 rows",
+      "error": "HTTP 500 Internal Server Error",
+      "raw_text_persisted": false,
+      "next_action": "Retry via bounded Parquet footer/row-group range read or wait for dataset viewer service recovery; do not download full 37.3 GB shard."
+    }
+  },
+  "safety": {
+    "raw_sample_text_stored": false,
+    "full_corpus_downloaded": false,
+    "dataset_approval_registry_changed": false,
+    "production_approval_granted": false,
+    "expert_training_started": false,
+    "production_gate": "CLOSED",
+    "limitations": [
+      "Only 15 short samples from one IndicCorpV2 Hindi shard were inspected.",
+      "No source-level rights, consent or corpus-wide privacy clearance was established.",
+      "Regex-based PII checks are heuristic and can miss personal data.",
+      "Sangraha sample could not be retrieved."
+    ]
+  }
+}
