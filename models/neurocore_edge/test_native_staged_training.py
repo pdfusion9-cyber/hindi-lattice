@@ -76,3 +76,57 @@ def test_merge_refuses_missing_duplicate_or_wrong_base_shards():
             expected_base_hash=base_hash,
             expected_cfg_hash=cfg_hash,
         )
+
+
+def test_native_training_resumes_from_verified_merged_checkpoint(tmp_path):
+    from native_staged_training import run_staged_training
+
+    report_path = tmp_path / "resume_report.json"
+    final_checkpoint = tmp_path / "final.pt"
+    resume_checkpoint = tmp_path / "resume.pt"
+    first = run_staged_training(
+        report_path, final_checkpoint, base_steps=1, expert_steps=1,
+        seed=23, resume_path=resume_checkpoint,
+    )
+    assert first["resume_used"] is False
+    assert resume_checkpoint.exists()
+
+    second = run_staged_training(
+        report_path, final_checkpoint, base_steps=1, expert_steps=1,
+        seed=23, resume_path=resume_checkpoint,
+    )
+    assert second["resume_used"] is True
+    assert second["resumed_expert_shards"] == 20
+    assert second["expert_shards"]["count"] == 20
+    assert second["merged_state_fingerprint"] == first["merged_state_fingerprint"]
+
+
+def test_resume_refuses_wrong_seed_and_modified_config(tmp_path):
+    from native_staged_training import (
+        config_fingerprint, load_resume_checkpoint, tiny_native_config,
+        atomic_torch_save, NATIVE_MODEL_ID,
+    )
+
+    cfg_hash = config_fingerprint(tiny_native_config())
+    resume_path = tmp_path / "resume.pt"
+    atomic_torch_save({
+        "model_id": NATIVE_MODEL_ID,
+        "config_fingerprint": cfg_hash,
+        "seed": 7,
+        "completed_stage": "shared_backbone",
+        "shared_state": {},
+        "shared_backbone_fingerprint": "not-used-in-this-loader-test",
+        "expert_shards": [],
+        "provenance": {
+            "external_data_used": False, "user_data_used": False,
+            "external_weights_used": False, "open_source_model_integrated": False,
+        },
+    }, resume_path)
+    with pytest.raises(ValueError, match="seed mismatch"):
+        load_resume_checkpoint(
+            resume_path, expected_config_fingerprint=cfg_hash, expected_seed=8
+        )
+    with pytest.raises(ValueError, match="config fingerprint mismatch"):
+        load_resume_checkpoint(
+            resume_path, expected_config_fingerprint="wrong", expected_seed=7
+        )
