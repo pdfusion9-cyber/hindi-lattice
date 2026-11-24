@@ -110,7 +110,7 @@ def _run_trial(batches, *, seed, micro_batch, accumulation, checkpoint_interval)
                 sparse_steps += 1
             torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.grad is not None], 1.0)
             optimizer.step()
-            if step % checkpoint_interval == 0 or step == len(schedule):
+            if step % checkpoint_interval == 0 or step == len(batches):
                 started = time.perf_counter()
                 torch.save({
                     "model": model.state_dict(),
