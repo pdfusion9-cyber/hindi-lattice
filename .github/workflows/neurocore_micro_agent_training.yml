@@ -40,6 +40,15 @@ jobs:
         run: |
           python -m pytest -q test_expert_training_pipeline.py
           python expert_training_pipeline.py --manifest expert_manifest.json --approvals dataset_approval.json --config config.json --output expert_training_plan.json
+      - name: Test 20-domain synthetic corpora and baseline parity
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_expert_domain_synthetic_benchmark.py
+      - name: Benchmark 20 domain shards with and without micro-agent control
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python expert_domain_synthetic_benchmark.py --manifest expert_manifest.json --report-path expert_domain_benchmark.json --steps 40
       - name: Run 20-expert native topology synthetic smoke
         working-directory: models/neurocore_edge
         env:
@@ -88,5 +97,6 @@ jobs:
             models/neurocore_edge/micro_agent_training_report.json
             models/neurocore_edge/expert_training_plan.json
             models/neurocore_edge/expert20_smoke.json
+            models/neurocore_edge/expert_domain_benchmark.json
           if-no-files-found: error
           retention-days: 14
