@@ -35,7 +35,10 @@ def test_micro_agent_managed_training_uses_native_neurocore_and_synthetic_data(t
 
     assert report["status"] == "SYNTHETIC_SMOKE_PASS"
     assert report["training_started"] is True
-    assert report["model_under_test"] == "native_neurocore_reference"
+    assert report["model_under_test"] == "native_neurocore_edge_scaled_reference"
+    assert report["training_scale"] == "tiny_20_expert_reference"
+    assert report["production_2_87b_training_started"] is False
+    assert report["micro_agent_training_control"]["num_experts"] == 20
     assert report["open_source_model_integrated"] is False
     assert report["external_model_weights_used"] is False
     assert report["provenance"]["external_data_used"] is False
