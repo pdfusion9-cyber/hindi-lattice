@@ -12,7 +12,7 @@
 | Memory Guard | Refuse allocations that exceed safe host RAM | FP32 AdamW estimate: 16 bytes/trainable parameter; FP32 frozen weights: 4 bytes/parameter; explicit activation and staging reserve |
 | Adaptive Batch Agent | Select a micro-batch from the remaining memory budget | Keep the effective batch constant through gradient accumulation |
 | Checkpoint Agent | Bound both checkpoint overhead and lost work after interruption | Use measured step/checkpoint seconds and a maximum recovery window |
-| Throughput Calibrator | Run short warm-up trials before selecting threads, batch size or precision | Compare tokens/second and validation parity on the same runner class; never assume more threads are faster |
+| Throughput Measurement | Record elapsed training time and tokens/second for the bounded native synthetic pilot | Compare repeat runs on the same runner class; the current metric is a tiny-model baseline, not a 2.87B speed claim |
 
 ## CPU execution shape
 
@@ -35,7 +35,8 @@ The shared backbone is a separate bottleneck. A prior v0.3.3 package candidate r
 
 cpu_training_agents.py provides:
 - effective CPU/RAM/disk detection (including Linux cgroup constraints);
-- deterministic CPU thread policy;
+- deterministic CPU thread policy, now passed into the native synthetic pilot instead of being overwritten with a hard-coded single thread;
+- measured elapsed seconds and tokens/second for that tiny synthetic training loop;
 - conservative frozen/trainable memory estimator;
 - adaptive micro-batch plus gradient-accumulation planner using a layer-aware activation proxy (not a substitute for measured peak RAM);
 - checkpoint interval based on measured step and save time;
@@ -54,4 +55,4 @@ This is a planner/preflight, not a production trainer. It deliberately reports p
 
 ## Truthful success criteria
 
-A pilot is successful only if repeatable same-hardware tests show higher tokens/second, lower wall-clock time per token at equal effective batch and comparable validation loss, without exceeding memory/disk limits. A planner decision alone is not evidence of a speedup.
+A pilot is successful only if repeatable same-hardware tests show higher tokens/second, lower wall-clock time per token at equal effective batch and comparable validation loss, without exceeding memory/disk limits. The current throughput metric is from the tiny synthetic reference model only. It must not be extrapolated to the 2.87B model. A planner decision alone is not evidence of a speedup.
