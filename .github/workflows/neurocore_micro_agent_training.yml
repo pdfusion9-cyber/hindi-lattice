@@ -35,6 +35,17 @@ jobs:
       - name: Test training governance, budget and external-weight rejection
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_training_micro_agents.py -k 'not managed_training'
+      - name: Test 20-expert planner and fail-closed production gate
+        working-directory: models/neurocore_edge
+        run: |
+          python -m pytest -q test_expert_training_pipeline.py
+          python expert_training_pipeline.py --manifest expert_manifest.json --approvals dataset_approval.json --config config.json --output expert_training_plan.json
+      - name: Run 20-expert native topology synthetic smoke
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python synthetic_training_smoke.py --report-path expert20_smoke.json --steps 10 --num-experts 20
       - name: Start bounded native NeuroCore synthetic training under micro-agent control
         working-directory: models/neurocore_edge
         env:
@@ -55,6 +66,13 @@ jobs:
           assert r["external_model_weights_used"] is False
           assert r["provenance"]["external_data_used"] is False
           assert r["production_training_gate"] == "CLOSED"
+          p=json.load(open("expert_training_plan.json"))
+          assert p["expert_count"] == 20 and p["production_dispatch_allowed"] is False
+          assert p["unapproved_assignment_count"] > 0
+          e=json.load(open("expert20_smoke.json"))
+          assert e["status"] == "SYNTHETIC_SMOKE_PASS"
+          assert e["model_config"]["num_experts"] == 20
+          assert e["provenance"]["external_data_used"] is False
           c=json.load(open("config.json"))
           assert c["training"]["enabled"] is False
           d=json.load(open("dataset_approval.json"))
@@ -66,6 +84,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: neurocore-micro-agent-managed-synthetic-pilot
-          path: models/neurocore_edge/micro_agent_training_report.json
+          path: |
+            models/neurocore_edge/micro_agent_training_report.json
+            models/neurocore_edge/expert_training_plan.json
+            models/neurocore_edge/expert20_smoke.json
           if-no-files-found: error
           retention-days: 14
