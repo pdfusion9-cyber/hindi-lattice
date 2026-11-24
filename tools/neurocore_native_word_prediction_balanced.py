@@ -88,7 +88,7 @@ def collate(examples, pad_id=PAD):
 
 
 @torch.no_grad()
-def evaluate(model, rows, word_to_id, *, batch_size, cfg):
+def evaluate(model, rows, word_to_id, *, batch_size, cfg, measure_generation=False):
     model.eval()
     loss_sum = 0.0
     n_tokens = top1 = top5 = 0
@@ -107,22 +107,21 @@ def evaluate(model, rows, word_to_id, *, batch_size, cfg):
         top5 += int((top5_ids == selected_targets.unsqueeze(-1)).any(dim=-1).sum().item())
         n_tokens += selected_targets.numel()
 
-        # Greedy completion is evaluated separately on each row below.
-        for (line, fields), (prompt, target) in zip(batch, examples):
-            del line
-            subject, relation, obj = fields
-            gen_ids = greedy(model, prompt, max_words=max(12, len(obj) + 2))
-            expected = [word_to_id.get(w, UNK) for w in obj]
-            exact_rows += int(gen_ids == expected)
+        if measure_generation:
+            for (_, fields), (prompt, _) in zip(batch, examples):
+                obj = fields[2]
+                gen_ids = greedy(model, prompt, max_words=max(12, len(obj) + 2))
+                expected = [word_to_id.get(w, UNK) for w in obj]
+                exact_rows += int(gen_ids == expected)
     model.train()
     return {
         "object_word_loss": loss_sum / max(n_tokens, 1),
         "object_word_top1": top1 / max(n_tokens, 1),
         "object_word_top5": top5 / max(n_tokens, 1),
         "predicted_object_words": n_tokens,
-        "exact_object_match": exact_rows / max(len(rows), 1),
-        "exact_object_matches": exact_rows,
-        "evaluated_rows": len(rows),
+        "exact_object_match": (exact_rows / max(len(rows), 1)) if measure_generation else None,
+        "exact_object_matches": exact_rows if measure_generation else None,
+        "evaluated_rows": len(rows) if measure_generation else 0,
     }
 
 
@@ -224,7 +223,7 @@ def main():
             )
 
     elapsed = max(time.perf_counter() - started, 1e-9)
-    final = evaluate(model, valid_rows, word_to_id, batch_size=args.batch_size, cfg=cfg)
+    final = evaluate(model, valid_rows, word_to_id, batch_size=args.batch_size, cfg=cfg, measure_generation=True)
     sample_rows = valid_rows[:min(30, len(valid_rows))]
     examples_out = []
     for line, fields in sample_rows:
