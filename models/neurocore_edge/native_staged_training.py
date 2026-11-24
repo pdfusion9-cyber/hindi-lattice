@@ -439,6 +439,23 @@ def run_staged_training(
         parameter_count_after = count_parameters(merged_model)
         merged_hash = state_fingerprint(merged_state)
 
+        if resume_path:
+            atomic_torch_save({
+                "model_id": NATIVE_MODEL_ID,
+                "config_fingerprint": cfg_hash,
+                "seed": seed,
+                "completed_stage": "merged",
+                "shared_state": shared_state,
+                "shared_backbone_fingerprint": base_hash,
+                "shared_losses": shared_losses,
+                "expert_shards": shards,
+                "merged_state_fingerprint": merged_hash,
+                "provenance": {
+                    "external_data_used": False, "user_data_used": False,
+                    "external_weights_used": False, "open_source_model_integrated": False,
+                },
+            }, resume_path)
+
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_torch_save({
             "format_version": 1,
