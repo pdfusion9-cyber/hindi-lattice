@@ -16,6 +16,9 @@ on:
     paths:
       - 'models/neurocore_edge/cpu_training_agents.py'
       - 'models/neurocore_edge/test_cpu_training_agents.py'
+      - 'models/neurocore_edge/compute_efficiency_agents.py'
+      - 'models/neurocore_edge/test_compute_efficiency_agents.py'
+      - 'models/neurocore_edge/verify_cpu_runner_inventory.py'
       - 'models/neurocore_edge/CPU_MICRO_AGENT_TRAINING.md'
       - '.github/workflows/neurocore_cpu_micro_agent_preflight.yml'
   workflow_dispatch:
