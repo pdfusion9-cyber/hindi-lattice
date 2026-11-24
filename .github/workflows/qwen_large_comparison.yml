@@ -1,0 +1,63 @@
+name: Qwen3 1.7B and 4B offline Hindi comparison
+
+on:
+  push:
+    branches:
+      - feat/hybrid-micro-agent-architecture-20261123
+    paths:
+      - models/neurocore_edge/qwen_large_comparison.py
+      - .github/workflows/qwen_large_comparison.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qwen-large-comparison-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  compare-qwen-sizes:
+    name: CPU inference — Qwen3 1.7B and 4B
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      QWEN_REPORT_DIR: qwen-large-report
+      LLAMA_CLI: llama.cpp/build/bin/llama-cli
+      LLAMA_THREADS: "4"
+      LLAMA_CTX_SIZE: "8192"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+      - name: Install llama.cpp build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libcurl4-openssl-dev git
+      - name: Build llama.cpp CPU CLI
+        run: |
+          git clone --depth 1 https://github.com/ggml-org/llama.cpp.git
+          cmake -S llama.cpp -B llama.cpp/build -G Ninja -DGGML_CURL=ON -DGGML_NATIVE=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build llama.cpp/build --config Release --target llama-cli -j 4
+      - name: Install Hugging Face transfer helper
+        run: python -m pip install --user hf_transfer
+      - name: Run same-task Qwen3 size comparison
+        run: python models/neurocore_edge/qwen_large_comparison.py
+      - name: Publish comparison report
+        if: always()
+        run: |
+          if [ -f qwen-large-report/qwen_large_comparison.md ]; then
+            cat qwen-large-report/qwen_large_comparison.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No comparison report produced. Inspect build, model download, and inference logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload full model outputs and JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-1.7b-4b-hindi-comparison
+          path: qwen-large-report/
+          if-no-files-found: warn
+          retention-days: 14
