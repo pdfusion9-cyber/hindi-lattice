@@ -66,6 +66,48 @@ jobs:
           name: neurocore-hindi-synthetic-baseline
           path: models/neurocore_edge/hindi_synthetic_report.json
           if-no-files-found: error
+      - name: Run synthetic autoregressive Hindi Unicode code-point language model
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python hindi_autoregressive_lm_smoke.py --report-path hindi_autoregressive_lm_report.json --steps 240
+          python -m pytest -q test_hindi_autoregressive_lm_smoke.py
+      - name: Upload autoregressive Hindi language model report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-hindi-autoregressive-lm-smoke
+          path: models/neurocore_edge/hindi_autoregressive_lm_report.json
+          if-no-files-found: error
+      - name: Run synthetic Hindi word-level language model
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python hindi_word_lm_smoke.py --report-path hindi_word_lm_report.json --steps 50
+          python -m pytest -q test_hindi_word_lm_smoke.py
+      - name: Upload Hindi word-level language model report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-hindi-word-lm-smoke
+          path: models/neurocore_edge/hindi_word_lm_report.json
+          if-no-files-found: error
+      - name: Run synthetic Hindi compositional generalization model
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python hindi_compositional_generalization_smoke.py --report-path hindi_compositional_generalization_report.json --steps 700
+          python -m pytest -q test_hindi_compositional_generalization_smoke.py
+      - name: Upload Hindi compositional generalization report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-hindi-compositional-generalization-smoke
+          path: models/neurocore_edge/hindi_compositional_generalization_report.json
+          if-no-files-found: error
       - name: Run dataset schema adapter tests
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_dataset_schema_adapters.py
