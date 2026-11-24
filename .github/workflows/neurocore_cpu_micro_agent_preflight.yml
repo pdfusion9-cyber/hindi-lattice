@@ -11,7 +11,8 @@ on:
       - 'models/neurocore_edge/training_micro_agents.py'
       - 'models/neurocore_edge/synthetic_training_smoke.py'
       - 'models/neurocore_edge/test_training_micro_agents.py'
-      - 'models/neurocore_edge/verify_cpu_runner_inventory.py'\n      - 'models/neurocore_edge/test_verify_cpu_runner_inventory.py'
+      - 'models/neurocore_edge/verify_cpu_runner_inventory.py'
+      - 'models/neurocore_edge/test_verify_cpu_runner_inventory.py'
       - 'models/neurocore_edge/CPU_MICRO_AGENT_TRAINING.md'
       - '.github/workflows/neurocore_cpu_micro_agent_preflight.yml'
   push:
