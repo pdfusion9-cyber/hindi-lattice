@@ -129,13 +129,16 @@ def run_experiment(
     steps: int = 40,
     seed: int = SEED,
     num_experts: int = 4,
+    cpu_threads: int = 1,
 ) -> dict[str, Any]:
     """Train, checkpoint, reload and verify a tiny model on synthetic tokens."""
+    if not isinstance(cpu_threads, int) or isinstance(cpu_threads, bool) or not 1 <= cpu_threads <= 4:
+        raise ValueError("cpu_threads must be an integer from 1 through 4")
     if steps < 10:
         raise ValueError("steps must be >=10 for a meaningful loss-reduction check")
 
     previous_threads = torch.get_num_threads()
-    torch.set_num_threads(1)
+    torch.set_num_threads(cpu_threads)
     try:
         torch.manual_seed(seed)
         cfg = make_model_config(num_experts=num_experts)
@@ -247,6 +250,7 @@ def run_experiment(
             "status": "SYNTHETIC_SMOKE_PASS",
             "experiment": "neurocore_tiny_end_to_end_training_v1",
             "device": "cpu",
+            "cpu_threads": cpu_threads,
             "seed": seed,
             "model_config": checkpoint["model_config"],
             "parameter_count": count_parameters(model),
@@ -297,8 +301,12 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=40)
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--num-experts", type=int, default=4)
+    parser.add_argument("--cpu-threads", type=int, default=1)
     args = parser.parse_args()
-    report = run_experiment(args.report_path, steps=args.steps, seed=args.seed, num_experts=args.num_experts)
+    report = run_experiment(
+        args.report_path, steps=args.steps, seed=args.seed,
+        num_experts=args.num_experts, cpu_threads=args.cpu_threads,
+    )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
