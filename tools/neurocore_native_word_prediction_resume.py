@@ -158,7 +158,7 @@ def main():
     curve = []
     best_loss = initial["object_word_loss"]
     best_metrics = initial
-    best_state = None
+    best_step = start_step
     began = time.perf_counter()
     model.train()
     for step in range(1, args.steps + 1):
@@ -183,7 +183,7 @@ def main():
             if metrics["object_word_loss"] < best_loss:
                 best_loss = metrics["object_word_loss"]
                 best_metrics = metrics
-                best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+                best_step = start_step + step
             print(
                 f"resume_word_step={start_step + step} loss={metrics['object_word_loss']:.4f} "
                 f"top1={metrics['object_word_top1']:.4f} top5={metrics['object_word_top5']:.4f} "
@@ -191,8 +191,6 @@ def main():
                 flush=True,
             )
     elapsed = max(time.perf_counter() - began, 1e-9)
-    if best_state is not None:
-        model.load_state_dict(best_state, strict=True)
     final = evaluate(model, valid_rows, word_to_id, args.batch_size)
     examples_out = []
     for _, fields in valid_rows[:30]:
@@ -221,7 +219,7 @@ def main():
             "resumed_from_step": start_step, "additional_steps": args.steps, "total_steps": total_step,
             "batch_size": args.batch_size, "learning_rate": args.learning_rate,
             "sampling": "uniform_over_relation_groups_then_uniform_row",
-            "initial_validation": initial, "best_validation": best_metrics, "final_validation": final,
+            "initial_validation": initial, "best_validation": best_metrics, "best_validation_step": best_step, "final_validation": final,
             "validation_curve": curve, "elapsed_seconds": elapsed,
             "training_rows_per_second": args.steps * args.batch_size / elapsed,
         },
@@ -234,7 +232,7 @@ def main():
     }
     out_ck = {
         **ck, "model_state_dict": model.state_dict(), "optimizer_state_dict": optimizer.state_dict(),
-        "step": total_step, "best_validation": best_metrics,
+        "step": total_step, "best_validation": best_metrics, "best_validation_step": best_step,
         "production_training_gate": "CLOSED",
     }
     def outpath(p):
