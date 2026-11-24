@@ -116,10 +116,17 @@ class NeuroCoreEdgeLayer(nn.Module):
             for _ in range(cfg.num_experts)
         ])
 
-    def forward(self, x, state=None):
+    def forward(self, x, state=None, force_expert_id=None):
         memory_out, next_state = self.memory(self.norm1(x), state)
         x = x + memory_out
         h = self.norm2(x)
+        if force_expert_id is not None:
+            if not isinstance(force_expert_id, int) or isinstance(force_expert_id, bool):
+                raise TypeError("force_expert_id must be an integer")
+            if force_expert_id not in range(len(self.experts)):
+                raise ValueError("force_expert_id outside configured expert range")
+            routed = self.experts[force_expert_id](h)
+            return x + routed, next_state, x.new_zeros(())
         indices, weights, aux_loss = self.router(h)
         flat_h = h.reshape(-1, h.shape[-1])
         flat_indices = indices.reshape(-1, indices.shape[-1])
@@ -151,13 +158,15 @@ class NeuroCoreEdgeForCausalLM(nn.Module):
         self.lm_head = nn.Linear(cfg.hidden_size, cfg.vocab_size, bias=False)
         self.lm_head.weight = self.embed.weight
 
-    def forward(self, input_ids, states=None):
+    def forward(self, input_ids, states=None, force_expert_id=None):
         x = self.embed(input_ids)
         if states is None:
             states = [None] * len(self.layers)
         next_states, aux_losses = [], []
         for layer, state in zip(self.layers, states):
-            x, next_state, aux = layer(x, state)
+            x, next_state, aux = layer(
+                x, state, force_expert_id=force_expert_id
+            )
             next_states.append(next_state)
             aux_losses.append(aux)
         logits = self.lm_head(self.final_norm(x))
