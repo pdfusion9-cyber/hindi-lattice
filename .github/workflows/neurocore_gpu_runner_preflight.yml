@@ -1,0 +1,109 @@
+name: NeuroCore 20-GPU Runner Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      gpu_runner_label:
+        description: "Exact GitHub larger-runner name/label configured for a GPU runner pool"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neurocore-gpu-preflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gpu-runner-matrix:
+    name: GPU runner preflight ${{ matrix.runner_id }}
+    runs-on: ${{ inputs.gpu_runner_label }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        runner_id: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Inventory this runner GPU, VRAM, RAM, CPU and disk
+        run: |
+          python models/neurocore_edge/gpu_runner_preflight.py --runner-id ${{ matrix.runner_id }} --report gpu-runner-${{ matrix.runner_id }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-gpu-runner-${{ matrix.runner_id }}
+          path: gpu-runner-${{ matrix.runner_id }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-twenty-gpu-runners:
+    name: Verify 20 independent GPU runner reports
+    needs: gpu-runner-matrix
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: neurocore-gpu-runner-*
+          path: gpu-runner-reports
+          merge-multiple: true
+      - name: Require 20 distinct passing GPU runners
+        run: |
+          python - <<'PY'
+          import glob, json
+          paths = sorted(glob.glob("gpu-runner-reports/gpu-runner-*.json"))
+          if len(paths) != 20:
+              raise SystemExit(f"Expected 20 reports, found {len(paths)}")
+          reports = [json.load(open(path, encoding="utf-8")) for path in paths]
+          ids = sorted(report["runner_id"] for report in reports)
+          if ids != list(range(20)):
+              raise SystemExit(f"Runner ID coverage is invalid: {ids}")
+          blocked = [report for report in reports if report["status"] != "GPU_RUNNER_PREFLIGHT_PASS"]
+          if blocked:
+              raise SystemExit("One or more GPU runners failed their hardware preflight")
+          print("NEUROCORE_GPU_RUNNER_PREFLIGHT_PASS: 20/20 distinct GPU runners")
+          print(json.dumps([
+              {"runner_id": r["runner_id"], "gpus": r["gpus"],
+               "ram_gib": r["host_ram_gib"], "disk_total_gb": r["disk_total_gb"]}
+              for r in reports
+          ], indent=2))
+          PY
+
+  production-training-gate:
+    name: Production training eligibility (no dispatch)
+    needs: verify-twenty-gpu-runners
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native NeuroCore gate dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Evaluate architecture, config and dataset approvals
+        working-directory: models/neurocore_edge
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from native_staged_training import production_gate
+          report = production_gate(Path("config.json"), Path("dataset_approval.json"))
+          print(json.dumps(report, indent=2))
+          print("PRODUCTION_TRAINING_GATE=" + report["status"])
+          if report["status"] != "OPEN":
+              print("GPU capacity preflight passed, but production training remains blocked.")
+              print("No production weights or datasets were loaded and no training was dispatched.")
+          PY
+      - name: Explicitly record that this workflow never starts production training
+        run: echo "GPU_PREFLIGHT_ONLY=true; PRODUCTION_TRAINING_DISPATCHED=false" >> "$GITHUB_STEP_SUMMARY"
