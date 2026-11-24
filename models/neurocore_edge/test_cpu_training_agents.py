@@ -30,7 +30,8 @@ def test_selected_expert_plan_fits_but_requires_other_experts_to_be_unloaded():
     assert plan["status"] == "CPU_TRAINING_PLAN_APPROVED"
     assert len(plan["expert_workers"]) == 20
     assert all(row["other_expert_weights_loaded"] is False for row in plan["expert_workers"])
-    assert len({tuple(row["expert_ids"]) for row in plan["runner_assignments"]}) == 1
+    assert all(len(row["expert_ids"]) == 1 for row in plan["runner_assignments"])
+    assert sorted(e for row in plan["runner_assignments"] for e in row["expert_ids"]) == list(range(20))
     assert all(row["memory_fits"] for row in plan["expert_workers"])
     assert plan["production_dispatch_allowed"] is False
     assert plan["provenance"]["open_source_model_integrated"] is False
@@ -69,7 +70,7 @@ def test_checkpoint_interval_balances_overhead_and_recovery():
         measured_step_seconds=0.5, measured_checkpoint_seconds=2.0,
         target_overhead_fraction=0.01, max_recovery_seconds=300,
     )
-    assert interval == 600
+    assert interval == 400
 
 
 def test_memory_estimate_matches_fp32_adamw_assumptions():
