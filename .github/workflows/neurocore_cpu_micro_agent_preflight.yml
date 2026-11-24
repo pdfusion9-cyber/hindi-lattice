@@ -29,16 +29,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Run CPU planner tests
+      - name: Run CPU planner and compute-agent tests
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest
-          python -m py_compile models/neurocore_edge/cpu_training_agents.py
+          python -m py_compile models/neurocore_edge/cpu_training_agents.py models/neurocore_edge/compute_efficiency_agents.py
           cd models/neurocore_edge
-          python -m pytest -q test_cpu_training_agents.py
+          python -m pytest -q test_cpu_training_agents.py test_compute_efficiency_agents.py
 
   twenty-cpu-runner-inventory:
-    name: CPU runner inventory \${{ matrix.runner_id }}
+    name: CPU runner inventory ${{ matrix.runner_id }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     strategy:
@@ -54,11 +54,28 @@ jobs:
       - name: Profile this CPU runner
         run: |
           python models/neurocore_edge/cpu_training_agents.py \
-            --runner-id \${{ matrix.runner_id }} \
-            --profile-report cpu-runner-\${{ matrix.runner_id }}.json
+            --runner-id ${{ matrix.runner_id }} \
+            --profile-report cpu-runner-${{ matrix.runner_id }}.json
       - uses: actions/upload-artifact@v4
         with:
-          name: neurocore-cpu-runner-\${{ matrix.runner_id }}
-          path: cpu-runner-\${{ matrix.runner_id }}.json
+          name: neurocore-cpu-runner-${{ matrix.runner_id }}
+          path: cpu-runner-${{ matrix.runner_id }}.json
           if-no-files-found: error
           retention-days: 7
+
+
+  verify-twenty-distinct-cpu-runners:
+    needs: twenty-cpu-runner-inventory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: neurocore-cpu-runner-*
+          path: cpu-inventory
+          merge-multiple: true
+      - name: Verify exactly 20 distinct CPU runner hosts
+        run: |
+          cd cpu-inventory
+          python ../models/neurocore_edge/verify_cpu_runner_inventory.py
