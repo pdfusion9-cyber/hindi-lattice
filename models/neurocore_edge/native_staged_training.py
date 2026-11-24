@@ -491,6 +491,8 @@ def run_staged_training(
             "parameter_count_preserved": parameter_count_before == parameter_count_after,
             "merged_state_fingerprint": merged_hash,
             "checkpoint_path": str(checkpoint_path),
+            "resume_used": resume["completed_stage"] != "none",
+            "resumed_expert_shards": len(resume.get("expert_shards", [])),
             "checkpoint_bytes": checkpoint_path.stat().st_size,
             "micro_agent_training_control": plan,
             "production_training_gate": gate,
@@ -530,6 +532,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--config", type=Path, default=Path("config.json"))
     parser.add_argument("--approvals", type=Path, default=Path("dataset_approval.json"))
+    parser.add_argument("--resume-path", type=Path, default=None)
     args = parser.parse_args()
     report = run_staged_training(
         args.report_path,
@@ -539,6 +542,7 @@ def main() -> None:
         seed=args.seed,
         config_path=args.config,
         approvals_path=args.approvals,
+        resume_path=args.resume_path,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if report["status"] != "NATIVE_20_EXPERT_STAGED_SYNTHETIC_PASS":
