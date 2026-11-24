@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
+import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -32,6 +34,53 @@ except ImportError:  # The planner itself remains importable without PyTorch.
 
 
 MAX_STEPS_HARD_CAP = 200
+
+
+_CPU_THREAD_CALIBRATION_CACHE: dict[int, dict[str, Any]] = {}
+
+
+def _calibrate_cpu_threads(effective_cpus: int) -> dict[str, Any]:
+    """Select the fastest small CPU matmul setting; report this as a proxy only."""
+    candidates = [n for n in (1, 2, 4) if n <= max(1, min(effective_cpus, 4))]
+    if torch is None or len(candidates) == 1:
+        return {
+            "selected_threads": candidates[0],
+            "candidate_seconds": {str(candidates[0]): None},
+            "benchmark": "unavailable_or_single_cpu",
+        }
+    cached = _CPU_THREAD_CALIBRATION_CACHE.get(max(candidates))
+    if cached is not None:
+        return cached
+
+    previous_threads = torch.get_num_threads()
+    measurements: dict[str, float] = {}
+    try:
+        torch.manual_seed(17)
+        left = torch.randn(384, 384)
+        right = torch.randn(384, 384)
+        for threads in candidates:
+            torch.set_num_threads(threads)
+            for _ in range(2):
+                _ = left @ right
+            samples = []
+            for _ in range(4):
+                started = time.perf_counter()
+                _ = left @ right
+                samples.append(time.perf_counter() - started)
+            measurements[str(threads)] = statistics.median(samples)
+    finally:
+        torch.set_num_threads(previous_threads)
+
+    selected = min(candidates, key=lambda n: (measurements[str(n)], n))
+    result = {
+        "selected_threads": selected,
+        "candidate_seconds": measurements,
+        "benchmark": "384x384_cpu_matmul_proxy",
+        "warning": "Proxy benchmark only; confirm with full-model tokens/second before production.",
+    }
+    _CPU_THREAD_CALIBRATION_CACHE[max(candidates)] = result
+    return result
+
 NATIVE_MODEL_ID = "native_neurocore_edge_scaled_reference"
 NATIVE_MODEL_EXPERT_COUNT = 20
 
@@ -214,7 +263,8 @@ class MicroAgentTrainingController:
     ) -> dict[str, Any]:
         profile = detect_cpu_profile()
         thread_plan = plan_cpu_threads(profile)
-        selected_cpu_threads = thread_plan["intra_op_threads"] if cpu_threads is None else cpu_threads
+        calibration = _calibrate_cpu_threads(profile.effective_cpus)
+        selected_cpu_threads = calibration["selected_threads"] if cpu_threads is None else cpu_threads
         context = {
             "source_kind": source_kind,
             "external_data_used": external_data_used,
@@ -274,6 +324,7 @@ class MicroAgentTrainingController:
             "allocated_steps": budget["allocated_steps"],
             "cpu_threads": budget["cpu_threads"],
             "cpu_thread_plan": thread_plan,
+            "cpu_thread_calibration": calibration,
             "hardware_profile": profile.to_dict(),
             "budget_profile": budget["budget_profile"],
             "resource_usage": {
