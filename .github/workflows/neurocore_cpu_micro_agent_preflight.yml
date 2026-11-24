@@ -11,7 +11,7 @@ on:
       - 'models/neurocore_edge/training_micro_agents.py'
       - 'models/neurocore_edge/synthetic_training_smoke.py'
       - 'models/neurocore_edge/test_training_micro_agents.py'
-      - 'models/neurocore_edge/verify_cpu_runner_inventory.py'
+      - 'models/neurocore_edge/verify_cpu_runner_inventory.py'\n      - 'models/neurocore_edge/test_verify_cpu_runner_inventory.py'
       - 'models/neurocore_edge/CPU_MICRO_AGENT_TRAINING.md'
       - '.github/workflows/neurocore_cpu_micro_agent_preflight.yml'
   push:
@@ -42,9 +42,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest
-          python -m py_compile models/neurocore_edge/cpu_training_agents.py models/neurocore_edge/compute_efficiency_agents.py
+          python -m py_compile models/neurocore_edge/cpu_training_agents.py models/neurocore_edge/compute_efficiency_agents.py models/neurocore_edge/verify_cpu_runner_inventory.py
           cd models/neurocore_edge
-          python -m pytest -q test_cpu_training_agents.py test_compute_efficiency_agents.py
+          python -m pytest -q test_cpu_training_agents.py test_compute_efficiency_agents.py test_verify_cpu_runner_inventory.py
 
   twenty-cpu-runner-inventory:
     name: CPU runner inventory ${{ matrix.runner_id }}
