@@ -1,0 +1,59 @@
+name: Qwen3 offline Hindi multi-agent evaluation
+
+on:
+  push:
+    branches:
+      - feat/hybrid-micro-agent-architecture-20261123
+    paths:
+      - models/neurocore_edge/qwen_offline_e2e.py
+      - .github/workflows/qwen_offline_e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qwen-offline-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qwen-offline-e2e:
+    name: Real Qwen3 weights — CPU inference, no API
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      QWEN_MODEL_ID: Qwen/Qwen3-0.6B
+      QWEN_REPORT_DIR: qwen-report
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TRANSFORMERS_VERBOSITY: error
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install CPU inference dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install transformers==4.57.1 safetensors sentencepiece
+      - name: Download public Qwen3 weights and run sequential agent test
+        run: python models/neurocore_edge/qwen_offline_e2e.py
+      - name: Publish test report to job summary
+        if: always()
+        run: |
+          if [ -f qwen-report/qwen_offline_report.md ]; then
+            cat qwen-report/qwen_offline_report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Qwen report was not produced; inspect logs above." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload raw Qwen test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen3-offline-hindi-e2e
+          path: qwen-report/
+          if-no-files-found: warn
+          retention-days: 14

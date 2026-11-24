@@ -1,0 +1,268 @@
+name: NeuroCore Micro-Agent Managed Synthetic Training Pilot
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'models/neurocore_edge/**'
+      - '.github/workflows/neurocore_micro_agent_training.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'models/neurocore_edge/**'
+      - '.github/workflows/neurocore_micro_agent_training.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-shared-base:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Create native shared-base for 20-runner synthetic integration test
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python native_20_runner.py --stage shared-base --steps 1 --seed 29 --output shared-base.pt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-native-shared-base
+          path: models/neurocore_edge/shared-base.pt
+          if-no-files-found: error
+          retention-days: 3
+
+  native-expert-shards:
+    needs: native-shared-base
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        expert_id: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - uses: actions/download-artifact@v4
+        with:
+          name: neurocore-native-shared-base
+          path: models/neurocore_edge/artifacts
+      - name: Train exactly one native expert shard on this runner
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+          EXPERT_ID: ${{ matrix.expert_id }}
+        run: |
+          python native_20_runner.py --stage expert --base-checkpoint artifacts/shared-base.pt --expert-id "$EXPERT_ID" --steps 1 --seed 29 --expert-checkpoint "expert-$EXPERT_ID.pt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-expert-shard-${{ matrix.expert_id }}
+          path: models/neurocore_edge/expert-${{ matrix.expert_id }}.pt
+          if-no-files-found: error
+          retention-days: 3
+
+  native-merge-20-experts:
+    needs: native-expert-shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - uses: actions/download-artifact@v4
+        with:
+          name: neurocore-native-shared-base
+          path: models/neurocore_edge/artifacts/base
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: neurocore-expert-shard-*
+          path: models/neurocore_edge/artifacts/shards
+          merge-multiple: true
+      - name: Strictly merge all 20 independently trained expert shards
+        working-directory: models/neurocore_edge
+        run: |
+          python native_20_runner.py --stage merge --base-checkpoint artifacts/base/shared-base.pt --shard-dir artifacts/shards --output native-20-runner-merged.pt --report native-20-runner-report.json
+          python - <<'PY'
+          import json
+          r=json.load(open("native-20-runner-report.json"))
+          assert r["status"] == "NATIVE_20_RUNNER_MERGE_PASS"
+          assert r["expert_ids"] == list(range(20))
+          assert r["expert_count"] == 20
+          assert r["parameter_count_preserved"] is True
+          assert r["provenance"]["external_weights_used"] is False
+          assert r["provenance"]["open_source_model_integrated"] is False
+          print("PASS: 20 separate runner shards merged with exact expert coverage")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-native-20-runner-merged-synthetic
+          path: |
+            models/neurocore_edge/native-20-runner-merged.pt
+            models/neurocore_edge/native-20-runner-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+  production-training-readiness:
+    needs: native-merge-20-experts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Evaluate real 2.87B production gates without dispatching training
+        working-directory: models/neurocore_edge
+        run: python native_20_runner.py --stage production-gate --config config.json --approvals dataset_approval.json || test "$?" -eq 1
+  managed-synthetic-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+          python -m pip install pytest
+      - name: Compile native NeuroCore and micro-agent training controller
+        run: python -m py_compile models/neurocore_edge/*.py
+      - name: Test training governance, budget and external-weight rejection
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_training_micro_agents.py -k 'not managed_training'
+      - name: Test 20-expert planner and fail-closed production gate
+        working-directory: models/neurocore_edge
+        run: |
+          python -m pytest -q test_expert_training_pipeline.py
+          python expert_training_pipeline.py --manifest expert_manifest.json --approvals dataset_approval.json --config config.json --output expert_training_plan.json
+      - name: Test 20-domain synthetic corpora and baseline parity
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_expert_domain_synthetic_benchmark.py
+      - name: Benchmark 20 domain shards with and without micro-agent control
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python expert_domain_synthetic_benchmark.py --manifest expert_manifest.json --report-path expert_domain_benchmark.json --steps 40
+      - name: Test Micro-Agent compute-efficiency policies
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_compute_efficiency_agents.py
+      - name: Benchmark load balancing, adaptive batches and checkpoints
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python compute_efficiency_benchmark.py --manifest expert_manifest.json --report-path compute_efficiency_report.json --steps 40
+      - name: Run 20-expert native topology synthetic smoke
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python synthetic_training_smoke.py --report-path expert20_smoke.json --steps 10 --num-experts 20
+      - name: Train native shared backbone and all 20 isolated expert shards
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python native_staged_training.py --report-path native_staged_training_report.json --checkpoint-path native_staged_training_checkpoint.pt --resume-path native_staged_training_resume.pt --base-steps 1 --expert-steps 1
+          python -m pytest -q test_native_staged_training.py
+      - name: Assert native 20-expert shard merge and production gates
+        working-directory: models/neurocore_edge
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open("native_staged_training_report.json"))
+          assert r["status"] == "NATIVE_20_EXPERT_STAGED_SYNTHETIC_PASS"
+          assert r["model_under_test"] == "native_neurocore_edge_scaled_reference"
+          assert r["open_source_model_integrated"] is False
+          assert r["external_weights_used"] is False
+          assert r["shared_backbone"]["status"] == "TRAINED"
+          assert r["expert_shards"]["status"] == "TRAINED_AND_MERGED"
+          assert r["expert_shards"]["count"] == 20
+          assert r["parameter_count_preserved"] is True
+          assert r["production_training_gate"]["status"] == "CLOSED"
+          assert r["production_2_87b_training_started"] is False
+          print("NATIVE_NEUROCORE_SHARED_BACKBONE_20_EXPERT_SHARDS_PASS; PRODUCTION_GATE_CLOSED")
+          PY
+      - name: Start bounded native NeuroCore synthetic training under micro-agent control
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python training_micro_agents.py --report-path micro_agent_training_report.json --steps 40 --max-steps 40
+          python -m pytest -q test_training_micro_agents.py -k managed_training
+      - name: Assert external models and production datasets remain excluded
+        working-directory: models/neurocore_edge
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open("micro_agent_training_report.json"))
+          assert r["training_started"] is True
+          assert r["model_under_test"] == "native_neurocore_edge_scaled_reference"
+          assert r["training_scale"] == "tiny_20_expert_reference"
+          assert r["production_2_87b_training_started"] is False
+          assert r["micro_agent_training_control"]["num_experts"] == 20
+          assert r["open_source_model_integrated"] is False
+          assert r["external_model_weights_used"] is False
+          assert r["provenance"]["external_data_used"] is False
+          assert r["production_training_gate"] == "CLOSED"
+          p=json.load(open("expert_training_plan.json"))
+          assert p["expert_count"] == 20 and p["production_dispatch_allowed"] is False
+          assert p["unapproved_assignment_count"] > 0
+          e=json.load(open("expert20_smoke.json"))
+          assert e["status"] == "SYNTHETIC_SMOKE_PASS"
+          assert e["model_config"]["num_experts"] == 20
+          assert e["provenance"]["external_data_used"] is False
+          c=json.load(open("config.json"))
+          assert c["training"]["enabled"] is False
+          d=json.load(open("dataset_approval.json"))
+          assert d["status"] == "ALL_DATASETS_PENDING_REVIEW"
+          assert all(row["approved"] is False for row in d["datasets"])
+          print("MICRO_AGENT_MANAGED_SYNTHETIC_TRAINING_PASS; PRODUCTION_GATES_STAY_CLOSED")
+          PY
+      - name: Upload managed synthetic training report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-micro-agent-managed-synthetic-pilot
+          path: |
+            models/neurocore_edge/micro_agent_training_report.json
+            models/neurocore_edge/expert_training_plan.json
+            models/neurocore_edge/expert20_smoke.json
+            models/neurocore_edge/expert_domain_benchmark.json
+            models/neurocore_edge/compute_efficiency_report.json
+            models/neurocore_edge/native_staged_training_report.json
+            models/neurocore_edge/native_staged_training_checkpoint.pt
+            models/neurocore_edge/native_staged_training_resume.pt
+          if-no-files-found: error
+          retention-days: 14

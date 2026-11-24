@@ -44,13 +44,15 @@ def build_synthetic_batch(
     return rows[:, :-1].contiguous(), rows[:, 1:].contiguous()
 
 
-def make_model_config() -> NeuroCoreEdgeConfig:
+def make_model_config(num_experts: int = 4) -> NeuroCoreEdgeConfig:
     """A deliberately tiny config; never reads the 2.87B production config."""
+    if not isinstance(num_experts, int) or isinstance(num_experts, bool) or not 2 <= num_experts <= 20:
+        raise ValueError("num_experts must be an integer from 2 through 20")
     return NeuroCoreEdgeConfig(
         vocab_size=16,
         hidden_size=16,
         num_hidden_layers=1,
-        num_experts=4,
+        num_experts=num_experts,
         experts_per_token=2,
         expert_intermediate_size=16,
         attention_heads=4,
@@ -126,6 +128,7 @@ def run_experiment(
     *,
     steps: int = 40,
     seed: int = SEED,
+    num_experts: int = 4,
 ) -> dict[str, Any]:
     """Train, checkpoint, reload and verify a tiny model on synthetic tokens."""
     if steps < 10:
@@ -135,7 +138,7 @@ def run_experiment(
     torch.set_num_threads(1)
     try:
         torch.manual_seed(seed)
-        cfg = make_model_config()
+        cfg = make_model_config(num_experts=num_experts)
         input_ids, targets = build_synthetic_batch()
         model = NeuroCoreEdgeForCausalLM(cfg).cpu()
         optimizer = torch.optim.AdamW(
@@ -293,8 +296,9 @@ def main() -> None:
     parser.add_argument("--report-path", type=Path, required=True)
     parser.add_argument("--steps", type=int, default=40)
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--num-experts", type=int, default=4)
     args = parser.parse_args()
-    report = run_experiment(args.report_path, steps=args.steps, seed=args.seed)
+    report = run_experiment(args.report_path, steps=args.steps, seed=args.seed, num_experts=args.num_experts)
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
