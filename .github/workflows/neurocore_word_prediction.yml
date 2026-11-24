@@ -1,0 +1,89 @@
+name: NeuroCore Native Hindi Whole-Word Prediction
+
+on:
+  push:
+    branches: [feat/hybrid-micro-agent-architecture-20261123]
+    paths:
+      - '.github/workflows/neurocore_word_prediction.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  word-prediction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hybrid-micro-agent-architecture-20261123
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Validate native word-level trainer and corpus
+        run: |
+          python -m py_compile tools/neurocore_native_word_prediction_training.py
+          test "$(git rev-parse HEAD:data/gyaan_base.txt)" = "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+      - name: Train NeuroCore to predict whole Hindi word tokens
+        env:
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: |
+          python tools/neurocore_native_word_prediction_training.py \
+            --corpus data/gyaan_base.txt \
+            --steps 5000 \
+            --batch-size 8 \
+            --sequence-length 24 \
+            --cpu-threads 2 \
+            --learning-rate 0.0002 \
+            --generation-samples 30 \
+            --max-new-words 12 \
+            --report reports/neurocore-native-word-prediction-5000.json \
+            --checkpoint artifacts/neurocore-native-word-prediction-5000.pt \
+            --tokenizer artifacts/neurocore-hindi-word-tokenizer.json
+      - name: Verify word-prediction metrics and checkpoint
+        run: |
+          python - <<'PY'
+          import json, torch
+          p = json.load(open("reports/neurocore-native-word-prediction-5000.json", encoding="utf-8"))
+          assert p["status"] == "NEUROCORE_NATIVE_WORD_PREDICTION_EXPERIMENT_PASS"
+          assert p["objective"] == "next_whitespace_delimited_word_token_prediction"
+          assert p["training"]["steps"] == 5000
+          assert p["vocabulary"]["size"] > 8000
+          assert p["training"]["final_validation_next_word_top5"] >= 0
+          assert p["generation_probe"]["samples"] >= 20
+          assert p["provenance"]["external_model_weights_used"] is False
+          assert p["provenance"]["open_source_model_integrated"] is False
+          assert p["production_training_gate"] == "CLOSED"
+          ck = torch.load("artifacts/neurocore-native-word-prediction-5000.pt", map_location="cpu", weights_only=True)
+          assert ck["model_id"] == "neurocore_edge_native_reference_word"
+          assert ck["tokenizer_format"] == "neurocore_whitespace_word_v1"
+          assert ck["step"] == 5000
+          print(json.dumps({
+              "vocabulary_size": p["vocabulary"]["size"],
+              "parameters": p["model_parameter_count"],
+              "initial_validation_loss": p["training"]["initial_validation_loss"],
+              "final_validation_loss": p["training"]["final_validation_loss"],
+              "next_word_top1": p["training"]["final_validation_next_word_top1"],
+              "next_word_top5": p["training"]["final_validation_next_word_top5"],
+              "generation_exact_object_match": p["generation_probe"]["exact_object_match_accuracy"],
+              "generation_similarity": p["generation_probe"]["mean_word_sequence_similarity"],
+              "training_words_per_second": p["training"]["training_words_per_second"],
+              "production_gate": p["production_training_gate"]
+          }, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload word-level checkpoint, tokenizer and metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-native-hindi-word-prediction-5000-steps
+          path: |
+            artifacts/neurocore-native-word-prediction-5000.pt
+            artifacts/neurocore-hindi-word-tokenizer.json
+            reports/neurocore-native-word-prediction-5000.json
+          if-no-files-found: error
+          retention-days: 30
