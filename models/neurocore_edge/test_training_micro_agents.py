@@ -9,6 +9,8 @@ def test_training_budget_is_capped_by_micro_agents():
     assert plan["status"] == "TRAINING_PLAN_APPROVED"
     assert plan["allocated_steps"] == 60
     assert 1 <= plan["cpu_threads"] <= 4
+    assert plan["cpu_threads"] <= plan["hardware_profile"]["effective_cpus"]
+    assert plan["cpu_thread_calibration"]["selected_threads"] >= 1
     assert len(plan["selected_agents"]) == 3
     assert plan["micro_agent_unused"] if False else True
     assert plan["open_source_model_in_training_path"] is False
