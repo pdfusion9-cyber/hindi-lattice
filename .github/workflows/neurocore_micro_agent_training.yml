@@ -79,7 +79,10 @@ jobs:
           import json
           r=json.load(open("micro_agent_training_report.json"))
           assert r["training_started"] is True
-          assert r["model_under_test"] == "native_neurocore_reference"
+          assert r["model_under_test"] == "native_neurocore_edge_scaled_reference"
+          assert r["training_scale"] == "tiny_20_expert_reference"
+          assert r["production_2_87b_training_started"] is False
+          assert r["micro_agent_training_control"]["num_experts"] == 20
           assert r["open_source_model_integrated"] is False
           assert r["external_model_weights_used"] is False
           assert r["provenance"]["external_data_used"] is False
