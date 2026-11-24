@@ -118,21 +118,41 @@ def _result(task, agent_id: str, status: TaskStatus, payload: Mapping[str, Any],
 
 def _data_gate(task, _context) -> AgentResult:
     ctx = task.context
-    safe = (
+    synthetic_safe = (
         ctx.get("source_kind") == "synthetic_only"
         and ctx.get("external_data_used") is False
         and ctx.get("user_data_used") is False
         and ctx.get("dataset_ids") == []
     )
-    if not safe:
+    # The repository's Gyaan corpus is explicitly NOT production-approved.
+    # It may only be used in a bounded, local, non-published experiment while
+    # rights/privacy review remains open. This path cannot authorize releases.
+    internal_safe = (
+        ctx.get("source_kind") == "bounded_internal_corpus"
+        and ctx.get("internal_only") is True
+        and ctx.get("public_artifacts") is False
+        and ctx.get("external_data_used") is False
+        and ctx.get("user_data_used") is False
+        and ctx.get("dataset_ids") == []
+        and ctx.get("corpus_rights_status") == "UNVERIFIED_PENDING_OWNER_AND_LICENSE_REVIEW"
+        and ctx.get("privacy_status") == "NOT_FORMALLY_CLEARED"
+    )
+    if not (synthetic_safe or internal_safe):
         return _result(
             task, "training_data_gate", TaskStatus.NEEDS_REVIEW,
-            {"decision": "REFUSE", "reason": "pilot accepts generated in-memory synthetic data only"},
-            limitations=("No external dataset or user data may enter this pilot.",),
+            {"decision": "REFUSE", "reason": "only generated synthetic data or explicitly bounded non-published internal corpus experiments are allowed"},
+            limitations=("Unreviewed corpus data must never be used for production training or published as model artifacts.",),
         )
     return _result(
         task, "training_data_gate", TaskStatus.COMPLETED,
-        {"decision": "ALLOW", "source_kind": "synthetic_only", "dataset_ids": []},
+        {
+            "decision": "ALLOW",
+            "source_kind": ctx.get("source_kind"),
+            "dataset_ids": [],
+            "internal_only": internal_safe,
+            "public_artifacts": False if internal_safe else None,
+            "production_approved": False if internal_safe else None,
+        },
     )
 
 
@@ -214,11 +234,22 @@ def _budget_agent(task, _context) -> AgentResult:
 
 def _checkpoint_guard(task, _context) -> AgentResult:
     ctx = task.context
-    safe = (
-        ctx.get("model_under_test") == NATIVE_MODEL_ID
-        and ctx.get("external_weights_used") is False
+    model_id = ctx.get("model_under_test")
+    native_model = model_id in {
+        NATIVE_MODEL_ID,
+        "neurocore_edge_native_grouped_answer_word_v1",
+    }
+    synthetic_mode = (
+        ctx.get("source_kind") == "synthetic_only"
         and ctx.get("checkpoint_mode") == "ephemeral_synthetic_only"
     )
+    internal_mode = (
+        ctx.get("source_kind") == "bounded_internal_corpus"
+        and ctx.get("checkpoint_mode") == "ephemeral_internal_only"
+        and ctx.get("internal_only") is True
+        and ctx.get("public_artifacts") is False
+    )
+    safe = native_model and ctx.get("external_weights_used") is False and (synthetic_mode or internal_mode)
     if not safe:
         return _result(
             task, "checkpoint_guard", TaskStatus.NEEDS_REVIEW,
@@ -228,11 +259,11 @@ def _checkpoint_guard(task, _context) -> AgentResult:
         task, "checkpoint_guard", TaskStatus.COMPLETED,
         {
             "decision": "ALLOW",
-            "model_under_test": NATIVE_MODEL_ID,
+            "model_under_test": model_id,
             "external_weights_used": False,
             "num_experts": NATIVE_MODEL_EXPERT_COUNT,
-            "training_scale": "tiny_20_expert_reference",
-            "checkpoint_mode": "ephemeral_synthetic_only",
+            "training_scale": "bounded_native_grouped_word_reference" if internal_mode else "tiny_20_expert_reference",
+            "checkpoint_mode": ctx.get("checkpoint_mode"),
         },
     )
 
@@ -260,6 +291,11 @@ class MicroAgentTrainingController:
         dataset_ids: Sequence[str] = (),
         external_weights_used: bool = False,
         checkpoint_mode: str = "ephemeral_synthetic_only",
+        model_under_test: str = NATIVE_MODEL_ID,
+        internal_only: bool = False,
+        public_artifacts: bool = True,
+        corpus_rights_status: str | None = None,
+        privacy_status: str | None = None,
         model_parameter_count: int | None = None,
         available_memory_bytes: int | None = None,
         bytes_per_parameter: int = 16,
@@ -277,9 +313,13 @@ class MicroAgentTrainingController:
             "dataset_ids": list(dataset_ids),
             "requested_steps": requested_steps,
             "max_steps": max_steps,
-            "model_under_test": NATIVE_MODEL_ID,
+            "model_under_test": model_under_test,
             "external_weights_used": external_weights_used,
             "checkpoint_mode": checkpoint_mode,
+            "internal_only": internal_only,
+            "public_artifacts": public_artifacts,
+            "corpus_rights_status": corpus_rights_status,
+            "privacy_status": privacy_status,
             "model_parameter_count": model_parameter_count,
             "available_memory_bytes": available_memory_bytes,
             "bytes_per_parameter": bytes_per_parameter,
@@ -344,11 +384,11 @@ class MicroAgentTrainingController:
             },
             "open_source_model_in_training_path": False,
             "external_weights_used": False,
-            "model_under_test": NATIVE_MODEL_ID,
+            "model_under_test": model_under_test,
             "num_experts": NATIVE_MODEL_EXPERT_COUNT,
-            "training_scale": "tiny_20_expert_reference",
+            "training_scale": "bounded_native_grouped_word_reference" if source_kind == "bounded_internal_corpus" else "tiny_20_expert_reference",
             "production_2_87b_training_started": False,
-            "training_data": "generated_in_memory_synthetic_only",
+            "training_data": source_kind,
         }
 
 
