@@ -29,6 +29,8 @@ from modeling_neurocore_edge import (
     NeuroCoreEdgeForCausalLM,
     count_parameters,
 )
+from training_micro_agents import MicroAgentTrainingController
+from cpu_training_agents import detect_cpu_profile
 
 UNK, BOS, EOS, SEP, PAD, ALT = range(6)
 SPECIAL = ["<UNK>", "<BOS>", "<EOS>", "<SEP>", "<PAD>", "<ALT>"]
@@ -343,7 +345,6 @@ def main():
     # massively oversampling relations that have only a handful of examples.
     relation_weights = [len(relation_groups[name]) ** 0.5 for name in relation_names]
 
-    torch.set_num_threads(args.cpu_threads)
     torch.manual_seed(args.seed)
     rng = random.Random(args.seed + 1)
     cfg = NeuroCoreEdgeConfig(
@@ -360,6 +361,28 @@ def main():
         router_aux_loss_coefficient=0.01,
     )
     model = NeuroCoreEdgeForCausalLM(cfg).cpu()
+    profile = detect_cpu_profile()
+    selected_threads = min(args.cpu_threads, profile.effective_cpus, 4)
+    controller = MicroAgentTrainingController()
+    micro_agent_plan = controller.create_plan(
+        requested_steps=args.steps,
+        max_steps=args.steps,
+        source_kind="bounded_internal_corpus",
+        external_data_used=False,
+        user_data_used=False,
+        dataset_ids=(),
+        external_weights_used=False,
+        checkpoint_mode="ephemeral_internal_only",
+        model_under_test="neurocore_edge_native_grouped_answer_word_v1",
+        internal_only=True,
+        public_artifacts=False,
+        corpus_rights_status="UNVERIFIED_PENDING_OWNER_AND_LICENSE_REVIEW",
+        privacy_status="NOT_FORMALLY_CLEARED",
+        model_parameter_count=count_parameters(model),
+        available_memory_bytes=profile.available_memory_bytes,
+        cpu_threads=selected_threads,
+    )
+    torch.set_num_threads(micro_agent_plan["cpu_threads"])
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
 
     initial = evaluate(
@@ -455,9 +478,12 @@ def main():
             "group_leakage": False,
         },
         "training": {
-            "steps": args.steps,
+            "steps": micro_agent_plan["allocated_steps"],
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
+            "micro_agent_control": micro_agent_plan,
+            "cpu_threads": micro_agent_plan["cpu_threads"],
+            "training_scope": "bounded_internal_only_no_public_artifacts",
             "relation_sampling": "relation probability proportional to square root of training group count",
             "target_format": "sorted distinct objects separated by ALT; EOS terminates the complete answer list",
             "initial_validation": {k: v for k, v in initial.items() if k != "generation_examples"},
@@ -475,6 +501,8 @@ def main():
             "initialization": "native_random_initialization",
         },
         "production_training_gate": "CLOSED",
+        "internal_experiment_gate": "MICRO_AGENT_APPROVED_BOUNDED_INTERNAL_ONLY",
+        "public_artifacts_created": False,
         "production_2_87b_training_started": False,
         "limitations": [
             "Grouping resolves the training-label collision but does not certify that source facts are current or correct.",
@@ -496,6 +524,8 @@ def main():
         "tokenizer_format": tokenizer["format"],
         "provenance": report["provenance"],
         "production_training_gate": "CLOSED",
+        "internal_experiment_gate": "MICRO_AGENT_APPROVED_BOUNDED_INTERNAL_ONLY",
+        "public_artifacts_created": False,
     }
 
     def output_path(path: Path) -> Path:
