@@ -5,6 +5,7 @@ on:
     branches: [feat/hybrid-micro-agent-architecture-20261123]
     paths:
       - '.github/workflows/neurocore_word_prediction_balanced.yml'
+      - 'tools/neurocore_native_word_prediction_balanced.py'
   workflow_dispatch:
 
 permissions:
