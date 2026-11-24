@@ -126,9 +126,11 @@ def _run_trial(batches, *, seed, micro_batch, accumulation, checkpoint_interval)
                 checkpoint_count += 1
         training_elapsed = time.perf_counter() - train_started
         checkpoint_bytes = latest.stat().st_size
+        compute_elapsed = max(training_elapsed - checkpoint_seconds, 1e-9)
     return {
         "model": model,
         "training_elapsed_seconds": training_elapsed,
+        "compute_elapsed_seconds_excluding_checkpoints": compute_elapsed,
         "checkpoint_elapsed_seconds": checkpoint_seconds,
         "checkpoint_count": checkpoint_count,
         "checkpoint_bytes": checkpoint_bytes,
@@ -138,6 +140,9 @@ def _run_trial(batches, *, seed, micro_batch, accumulation, checkpoint_interval)
         "examples_seen": len(batches) * micro_batch * accumulation,
         "tokens_seen": len(batches) * micro_batch * accumulation * SEQ_LEN,
         "tokens_per_second": (len(batches) * micro_batch * accumulation * SEQ_LEN) / training_elapsed,
+        "compute_only_tokens_per_second": (
+            len(batches) * micro_batch * accumulation * SEQ_LEN
+        ) / compute_elapsed,
     }
 
 
@@ -168,9 +173,11 @@ def run_compute_benchmark(report_path: Path, manifest_path: Path, *, steps=40, s
             effective_batch_size=plan["effective_batch_size"],
         )
         # Router auxiliary loss is batch-coupled; parity is scoped explicitly to CE.
+        # Use the same checkpoint cadence in both arms so the compute-speed
+        # comparison is not biased by extra managed checkpoint writes.
         baseline = _run_trial(
             effective_batches, seed=seed, micro_batch=4, accumulation=1,
-            checkpoint_interval=steps + 1,
+            checkpoint_interval=plan["checkpoint_interval"],
         )
         managed = _run_trial(
             effective_batches, seed=seed,
@@ -208,8 +215,14 @@ def run_compute_benchmark(report_path: Path, manifest_path: Path, *, steps=40, s
                 "parameter_parity_absolute_tolerance": PARAMETER_PARITY_ATOL,
                 "training_time_ratio_baseline_over_managed": baseline["training_elapsed_seconds"] / managed["training_elapsed_seconds"],
                 "tokens_per_second_ratio_managed_over_baseline": managed["tokens_per_second"] / baseline["tokens_per_second"],
-                "checkpoint_time_seconds": managed["checkpoint_elapsed_seconds"],
-                "checkpoint_overhead_fraction": managed["checkpoint_elapsed_seconds"] / managed["training_elapsed_seconds"],
+                "compute_only_tokens_per_second_ratio_managed_over_baseline": (
+                    managed["compute_only_tokens_per_second"] / baseline["compute_only_tokens_per_second"]
+                ),
+                "same_checkpoint_cadence": True,
+                "baseline_checkpoint_time_seconds": baseline["checkpoint_elapsed_seconds"],
+                "managed_checkpoint_time_seconds": managed["checkpoint_elapsed_seconds"],
+                "baseline_checkpoint_overhead_fraction": baseline["checkpoint_elapsed_seconds"] / baseline["training_elapsed_seconds"],
+                "managed_checkpoint_overhead_fraction": managed["checkpoint_elapsed_seconds"] / managed["training_elapsed_seconds"],
                 "interpretation": "Single-run CPU timing is noisy; compare repeated runs before claiming speedup. Parameter parity is scoped to the token-additive cross-entropy objective; router auxiliary loss is excluded because it is batch-coupled and needs a separate global-statistics accumulation design. Activation memory is an analytical estimate, not measured peak RSS/VRAM.",
             },
             "resource_estimates": {
