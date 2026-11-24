@@ -1,0 +1,114 @@
+name: NeuroCore Expanded Capacity Resume 7,500 Steps
+
+on:
+  push:
+    branches: [feat/hybrid-micro-agent-architecture-20261123]
+    paths:
+      - '.github/workflows/neurocore_expanded_capacity_resume.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  expanded-resume:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hybrid-micro-agent-architecture-20261123
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Download expanded 2,500-step checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: neurocore-expanded-capacity-warmstart-2500-steps
+          repository: pdfusion9-cyber/hindi-lattice
+          run-id: 45394920836
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .
+      - name: Verify checkpoint and immutable corpus
+        run: |
+          test "$(git rev-parse HEAD:data/gyaan_base.txt)" = "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+          python -m py_compile tools/neurocore_native_corpus_training.py
+          python - <<'PY'
+          import torch
+          p = torch.load("artifacts/neurocore-expanded-capacity-checkpoint-2500.pt", map_location="cpu", weights_only=True)
+          assert p["model_id"] == "neurocore_edge_native_reference"
+          assert p["step"] == 2500
+          assert p["capacity_profile"] == "expanded"
+          assert p["config"]["hidden_size"] == 64
+          assert p["config"]["num_hidden_layers"] == 3
+          assert p["config"]["num_experts"] == 20
+          assert p["corpus_git_blob_sha1"] == "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+          assert p["provenance"]["external_model_weights_used"] is False
+          assert p["provenance"]["open_source_model_integrated"] is False
+          assert p["production_training_gate"] == "CLOSED"
+          assert isinstance(p.get("optimizer_state_dict"), dict)
+          print("verified_expanded_checkpoint_step=", p["step"])
+          PY
+      - name: Resume native expanded NeuroCore for 5,000 CPU steps
+        env:
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: |
+          python tools/neurocore_native_corpus_training.py \
+            --corpus data/gyaan_base.txt \
+            --capacity-profile expanded \
+            --resume-checkpoint artifacts/neurocore-expanded-capacity-checkpoint-2500.pt \
+            --steps 5000 \
+            --batch-size 8 \
+            --sequence-length 64 \
+            --cpu-threads 2 \
+            --learning-rate 0.00015 \
+            --report reports/neurocore-expanded-capacity-resume-7500.json \
+            --checkpoint artifacts/neurocore-expanded-capacity-checkpoint-7500.pt
+      - name: Verify resumed training result
+        run: |
+          python - <<'PY'
+          import json, os, torch
+          p = json.load(open("reports/neurocore-expanded-capacity-resume-7500.json", encoding="utf-8"))
+          assert p["status"] == "NEUROCORE_NATIVE_REAL_CORPUS_EXPERIMENT_PASS"
+          assert p["capacity_profile"] == "expanded"
+          assert p["training"]["resume_used"] is True
+          assert p["training"]["resumed_from_step"] == 2500
+          assert p["training"]["steps"] == 5000
+          assert p["training"]["total_steps"] == 7500
+          assert p["model_parameter_count"] == 767664
+          assert p["corpus"]["git_blob_sha1"] == "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+          assert p["provenance"]["external_model_weights_used"] is False
+          assert p["provenance"]["open_source_model_integrated"] is False
+          assert p["production_training_gate"] == "CLOSED"
+          assert p["production_2_87b_training_started"] is False
+          ck = torch.load("artifacts/neurocore-expanded-capacity-checkpoint-7500.pt", map_location="cpu", weights_only=True)
+          assert ck["step"] == 7500
+          assert ck["capacity_profile"] == "expanded"
+          print(json.dumps({
+              "status": p["status"],
+              "resumed_from_step": p["training"]["resumed_from_step"],
+              "steps_this_run": p["training"]["steps"],
+              "total_steps": p["training"]["total_steps"],
+              "parameters": p["model_parameter_count"],
+              "initial_validation_loss": p["training"]["initial_validation_loss"],
+              "final_validation_loss": p["training"]["final_validation_loss"],
+              "tokens_per_second": p["training"]["training_tokens_per_second"],
+              "checkpoint_bytes": os.path.getsize("artifacts/neurocore-expanded-capacity-checkpoint-7500.pt"),
+              "production_gate": "CLOSED"
+          }, indent=2))
+          PY
+      - name: Upload 7,500-step checkpoint and metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-expanded-capacity-resumed-7500-steps
+          path: |
+            artifacts/neurocore-expanded-capacity-checkpoint-7500.pt
+            reports/neurocore-expanded-capacity-resume-7500.json
+          if-no-files-found: error
+          retention-days: 30
