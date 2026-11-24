@@ -158,6 +158,7 @@ def run_compute_benchmark(report_path: Path, manifest_path: Path, *, steps=40, s
             effective_batch_size=4,
             sequence_length=SEQ_LEN,
             hidden_size=16,
+            num_layers=1,
             activation_budget_bytes=65536,
         )
         schedule = plan["domain_schedule"]
