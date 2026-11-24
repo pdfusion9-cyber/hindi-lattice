@@ -26,7 +26,9 @@ def test_compute_agents_create_bounded_equal_quota_plan():
 def test_compute_agents_reject_incomplete_routing_profile():
     try:
         ComputeEfficiencyController().create_plan(
-            routing_profile=_profile()[:-1], steps=40,
+            routing_profile=_profile()[:-1], steps=40, effective_batch_size=4,
+            sequence_length=48, hidden_size=16, num_layers=2,
+            activation_budget_bytes=65536,
         )
     except ValueError as exc:
         assert "20 expert-domain rows" in str(exc)
