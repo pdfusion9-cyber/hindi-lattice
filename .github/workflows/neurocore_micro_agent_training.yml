@@ -64,6 +64,32 @@ jobs:
           OMP_NUM_THREADS: '1'
           MKL_NUM_THREADS: '1'
         run: python synthetic_training_smoke.py --report-path expert20_smoke.json --steps 10 --num-experts 20
+      - name: Train native shared backbone and all 20 isolated expert shards
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: |
+          python native_staged_training.py --report-path native_staged_training_report.json --checkpoint-path native_staged_training_checkpoint.pt --base-steps 1 --expert-steps 1
+          python -m pytest -q test_native_staged_training.py
+      - name: Assert native 20-expert shard merge and production gates
+        working-directory: models/neurocore_edge
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open("native_staged_training_report.json"))
+          assert r["status"] == "NATIVE_20_EXPERT_STAGED_SYNTHETIC_PASS"
+          assert r["model_under_test"] == "native_neurocore_edge_scaled_reference"
+          assert r["open_source_model_integrated"] is False
+          assert r["external_weights_used"] is False
+          assert r["shared_backbone"]["status"] == "TRAINED"
+          assert r["expert_shards"]["status"] == "TRAINED_AND_MERGED"
+          assert r["expert_shards"]["count"] == 20
+          assert r["parameter_count_preserved"] is True
+          assert r["production_training_gate"]["status"] == "CLOSED"
+          assert r["production_2_87b_training_started"] is False
+          print("NATIVE_NEUROCORE_SHARED_BACKBONE_20_EXPERT_SHARDS_PASS; PRODUCTION_GATE_CLOSED")
+          PY
       - name: Start bounded native NeuroCore synthetic training under micro-agent control
         working-directory: models/neurocore_edge
         env:
@@ -110,5 +136,7 @@ jobs:
             models/neurocore_edge/expert_training_plan.json
             models/neurocore_edge/expert20_smoke.json
             models/neurocore_edge/expert_domain_benchmark.json\n            models/neurocore_edge/compute_efficiency_report.json
+            models/neurocore_edge/native_staged_training_report.json
+            models/neurocore_edge/native_staged_training_checkpoint.pt
           if-no-files-found: error
           retention-days: 14
