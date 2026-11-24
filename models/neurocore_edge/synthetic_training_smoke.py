@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -151,10 +152,15 @@ def run_experiment(
         initial_loss = evaluate_loss(model, input_ids, targets, cfg)
         last_train_loss = float("nan")
         last_grad_norm = float("nan")
+        training_started = time.perf_counter()
         for _ in range(steps):
             last_train_loss, last_grad_norm = train_one_step(
                 model, optimizer, input_ids, targets, cfg
             )
+        training_elapsed_seconds = max(time.perf_counter() - training_started, 1e-9)
+        training_tokens_per_second = (
+            steps * targets.numel() / training_elapsed_seconds
+        )
         final_loss = evaluate_loss(model, input_ids, targets, cfg)
         if final_loss >= initial_loss * 0.5:
             raise RuntimeError(
@@ -257,6 +263,8 @@ def run_experiment(
             "optimizer": "AdamW",
             "learning_rate": LEARNING_RATE,
             "training_steps": steps,
+            "training_elapsed_seconds": training_elapsed_seconds,
+            "training_tokens_per_second": training_tokens_per_second,
             "initial_loss": initial_loss,
             "final_loss": final_loss,
             "loss_reduction_fraction": (initial_loss - final_loss) / initial_loss,
