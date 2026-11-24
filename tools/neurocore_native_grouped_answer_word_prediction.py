@@ -304,7 +304,7 @@ def evaluate(model, groups, word_to_id, id_to_word, *, batch_size, generation_li
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, default=Path("data/gyaan_base.txt"))
-    parser.add_argument("--steps", type=int, default=5000)
+    parser.add_argument("--steps", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=12)
     parser.add_argument("--cpu-threads", type=int, default=2)
     parser.add_argument("--learning-rate", type=float, default=0.00015)
@@ -382,6 +382,7 @@ def main():
         available_memory_bytes=profile.available_memory_bytes,
         cpu_threads=selected_threads,
     )
+    training_steps = micro_agent_plan["allocated_steps"]
     torch.set_num_threads(micro_agent_plan["cpu_threads"])
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
 
@@ -393,7 +394,7 @@ def main():
     started = time.perf_counter()
     model.train()
 
-    for step in range(1, args.steps + 1):
+    for step in range(1, training_steps + 1):
         batch = []
         for _ in range(args.batch_size):
             rel = rng.choices(relation_names, weights=relation_weights, k=1)[0]
@@ -410,7 +411,7 @@ def main():
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
-        if step % 500 == 0 or step == args.steps:
+        if step % 50 == 0 or step == training_steps:
             metrics = evaluate(
                 model, validation_groups, word_to_id, id_to_word,
                 batch_size=args.batch_size, generation_limit=args.generation_limit,
@@ -424,7 +425,7 @@ def main():
                 "answer_set_f1": metrics["answer_set_f1"],
             })
             print(
-                f"grouped_word_step={step}/{args.steps} "
+                f"grouped_word_step={step}/{training_steps} "
                 f"loss={metrics['sequence_loss_per_target_token']:.4f} "
                 f"word_top1={metrics['next_word_top1_accuracy']:.4f} "
                 f"word_top5={metrics['next_word_top5_accuracy']:.4f} "
@@ -490,7 +491,7 @@ def main():
             "final_validation": {k: v for k, v in final.items() if k != "generation_examples"},
             "validation_curve": validation_curve,
             "elapsed_seconds": elapsed,
-            "training_groups_per_second": args.steps * args.batch_size / elapsed,
+            "training_groups_per_second": training_steps * args.batch_size / elapsed,
         },
         "generation_examples": final["generation_examples"],
         "provenance": {
@@ -517,7 +518,7 @@ def main():
         "config": vars(cfg),
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
-        "step": args.steps,
+        "step": training_steps,
         "corpus_git_blob_sha1": blob,
         "corpus_sha256": hashlib.sha256(raw).hexdigest(),
         "tokenizer_sha256": tokenizer_sha,
