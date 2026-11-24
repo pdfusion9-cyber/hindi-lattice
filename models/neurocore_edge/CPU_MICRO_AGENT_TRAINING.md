@@ -8,7 +8,7 @@
 |---|---|---|
 | CPU Profiler | Detect effective CPU quota, affinity, available RAM and disk | cgroup-aware profile, not just os.cpu_count() |
 | Thread Planner | Prevent nested oversubscription | One training process per runner; bounded intra-op threads; one inter-op thread; no DataLoader subprocesses for in-memory batches |
-| Expert Load Balancer | Distribute 20 expert shards across available runners | Longest-processing-time-first assignment using observed tokens/second and estimated shard work |
+| Expert Load Balancer | Balance expert shards across CPU runner slots | Longest-processing-time-first assignment using parameter-count estimates; measured tokens/second is a later calibration input |
 | Memory Guard | Refuse allocations that exceed safe host RAM | FP32 AdamW estimate: 16 bytes/trainable parameter; FP32 frozen weights: 4 bytes/parameter; explicit activation and staging reserve |
 | Adaptive Batch Agent | Select a micro-batch from the remaining memory budget | Keep the effective batch constant through gradient accumulation |
 | Checkpoint Agent | Bound both checkpoint overhead and lost work after interruption | Use measured step/checkpoint seconds and a maximum recovery window |
@@ -29,7 +29,7 @@ A full FP32 AdamW update is approximately 16 bytes per trainable parameter befor
 
 The expert-shard path can be smaller only if it truly loads the frozen shared backbone and the selected expert alone. The existing reference path constructs the complete model and loads the complete shared state before selecting one expert; that is a topology smoke test, not a memory-sharded production implementation.
 
-The shared backbone is a separate bottleneck. With the candidate 872,876,056 shared parameters, a full FP32 AdamW update is roughly 14.0 GB before activations. It does not fit a conservative per-runner safe-memory budget on a 16 GiB host. The CPU planner therefore reports this stage separately and does not treat twenty expert runners as extra RAM for the single shared-base runner.
+The shared backbone is a separate bottleneck. A prior v0.3.3 package candidate reported 872,876,056 shared parameters, but the active branch config is v0.2.0 with a different total parameter count and does not declare that shared/expert split. Therefore that 872.9M figure is not treated as the active branch's verified architecture. The planner requires explicit parameter counts from a reconciled canonical model before production planning and reports shared-base memory separately; twenty expert runners do not multiply RAM available to the single shared-base runner.
 
 ## What this first implementation does
 
@@ -37,9 +37,9 @@ cpu_training_agents.py provides:
 - effective CPU/RAM/disk detection (including Linux cgroup constraints);
 - deterministic CPU thread policy;
 - conservative frozen/trainable memory estimator;
-- adaptive micro-batch plus gradient-accumulation planner;
+- adaptive micro-batch plus gradient-accumulation planner using a layer-aware activation proxy (not a substitute for measured peak RAM);
 - checkpoint interval based on measured step and save time;
-- load-balanced assignment of 20 expert IDs to runner slots;
+- load-balanced assignment of 20 expert IDs to runner slots using parameter-count estimates;
 - a fail-closed status when expert memory or disk requirements do not fit.
 
 This is a planner/preflight, not a production trainer. It deliberately reports production_dispatch_allowed=false. No training run, dataset approval, model config, tokenizer, or checkpoint is changed by this module.
