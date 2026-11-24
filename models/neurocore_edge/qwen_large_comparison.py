@@ -29,7 +29,7 @@ TASK = (
 SOURCE_URL = "https://samagra.education.gov.in/docs/revised_guidelines_for_promotion_Library_Reading%20.pdf"
 
 MODELS = [
-    {"name": "Qwen3-1.7B", "repo": "Qwen/Qwen3-1.7B-GGUF", "quant": "Q4_K_M"},
+    {"name": "Qwen3-1.7B", "repo": "ggml-org/Qwen3-1.7B-GGUF", "quant": "Q4_K_M"},
     {"name": "Qwen3-4B", "repo": "Qwen/Qwen3-4B-GGUF", "quant": "Q4_K_M"},
 ]
 
