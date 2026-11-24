@@ -17,6 +17,130 @@ permissions:
   contents: read
 
 jobs:
+  native-shared-base:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Create native shared-base for 20-runner synthetic integration test
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python native_20_runner.py --stage shared-base --steps 1 --seed 29 --output shared-base.pt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-native-shared-base
+          path: models/neurocore_edge/shared-base.pt
+          if-no-files-found: error
+          retention-days: 3
+
+  native-expert-shards:
+    needs: native-shared-base
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        expert_id: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - uses: actions/download-artifact@v4
+        with:
+          name: neurocore-native-shared-base
+          path: models/neurocore_edge/artifacts
+      - name: Train exactly one native expert shard on this runner
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+          EXPERT_ID: ${{ matrix.expert_id }}
+        run: |
+          python native_20_runner.py --stage expert --base-checkpoint artifacts/shared-base.pt --expert-id "$EXPERT_ID" --steps 1 --seed 29 --expert-checkpoint "expert-$EXPERT_ID.pt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-expert-shard-${{ matrix.expert_id }}
+          path: models/neurocore_edge/expert-${{ matrix.expert_id }}.pt
+          if-no-files-found: error
+          retention-days: 3
+
+  native-merge-20-experts:
+    needs: native-expert-shards
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - uses: actions/download-artifact@v4
+        with:
+          name: neurocore-native-shared-base
+          path: models/neurocore_edge/artifacts/base
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: neurocore-expert-shard-*
+          path: models/neurocore_edge/artifacts/shards
+          merge-multiple: true
+      - name: Strictly merge all 20 independently trained expert shards
+        working-directory: models/neurocore_edge
+        run: |
+          python native_20_runner.py --stage merge --base-checkpoint artifacts/base/shared-base.pt --shard-dir artifacts/shards --output native-20-runner-merged.pt --report native-20-runner-report.json
+          python - <<'PY'
+          import json
+          r=json.load(open("native-20-runner-report.json"))
+          assert r["status"] == "NATIVE_20_RUNNER_MERGE_PASS"
+          assert r["expert_ids"] == list(range(20))
+          assert r["expert_count"] == 20
+          assert r["parameter_count_preserved"] is True
+          assert r["provenance"]["external_weights_used"] is False
+          assert r["provenance"]["open_source_model_integrated"] is False
+          print("PASS: 20 separate runner shards merged with exact expert coverage")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-native-20-runner-merged-synthetic
+          path: |
+            models/neurocore_edge/native-20-runner-merged.pt
+            models/neurocore_edge/native-20-runner-report.json
+          if-no-files-found: error
+          retention-days: 14
+
+  production-training-readiness:
+    needs: native-merge-20-experts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Evaluate real 2.87B production gates without dispatching training
+        working-directory: models/neurocore_edge
+        run: python native_20_runner.py --stage production-gate --config config.json --approvals dataset_approval.json || test "$?" -eq 1
   managed-synthetic-pilot:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
