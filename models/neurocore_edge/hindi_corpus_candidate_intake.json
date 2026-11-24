@@ -156,5 +156,40 @@
     "A dataset-level license statement is evidence, not automatic proof of rights to every underlying third-party work or of PII/consent clearance."
   ],
   "next_technical_action": "IndicCorpV2 received a tiny bounded sample inspection; Sangraha viewer API returned HTTP 500 and requires an alternate bounded Parquet row-group read. Neither source is approved. Human rights/privacy review remains mandatory before expert training.",
-  "policy": "No candidate is approved. All canonical dataset approval rows remain default-deny."
+  "policy": "No candidate is approved. All canonical dataset approval rows remain default-deny.",
+  "sample_inspection": {
+    "workflow_run_id": 45393571043,
+    "workflow_url": "https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45393571043",
+    "artifact_id": 14919342905,
+    "report_version": "1.0",
+    "generated_at_utc": "2026-11-24T12:26:59Z",
+    "raw_sample_text_persisted": false,
+    "full_dataset_shards_downloaded": false,
+    "canonical_approval_registry_changed": false,
+    "production_approval_granted": false,
+    "indiccorp_v2": {
+      "status": "SAMPLE_INSPECTED",
+      "revision": "2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f",
+      "file": "data/hi-1.txt",
+      "range_bytes_total": 786432,
+      "sampled_text_records": 15,
+      "exact_duplicate_count": 0,
+      "mean_devanagari_letter_fraction": 0.9976,
+      "mean_latin_letter_fraction": 0.0024,
+      "rows_with_email_url_phone_or_aadhaar_like_patterns": 0,
+      "note": "Three 256 KiB HTTP byte ranges from start, middle and tail; this is a small heuristic sample, not a privacy clearance or full-corpus quality estimate."
+    },
+    "sangraha_verified_hin": {
+      "status": "INSPECTION_BLOCKED",
+      "method": "Hugging Face dataset-viewer rows API",
+      "error": "HTTP 500 Internal Server Error",
+      "note": "No rows were inspected; no claim about sample quality or privacy can be made."
+    },
+    "decision": "Both datasets remain unapproved. IndicCorpV2 is eligible only for further human rights/privacy review; Sangraha sample inspection must be retried using a pinned, bounded Parquet read before any use.",
+    "next_steps": [
+      "Review IndicCorpV2 source provenance, CC0 scope and PII/privacy implications with data steward.",
+      "Retry Sangraha sample extraction using a revision-pinned Parquet range/row-group reader; do not download its full 37.3 GB shard.",
+      "Do not modify canonical dataset_approval.json or dispatch expert-11 training until the human approval record is complete."
+    ]
+  }
 }
