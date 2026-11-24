@@ -1,0 +1,103 @@
+name: NeuroCore Native Hindi Corpus Resume Training
+
+on:
+  push:
+    branches: [feat/hybrid-micro-agent-architecture-20261123]
+    paths:
+      - 'tools/neurocore_native_corpus_training.py'
+      - '.github/workflows/neurocore_native_corpus_resume.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  resume-native-training:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hybrid-micro-agent-architecture-20261123
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Download and verify prior 1,000-step checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: neurocore-native-hindi-corpus-cpu-training
+          repository: pdfusion9-cyber/hindi-lattice
+          run-id: 45375526977
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .
+      - name: Verify checkpoint, corpus and resume compatibility
+        run: |
+          test "$(git rev-parse HEAD:data/gyaan_base.txt)" = "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+          test -f artifacts/neurocore-corpus-checkpoint.pt
+          python -m py_compile tools/neurocore_native_corpus_training.py
+          python - <<'PY'
+          import torch
+          p=torch.load("artifacts/neurocore-corpus-checkpoint.pt", map_location="cpu", weights_only=True)
+          assert p["step"] == 1000
+          assert p["corpus_git_blob_sha1"] == "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+          assert p["provenance"]["external_model_weights_used"] is False
+          assert p["provenance"]["open_source_model_integrated"] is False
+          print("verified_resume_checkpoint_step=", p["step"])
+          PY
+      - name: Resume native NeuroCore CPU training for 5,000 additional steps
+        env:
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: |
+          python tools/neurocore_native_corpus_training.py \
+            --corpus data/gyaan_base.txt \
+            --steps 5000 \
+            --batch-size 8 \
+            --sequence-length 64 \
+            --cpu-threads 2 \
+            --resume-checkpoint artifacts/neurocore-corpus-checkpoint.pt \
+            --report reports/neurocore-corpus-training-resumed.json \
+            --checkpoint artifacts/neurocore-corpus-checkpoint-6000.pt
+      - name: Verify resumed training and upload checkpoint
+        run: |
+          python - <<'PY'
+          import json, os, torch
+          report=json.load(open("reports/neurocore-corpus-training-resumed.json", encoding="utf-8"))
+          assert report["status"] == "NEUROCORE_NATIVE_REAL_CORPUS_EXPERIMENT_PASS"
+          assert report["training"]["resume_used"] is True
+          assert report["training"]["resumed_from_step"] == 1000
+          assert report["training"]["steps"] == 5000
+          assert report["training"]["total_steps"] == 6000
+          assert report["corpus"]["git_blob_sha1"] == "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+          assert report["provenance"]["external_model_weights_used"] is False
+          assert report["provenance"]["open_source_model_integrated"] is False
+          assert report["production_training_gate"] == "CLOSED"
+          ckpt=torch.load("artifacts/neurocore-corpus-checkpoint-6000.pt", map_location="cpu", weights_only=True)
+          assert ckpt["step"] == 6000
+          assert ckpt["corpus_git_blob_sha1"] == report["corpus"]["git_blob_sha1"]
+          print(json.dumps({
+            "status": report["status"],
+            "resumed_from": report["training"]["resumed_from_step"],
+            "additional_steps": report["training"]["steps"],
+            "total_steps": report["training"]["total_steps"],
+            "initial_validation_loss": report["training"]["initial_validation_loss"],
+            "final_validation_loss": report["training"]["final_validation_loss"],
+            "tokens_per_second": report["training"]["training_tokens_per_second"],
+            "checkpoint_bytes": os.path.getsize("artifacts/neurocore-corpus-checkpoint-6000.pt"),
+            "production_gate": "CLOSED"
+          }, indent=2))
+          PY
+      - name: Upload resumed NeuroCore checkpoint and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-native-hindi-corpus-resumed-6000-steps
+          path: |
+            artifacts/neurocore-corpus-checkpoint-6000.pt
+            reports/neurocore-corpus-training-resumed.json
+          if-no-files-found: error
+          retention-days: 30
