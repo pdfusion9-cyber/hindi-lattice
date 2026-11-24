@@ -407,6 +407,18 @@ def main():
         raise ValueError(f"unexpected vocabulary size: {vocab_size}")
 
 
+    tokenizer = {
+        "format": "neurocore_whitespace_word_grouped_answer_v1",
+        "special_tokens": {
+            "unk": UNK, "bos": BOS, "eos": EOS, "field_separator": SEP,
+            "pad": PAD, "alternative_answer_separator": ALT,
+        },
+        "id_to_word": id_to_word,
+        "normalization": "Unicode NFC; split on whitespace; object answers sorted deterministically; <ALT> separates distinct answers",
+    }
+    tokenizer_bytes = json.dumps(tokenizer, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    tokenizer_sha = hashlib.sha256(tokenizer_bytes).hexdigest()
+
     relation_groups = defaultdict(list)
     for group in train_groups:
         relation_groups[group["relation"]].append(group)
@@ -430,9 +442,16 @@ def main():
         recurrent_state_size=16,
         router_aux_loss_coefficient=0.01,
     )
-    model = NeuroCoreEdgeForCausalLM(cfg).cpu()
+    # Count parameters on the meta device so the resource gate runs before
+    # allocating real model weights or optimizer state.
+    with torch.device("meta"):
+        model_for_budget = NeuroCoreEdgeForCausalLM(cfg)
+    model_parameter_count = count_parameters(model_for_budget)
+    del model_for_budget
+
     profile = detect_cpu_profile()
     selected_threads = min(args.cpu_threads, profile.effective_cpus, 4)
+    rng_state_before_agents = torch.get_rng_state()
     controller = MicroAgentTrainingController()
     micro_agent_plan = controller.create_plan(
         requested_steps=args.steps,
@@ -448,12 +467,16 @@ def main():
         public_artifacts=False,
         corpus_rights_status="UNVERIFIED_PENDING_OWNER_AND_LICENSE_REVIEW",
         privacy_status="NOT_FORMALLY_CLEARED",
-        model_parameter_count=count_parameters(model),
+        model_parameter_count=model_parameter_count,
         available_memory_bytes=profile.available_memory_bytes,
         cpu_threads=selected_threads,
     )
+    # The CPU proxy calibration uses its own seed; restore the model/training
+    # random stream so --seed is reproducible across fresh and resumed runs.
+    torch.set_rng_state(rng_state_before_agents)
     training_steps = micro_agent_plan["allocated_steps"]
     torch.set_num_threads(micro_agent_plan["cpu_threads"])
+    model = NeuroCoreEdgeForCausalLM(cfg).cpu()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     training_fingerprint = {
         "batch_size": args.batch_size,
@@ -461,6 +484,8 @@ def main():
         "seed": args.seed,
         "validation_percent": args.validation_percent,
         "generation_limit": args.generation_limit,
+        "cpu_threads": micro_agent_plan["cpu_threads"],
+        "checkpoint_every": args.checkpoint_every,
         "model_id": "neurocore_edge_native_grouped_answer_word_v1",
     }
     checkpoint_path = args.checkpoint if args.checkpoint.is_absolute() else ROOT / args.checkpoint
@@ -579,17 +604,6 @@ def main():
         batch_size=args.batch_size, generation_limit=args.generation_limit,
     )
     data_audit = audit_groups(source_rows, groups, markup_rows)
-    tokenizer = {
-        "format": "neurocore_whitespace_word_grouped_answer_v1",
-        "special_tokens": {
-            "unk": UNK, "bos": BOS, "eos": EOS, "field_separator": SEP,
-            "pad": PAD, "alternative_answer_separator": ALT,
-        },
-        "id_to_word": id_to_word,
-        "normalization": "Unicode NFC; split on whitespace; object answers sorted deterministically; <ALT> separates distinct answers",
-    }
-    tokenizer_bytes = json.dumps(tokenizer, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    tokenizer_sha = hashlib.sha256(tokenizer_bytes).hexdigest()
     report = {
         "status": "NEUROCORE_NATIVE_GROUPED_ANSWER_WORD_PREDICTION_PASS",
         "objective": "subject_relation_to_complete_grouped_answer_list",
