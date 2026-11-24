@@ -45,8 +45,10 @@ def profile_routing(model, streams: dict[int, torch.Tensor]) -> list[dict[str, A
 
 
 def _loss(model, x, y):
+    # Keep parity checking on a token-additive objective. The router auxiliary
+    # loss is batch-coupled, so it changes when an effective batch is partitioned.
     output = model(x)
-    return F.cross_entropy(output["logits"].reshape(-1, VOCAB_SIZE), y.reshape(-1)) + 0.01 * output["router_aux_loss"]
+    return F.cross_entropy(output["logits"].reshape(-1, VOCAB_SIZE), y.reshape(-1))
 
 
 def _batch(stream, size: int, generator: torch.Generator):
@@ -58,12 +60,30 @@ def _batch(stream, size: int, generator: torch.Generator):
     return values[:, :-1].contiguous(), values[:, 1:].contiguous()
 
 
-def _run_trial(corpora, schedule, *, seed, micro_batch, accumulation, checkpoint_interval):
+def _split_effective_batch(x, y, *, micro_batch: int, accumulation: int):
+    expected = micro_batch * accumulation
+    if micro_batch < 1 or accumulation < 1 or x.shape[0] != expected or y.shape[0] != expected:
+        raise ValueError("effective batch shape must equal micro_batch * accumulation")
+    return [
+        (x[offset:offset + micro_batch], y[offset:offset + micro_batch])
+        for offset in range(0, expected, micro_batch)
+    ]
+
+
+def _prepare_effective_batches(corpora, schedule, *, seed, effective_batch_size):
     streams = {eid: encode_records(row["train_records"]) for eid, row in corpora.items()}
+    generator = torch.Generator().manual_seed(seed + 1000)
+    batches = []
+    for domain in schedule:
+        x, y = _batch(streams[domain], effective_batch_size, generator)
+        batches.append((domain, x, y))
+    return batches
+
+
+def _run_trial(batches, *, seed, micro_batch, accumulation, checkpoint_interval):
     torch.manual_seed(seed)
     model = build_model()
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.003, weight_decay=0.0)
-    generator = torch.Generator().manual_seed(seed + 1000)
     train_started = time.perf_counter()
     checkpoint_seconds = 0.0
     checkpoint_count = 0
@@ -71,10 +91,13 @@ def _run_trial(corpora, schedule, *, seed, micro_batch, accumulation, checkpoint
     last_loss = 0.0
     with tempfile.TemporaryDirectory(prefix="neurocore-compute-") as tmp:
         latest = Path(tmp) / "latest.pt"
-        for step, domain in enumerate(schedule, start=1):
+        for step, (_domain, effective_x, effective_y) in enumerate(batches, start=1):
             optimizer.zero_grad(set_to_none=True)
-            for _ in range(accumulation):
-                x, y = _batch(streams[domain], micro_batch, generator)
+            micro_batches = _split_effective_batch(
+                effective_x, effective_y, micro_batch=micro_batch,
+                accumulation=accumulation,
+            )
+            for x, y in micro_batches:
                 loss = _loss(model, x, y) / accumulation
                 if not bool(torch.isfinite(loss)):
                     raise RuntimeError("non-finite loss")
@@ -107,10 +130,10 @@ def _run_trial(corpora, schedule, *, seed, micro_batch, accumulation, checkpoint
         "checkpoint_bytes": checkpoint_bytes,
         "last_training_loss": last_loss,
         "sparse_inactive_gradient_steps": sparse_steps,
-        "steps": len(schedule),
-        "examples_seen": len(schedule) * micro_batch * accumulation,
-        "tokens_seen": len(schedule) * micro_batch * accumulation * SEQ_LEN,
-        "tokens_per_second": (len(schedule) * micro_batch * accumulation * SEQ_LEN) / training_elapsed,
+        "steps": len(batches),
+        "examples_seen": len(batches) * micro_batch * accumulation,
+        "tokens_seen": len(batches) * micro_batch * accumulation * SEQ_LEN,
+        "tokens_per_second": (len(batches) * micro_batch * accumulation * SEQ_LEN) / training_elapsed,
     }
 
 
@@ -134,14 +157,18 @@ def run_compute_benchmark(report_path: Path, manifest_path: Path, *, steps=40, s
             activation_budget_bytes=65536,
         )
         schedule = plan["domain_schedule"]
-        # Baseline uses the same load-balanced schedule and effective batch. The
-        # controlled arm adds adaptive accumulation and periodic checkpoints.
+        # Pre-sample once so both arms consume identical examples in identical order.
+        effective_batches = _prepare_effective_batches(
+            corpora, schedule, seed=seed,
+            effective_batch_size=plan["effective_batch_size"],
+        )
+        # Router auxiliary loss is batch-coupled; parity is scoped explicitly to CE.
         baseline = _run_trial(
-            corpora, schedule, seed=seed, micro_batch=4, accumulation=1,
+            effective_batches, seed=seed, micro_batch=4, accumulation=1,
             checkpoint_interval=steps + 1,
         )
         managed = _run_trial(
-            corpora, schedule, seed=seed,
+            effective_batches, seed=seed,
             micro_batch=plan["micro_batch_size"],
             accumulation=plan["gradient_accumulation_steps"],
             checkpoint_interval=plan["checkpoint_interval"],
@@ -159,6 +186,10 @@ def run_compute_benchmark(report_path: Path, manifest_path: Path, *, steps=40, s
             "seed": seed,
             "steps": total_steps,
             "same_seed_schedule_and_effective_batch": True,
+            "same_pre_sampled_examples_and_order": True,
+            "training_objective": "token_additive_causal_lm_cross_entropy",
+            "router_auxiliary_loss_included": False,
+            "router_auxiliary_loss_exclusion_reason": "Router auxiliary loss uses batch-wide importance and assignment means; its gradient is not invariant to physical micro-batch partitioning.",
             "effective_batch_size": plan["effective_batch_size"],
             "micro_agent_plan": plan,
             "routing_profile": routing_profile,
@@ -170,7 +201,7 @@ def run_compute_benchmark(report_path: Path, manifest_path: Path, *, steps=40, s
                 "tokens_per_second_ratio_managed_over_baseline": managed["tokens_per_second"] / baseline["tokens_per_second"],
                 "checkpoint_time_seconds": managed["checkpoint_elapsed_seconds"],
                 "checkpoint_overhead_fraction": managed["checkpoint_elapsed_seconds"] / managed["training_elapsed_seconds"],
-                "interpretation": "Single-run CPU timing is noisy; compare repeated runs before claiming speedup. Activation memory is an analytical estimate, not measured peak RSS/VRAM.",
+                "interpretation": "Single-run CPU timing is noisy; compare repeated runs before claiming speedup. Parameter parity is scoped to the token-additive cross-entropy objective; router auxiliary loss is excluded because it is batch-coupled and needs a separate global-statistics accumulation design. Activation memory is an analytical estimate, not measured peak RSS/VRAM.",
             },
             "resource_estimates": {
                 "activation_memory_estimate_bytes": plan["decisions"]["adaptive_batch_planner"]["activation_bytes_per_micro_batch_estimate"],
