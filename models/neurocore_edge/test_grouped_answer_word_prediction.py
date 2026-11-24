@@ -14,11 +14,13 @@ from neurocore_native_grouped_answer_word_prediction import (  # noqa: E402
     EOS,
     SPECIAL,
     audit_groups,
+    atomic_torch_save,
     collate,
     encode_group,
     load_groups,
     make_vocab,
     split_by_group,
+    validate_resume_checkpoint,
 )
 
 
@@ -84,3 +86,85 @@ def test_collate_masks_prompt_and_padding_from_loss():
     assert torch.all(y[loss_mask] >= 0)
     assert torch.all(y[~loss_mask] >= -100)
     assert len(SPECIAL) == 6
+
+
+def _resume_payload():
+    return {
+        "model_state_dict": {},
+        "optimizer_state_dict": {},
+        "step": 40,
+        "python_rng_state": (3, (1, 2, 3), None),
+        "torch_rng_state": torch.get_rng_state(),
+        "validation_curve": [],
+        "initial_validation": {"loss": 1.0},
+        "elapsed_seconds": 12.5,
+        "model_id": "neurocore_edge_native_grouped_answer_word_v1",
+        "config": {"hidden_size": 64},
+        "training_fingerprint": {"seed": 211},
+        "corpus_git_blob_sha1": "abc123",
+        "corpus_sha256": "def456",
+        "tokenizer_sha256": "789abc",
+        "production_training_gate": "CLOSED",
+        "internal_experiment_gate": "MICRO_AGENT_APPROVED_BOUNDED_INTERNAL_ONLY",
+        "public_artifacts_created": False,
+    }
+
+
+def _validate_payload(payload, **overrides):
+    args = {
+        "model_config": {"hidden_size": 64},
+        "training_fingerprint": {"seed": 211},
+        "corpus_blob": "abc123",
+        "corpus_sha256": "def456",
+        "tokenizer_sha256": "789abc",
+        "target_steps": 100,
+    }
+    args.update(overrides)
+    return validate_resume_checkpoint(payload, **args)
+
+
+def test_atomic_checkpoint_roundtrip_and_resume_validation(tmp_path):
+    checkpoint_path = tmp_path / "resume.pt"
+    payload = _resume_payload()
+    atomic_torch_save(payload, checkpoint_path)
+    loaded = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    assert _validate_payload(loaded) == 40
+    assert not checkpoint_path.with_name(checkpoint_path.name + ".tmp").exists()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"corpus_blob": "different"},
+        {"corpus_sha256": "different"},
+        {"tokenizer_sha256": "different"},
+        {"model_config": {"hidden_size": 128}},
+        {"training_fingerprint": {"seed": 999}},
+    ],
+)
+def test_resume_rejects_changed_fingerprints(overrides):
+    with pytest.raises(ValueError):
+        _validate_payload(_resume_payload(), **overrides)
+
+
+def test_resume_rejects_checkpoint_marked_public_or_wrong_gate():
+    payload = _resume_payload()
+    payload["public_artifacts_created"] = True
+    with pytest.raises(ValueError, match="marked as public"):
+        _validate_payload(payload)
+
+    payload = _resume_payload()
+    payload["production_training_gate"] = "OPEN"
+    with pytest.raises(ValueError, match="production gate"):
+        _validate_payload(payload)
+
+
+def test_resume_rejects_completed_or_invalid_step():
+    payload = _resume_payload()
+    with pytest.raises(ValueError, match="below the requested total"):
+        _validate_payload(payload, target_steps=40)
+
+    payload = _resume_payload()
+    payload["step"] = True
+    with pytest.raises(ValueError, match="step is invalid"):
+        _validate_payload(payload)
