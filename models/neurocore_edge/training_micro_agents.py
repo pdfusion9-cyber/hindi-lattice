@@ -23,6 +23,12 @@ from micro_agent_runtime import (
     make_task,
 )
 from synthetic_training_smoke import run_experiment
+from cpu_training_agents import detect_cpu_profile, plan_cpu_threads
+
+try:
+    import torch
+except ImportError:  # The planner itself remains importable without PyTorch.
+    torch = None
 
 
 MAX_STEPS_HARD_CAP = 200
@@ -89,6 +95,12 @@ def _budget_agent(task, _context) -> AgentResult:
     available_memory = ctx.get("available_memory_bytes")
     bytes_per_parameter = ctx.get("bytes_per_parameter", 16)
     memory_fraction = ctx.get("memory_safety_fraction", 0.70)
+    cpu_threads = ctx.get("cpu_threads", 1)
+    if not isinstance(cpu_threads, int) or isinstance(cpu_threads, bool) or not 1 <= cpu_threads <= 4:
+        return _result(
+            task, "training_budget", TaskStatus.NEEDS_REVIEW,
+            {"decision": "REFUSE", "reason": "cpu_threads must be an integer from 1 to 4"},
+        )
     if not isinstance(requested, int) or isinstance(requested, bool) or requested < 10:
         return _result(
             task, "training_budget", TaskStatus.NEEDS_REVIEW,
@@ -137,7 +149,7 @@ def _budget_agent(task, _context) -> AgentResult:
             "requested_steps": requested,
             "allocated_steps": steps,
             "hard_step_cap": MAX_STEPS_HARD_CAP,
-            "cpu_threads": 1,
+            "cpu_threads": cpu_threads,
             "budget_profile": "balanced_synthetic_pilot",
             "estimated_training_state_bytes": estimated_training_bytes,
             "safe_memory_bytes": int(available_memory * memory_fraction) if available_memory else None,
@@ -198,7 +210,11 @@ class MicroAgentTrainingController:
         available_memory_bytes: int | None = None,
         bytes_per_parameter: int = 16,
         memory_safety_fraction: float = 0.70,
+        cpu_threads: int | None = None,
     ) -> dict[str, Any]:
+        profile = detect_cpu_profile()
+        thread_plan = plan_cpu_threads(profile)
+        selected_cpu_threads = thread_plan["intra_op_threads"] if cpu_threads is None else cpu_threads
         context = {
             "source_kind": source_kind,
             "external_data_used": external_data_used,
@@ -213,6 +229,7 @@ class MicroAgentTrainingController:
             "available_memory_bytes": available_memory_bytes,
             "bytes_per_parameter": bytes_per_parameter,
             "memory_safety_fraction": memory_safety_fraction,
+            "cpu_threads": selected_cpu_threads,
         }
         task = make_task(
             "Prepare a bounded NeuroCore training session under governance and resource limits.",
@@ -256,6 +273,8 @@ class MicroAgentTrainingController:
             "agent_decisions": decisions,
             "allocated_steps": budget["allocated_steps"],
             "cpu_threads": budget["cpu_threads"],
+            "cpu_thread_plan": thread_plan,
+            "hardware_profile": profile.to_dict(),
             "budget_profile": budget["budget_profile"],
             "resource_usage": {
                 "agent_calls": state.resource_usage.agent_calls,
@@ -285,6 +304,15 @@ def run_managed_training(
 ) -> dict[str, Any]:
     controller = MicroAgentTrainingController()
     plan = controller.create_plan(requested_steps=requested_steps, max_steps=max_steps)
+    if torch is None:
+        raise RuntimeError("PyTorch is required to execute the synthetic training pilot")
+    torch.set_num_threads(plan["cpu_threads"])
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        # PyTorch only permits this setting before parallel work starts.
+        # A previously initialized host runtime retains its existing setting.
+        pass
     report = run_experiment(
         report_path,
         steps=plan["allocated_steps"],
