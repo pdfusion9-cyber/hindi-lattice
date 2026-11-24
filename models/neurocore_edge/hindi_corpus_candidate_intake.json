@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-11-24",
+  "purpose": "candidate intake only; not an approval or training dispatch",
+  "target_expert": {
+    "expert_id": 11,
+    "expert_name": "hindi_indic_docs"
+  },
+  "production_approval_granted": false,
+  "approval_registry_modified": false,
+  "candidates": [
+    {
+      "dataset_id": "ai4bharat/sangraha",
+      "candidate_scope": {
+        "config_name": "verified",
+        "split": "hin"
+      },
+      "observed_hub_license": "cc-by-4.0",
+      "license_evidence_url": "https://huggingface.co/datasets/ai4bharat/sangraha/blob/main/README.md",
+      "current_file_listing_url": "https://huggingface.co/datasets/ai4bharat/sangraha/tree/main/verified/hin",
+      "observed_split_size_label": "37.3 GB",
+      "evidence_summary": "Dataset card declares CC BY 4.0 and lists verified/hin. Card describes source mix including scraped websites, OCR-extracted PDFs and transcribed videos/podcasts/movies/courses.",
+      "review_required": [
+        "pin immutable dataset revision, config and split",
+        "inspect source-level provenance and upstream rights for websites, PDFs and transcripts",
+        "confirm model training and public checkpoint redistribution scope",
+        "complete PII/privacy and consent review for each source class",
+        "validate representative Hindi schema and deduplication policy"
+      ],
+      "commercial_training_allowed": false,
+      "public_redistribution_allowed": false,
+      "pii_reviewed": false,
+      "consent_reviewed": false,
+      "schema_reviewed": false,
+      "split_reviewed": false,
+      "revision_pinned": false,
+      "approved": false,
+      "disposition": "CANDIDATE_PENDING_HUMAN_REVIEW"
+    },
+    {
+      "dataset_id": "ai4bharat/IndicCorpV2",
+      "candidate_scope": {
+        "config_name": "indiccorp_v2",
+        "split": "hin_Deva"
+      },
+      "observed_hub_license": "not clearly declared in current card header",
+      "license_evidence_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
+      "supplementary_license_statement_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
+      "observed_license_statement": "The dataset card says datasets created as part of the ACL 2023 work will be released under CC0; this statement needs scope/source verification for the actual corpus records.",
+      "evidence_summary": "Hub card exposes a Hindi Devanagari split. The linked ACL 2023 dataset description includes a CC0 release statement, but the current Hub card header does not clearly expose a license tag and underlying corpus-source rights still need review.",
+      "review_required": [
+        "pin immutable dataset revision, config and Hindi Devanagari split",
+        "confirm the CC0 statement applies to the actual distributed corpus and all records",
+        "audit source provenance and any third-party text restrictions",
+        "complete PII/privacy review and source-level exclusions",
+        "validate representative Hindi schema and deduplication policy"
+      ],
+      "commercial_training_allowed": false,
+      "public_redistribution_allowed": false,
+      "pii_reviewed": false,
+      "consent_reviewed": false,
+      "schema_reviewed": false,
+      "split_reviewed": false,
+      "revision_pinned": false,
+      "approved": false,
+      "disposition": "CANDIDATE_PENDING_HUMAN_REVIEW"
+    },
+    {
+      "dataset_id": "repository:data/gyaan_base.txt",
+      "candidate_scope": {
+        "git_blob_sha1": "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+      },
+      "observed_license": "unknown",
+      "evidence_summary": "Repository file contains 7,162 pipe-delimited triples across 26 relation labels; source provenance and license are not recorded in the current repository metadata.",
+      "review_required": [
+        "identify original source/author and obtain source-owner permission or authoritative license",
+        "verify each fact source and correct known ambiguous or multi-valued records",
+        "complete PII/privacy screening",
+        "record reviewer, date, immutable file SHA and redistribution permission"
+      ],
+      "commercial_training_allowed": false,
+      "public_redistribution_allowed": false,
+      "pii_reviewed": false,
+      "consent_reviewed": false,
+      "schema_reviewed": false,
+      "split_reviewed": false,
+      "revision_pinned": true,
+      "approved": false,
+      "disposition": "CANDIDATE_PENDING_PROVENANCE_REVIEW"
+    }
+  ],
+  "policy": "Do not alter dataset_approval.json or start domain-specific training based on this candidate file. Approval requires a human-reviewed, source-specific record in the canonical registry."
+}
