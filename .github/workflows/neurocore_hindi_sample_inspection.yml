@@ -1,0 +1,55 @@
+name: NeuroCore Hindi Corpus Bounded Sample Inspection
+
+on:
+  push:
+    branches: [feat/hybrid-micro-agent-architecture-20261123]
+    paths:
+      - 'tools/neurocore_hindi_sample_inspection.py'
+      - '.github/workflows/neurocore_hindi_sample_inspection.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-sample-inspection:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hybrid-micro-agent-architecture-20261123
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile bounded inspector
+        run: python -m py_compile tools/neurocore_hindi_sample_inspection.py
+      - name: Inspect only bounded Hindi samples
+        run: python tools/neurocore_hindi_sample_inspection.py
+      - name: Assert no approval or raw sample leakage
+        run: |
+          python - <<'PY'
+          import json
+          p=json.load(open("reports/hindi-corpus-sample-inspection.json",encoding="utf-8"))
+          assert p["raw_sample_text_stored"] is False
+          assert p["canonical_approval_registry_changed"] is False
+          assert p["production_approval_granted"] is False
+          assert p["overall_status"] in {"BOTH_SAMPLES_INSPECTED","ONE_SAMPLE_INSPECTED","PARTIAL"}
+          for source in p["sources"].values():
+              if source.get("status") == "SAMPLE_INSPECTED":
+                  assert source["sample_metrics"]["sample_count"] > 0
+                  assert source["sample_metrics"]["raw_text_persisted"] is False
+          print(json.dumps({
+            "overall_status":p["overall_status"],
+            "sources":{k:v.get("status") for k,v in p["sources"].items()},
+            "approval_registry_changed":p["canonical_approval_registry_changed"],
+            "production_gate":"CLOSED"
+          },indent=2))
+          PY
+      - name: Upload aggregate sample inspection report only
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-hindi-corpus-bounded-sample-inspection
+          path: reports/hindi-corpus-sample-inspection.json
+          if-no-files-found: error
+          retention-days: 14
