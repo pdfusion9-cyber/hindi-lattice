@@ -26,6 +26,8 @@ from synthetic_training_smoke import run_experiment
 
 
 MAX_STEPS_HARD_CAP = 200
+NATIVE_MODEL_ID = "native_neurocore_edge_scaled_reference"
+NATIVE_MODEL_EXPERT_COUNT = 20
 
 TRAINING_AGENT_SPECS = (
     AgentSpec(
@@ -110,7 +112,7 @@ def _budget_agent(task, _context) -> AgentResult:
 def _checkpoint_guard(task, _context) -> AgentResult:
     ctx = task.context
     safe = (
-        ctx.get("model_under_test") == "native_neurocore_reference"
+        ctx.get("model_under_test") == NATIVE_MODEL_ID
         and ctx.get("external_weights_used") is False
         and ctx.get("checkpoint_mode") == "ephemeral_synthetic_only"
     )
@@ -123,8 +125,10 @@ def _checkpoint_guard(task, _context) -> AgentResult:
         task, "checkpoint_guard", TaskStatus.COMPLETED,
         {
             "decision": "ALLOW",
-            "model_under_test": "native_neurocore_reference",
+            "model_under_test": NATIVE_MODEL_ID,
             "external_weights_used": False,
+            "num_experts": NATIVE_MODEL_EXPERT_COUNT,
+            "training_scale": "tiny_20_expert_reference",
             "checkpoint_mode": "ephemeral_synthetic_only",
         },
     )
@@ -161,7 +165,7 @@ class MicroAgentTrainingController:
             "dataset_ids": list(dataset_ids),
             "requested_steps": requested_steps,
             "max_steps": max_steps,
-            "model_under_test": "native_neurocore_reference",
+            "model_under_test": NATIVE_MODEL_ID,
             "external_weights_used": external_weights_used,
             "checkpoint_mode": checkpoint_mode,
         }
@@ -219,6 +223,10 @@ class MicroAgentTrainingController:
             },
             "open_source_model_in_training_path": False,
             "external_weights_used": False,
+            "model_under_test": NATIVE_MODEL_ID,
+            "num_experts": NATIVE_MODEL_EXPERT_COUNT,
+            "training_scale": "tiny_20_expert_reference",
+            "production_2_87b_training_started": False,
             "training_data": "generated_in_memory_synthetic_only",
         }
 
@@ -232,11 +240,19 @@ def run_managed_training(
 ) -> dict[str, Any]:
     controller = MicroAgentTrainingController()
     plan = controller.create_plan(requested_steps=requested_steps, max_steps=max_steps)
-    report = run_experiment(report_path, steps=plan["allocated_steps"], seed=seed)
+    report = run_experiment(
+        report_path,
+        steps=plan["allocated_steps"],
+        seed=seed,
+        num_experts=NATIVE_MODEL_EXPERT_COUNT,
+    )
     report["micro_agent_training_control"] = plan
     report["experiment"] = "neurocore_micro_agent_managed_synthetic_pilot_v1"
     report["training_started"] = True
-    report["model_under_test"] = "native_neurocore_reference"
+    report["model_under_test"] = NATIVE_MODEL_ID
+    report["training_target"] = "native_neurocore_edge_architecture_family"
+    report["training_scale"] = "tiny_20_expert_reference"
+    report["production_2_87b_training_started"] = False
     report["open_source_model_integrated"] = False
     report["external_model_weights_used"] = False
     report_path.write_text(
