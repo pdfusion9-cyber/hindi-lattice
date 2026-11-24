@@ -324,3 +324,5 @@ if __name__ == "__main__":
     except Exception as exc:
         print(f"QWEN_LARGE_BENCHMARK_ERROR: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
         raise
+
+# Benchmark revision: trigger the dedicated GitHub Actions workflow after adding its workflow definition.
