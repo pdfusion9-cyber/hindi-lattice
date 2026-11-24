@@ -31,6 +31,11 @@ It does **not** approve production training or change
 
 The current controller has a hard cap of 200 optimizer steps. This first run is
 a pipeline smoke experiment, not convergence training or a full-model run.
+The trainer writes an atomic, resumable checkpoint every 50 steps by default.
+Resume validates model config, corpus Git blob and SHA-256, tokenizer hash,
+training settings, and internal-only provenance before restoring model,
+optimizer, and random-number-generator states. `--steps` remains the total
+target step count, not the number of additional steps.
 
 ## Run locally only
 
@@ -56,6 +61,7 @@ python tools/neurocore_native_grouped_answer_word_prediction.py \
   --batch-size 8 \
   --cpu-threads 2 \
   --learning-rate 0.00015 \
+  --checkpoint-every 50 \
   --generation-limit 96 \
   --report reports/neurocore-integrated-word-grouped-200.json \
   --checkpoint artifacts/neurocore-integrated-word-grouped-200.pt \
@@ -65,6 +71,27 @@ python tools/neurocore_native_grouped_answer_word_prediction.py \
 The script checks the exact corpus Git blob SHA before training. It performs a
 deterministic subject-relation group split, so no answer from a pair can leak
 between train and validation.
+
+To continue a run from its last local checkpoint, retain the same corpus,
+training arguments, tokenizer, and model settings, increase the total target
+steps (never above the controller's 200-step cap), and run:
+
+```bash
+OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 \
+python tools/neurocore_native_grouped_answer_word_prediction.py \
+  --corpus data/gyaan_base.txt \
+  --steps 200 \
+  --batch-size 8 \
+  --cpu-threads 2 \
+  --learning-rate 0.00015 \
+  --resume-checkpoint artifacts/neurocore-integrated-word-grouped-200.pt \
+  --checkpoint artifacts/neurocore-integrated-word-grouped-200.pt \
+  --report reports/neurocore-integrated-word-grouped-200-resumed.json
+```
+
+The current 200-step hard cap means resuming a completed 200-step run is
+intentionally rejected; a later approved change to the controller budget is
+needed before extending beyond this smoke experiment.
 
 ## Required evaluation
 
