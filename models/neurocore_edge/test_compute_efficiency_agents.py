@@ -28,7 +28,7 @@ def test_compute_agents_reject_incomplete_routing_profile():
         ComputeEfficiencyController().create_plan(
             routing_profile=_profile()[:-1], steps=40,
         )
-    except PermissionError:
-        pass
+    except ValueError as exc:
+        assert "20 expert-domain rows" in str(exc)
     else:
         raise AssertionError("incomplete routing profile must fail closed")
