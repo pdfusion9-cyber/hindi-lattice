@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "models" / "neurocore_edge"))
 
+from modeling_neurocore_edge import NeuroCoreEdgeConfig, NeuroCoreEdgeForCausalLM  # noqa: E402
 from neurocore_native_grouped_answer_word_prediction import (  # noqa: E402
     ALT,
     EOS,
@@ -169,3 +170,46 @@ def test_resume_rejects_completed_or_invalid_step():
     payload["step"] = True
     with pytest.raises(ValueError, match="step is invalid"):
         _validate_payload(payload)
+
+
+def test_integrated_whole_word_and_grouped_answer_objective_backpropagates():
+    word_to_id, _ = make_vocab({
+        "विषय": 3,
+        "संबंध": 3,
+        "उत्तर": 2,
+        "दूसरा": 1,
+    })
+    examples = [
+        encode_group(
+            {"subject": "विषय", "relation": "संबंध", "objects": ["उत्तर", "दूसरा"]},
+            word_to_id,
+        ),
+        encode_group(
+            {"subject": "विषय", "relation": "संबंध", "objects": ["दूसरा"]},
+            word_to_id,
+        ),
+    ]
+    x, y, loss_mask, word_mask = collate(examples)
+    cfg = NeuroCoreEdgeConfig(
+        vocab_size=len(word_to_id) + 6,
+        hidden_size=8,
+        num_hidden_layers=1,
+        num_experts=2,
+        experts_per_token=2,
+        expert_intermediate_size=8,
+        attention_heads=2,
+        kv_heads=1,
+        sliding_window=16,
+        recurrent_state_size=4,
+    )
+    model = NeuroCoreEdgeForCausalLM(cfg)
+    output = model(x)
+    selected_logits = output["logits"][loss_mask]
+    selected_targets = y[loss_mask]
+    loss = torch.nn.functional.cross_entropy(selected_logits, selected_targets)
+    loss = loss + cfg.router_aux_loss_coefficient * output["router_aux_loss"]
+    assert word_mask.any()
+    assert torch.isfinite(loss)
+    loss.backward()
+    assert model.embed.weight.grad is not None
+    assert torch.isfinite(model.embed.weight.grad).all()
