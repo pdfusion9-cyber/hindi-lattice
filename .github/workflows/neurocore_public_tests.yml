@@ -32,6 +32,9 @@ jobs:
           python -m pip install pytest
       - name: Compile reference source
         run: python -m py_compile models/neurocore_edge/*.py
+      - name: Test GPU runner preflight gates without requiring physical GPUs
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_gpu_runner_preflight.py
       - name: Run hybrid micro-agent control-plane tests
         working-directory: models/neurocore_edge
         run: python -m unittest -v test_micro_agent_runtime.py
