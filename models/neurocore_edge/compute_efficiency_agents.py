@@ -57,13 +57,15 @@ class AdaptiveBatchPlanner:
         effective_batch_size: int,
         sequence_length: int,
         hidden_size: int,
+        num_layers: int,
         activation_budget_bytes: int,
     ) -> dict[str, Any]:
-        values = (effective_batch_size, sequence_length, hidden_size, activation_budget_bytes)
+        values = (effective_batch_size, sequence_length, hidden_size, num_layers, activation_budget_bytes)
         if any(not isinstance(v, int) or v < 1 for v in values):
             raise ValueError("batch, sequence, hidden size and activation budget must be positive integers")
-        # Small conservative FP32 proxy: four hidden-state-sized tensors per token.
-        per_example = sequence_length * hidden_size * 4 * 4
+        # Planning proxy: four FP32 hidden-state-sized tensors per token per layer.
+        # This is not a measured PyTorch peak; production must calibrate it empirically.
+        per_example = sequence_length * hidden_size * num_layers * 4 * 4
         capacity = min(effective_batch_size, activation_budget_bytes // per_example)
         if capacity < 1:
             raise MemoryError("activation budget cannot fit one sequence")
@@ -104,6 +106,7 @@ class ComputeEfficiencyController:
         effective_batch_size: int,
         sequence_length: int,
         hidden_size: int,
+        num_layers: int,
         activation_budget_bytes: int,
     ) -> dict[str, Any]:
         load = ExpertLoadBalancer().plan(routing_profile, steps)
@@ -111,6 +114,7 @@ class ComputeEfficiencyController:
             effective_batch_size=effective_batch_size,
             sequence_length=sequence_length,
             hidden_size=hidden_size,
+            num_layers=num_layers,
             activation_budget_bytes=activation_budget_bytes,
         )
         checkpoint = CheckpointScheduler().plan(steps)
