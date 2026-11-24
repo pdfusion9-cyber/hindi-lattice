@@ -149,25 +149,22 @@ def train_expert_shard(
         raise RuntimeError(f"no native model parameters found for expert {expert_id}")
 
     optimizer = torch.optim.AdamW(target_parameters, lr=1e-3, weight_decay=0.0)
-    x, _ = synthetic_batch(expert_id, batch_size=64, sequence_length=16)
+    x, y = synthetic_batch(expert_id, batch_size=64, sequence_length=16)
     losses = []
     model.train()
+    started = time.perf_counter()
     for _ in range(steps):
         optimizer.zero_grad(set_to_none=True)
-        # Train the selected expert directly on the native layer activations.
-        # This isolates its shard from stochastic top-k router assignment while
-        # keeping the shared backbone, router and all other experts frozen.
-        hidden = model.embed(x)
-        expert_losses = []
-        for layer in model.layers:
-            memory_out, _ = layer.memory(layer.norm1(hidden))
-            expert_input = layer.norm2(hidden + memory_out)
-            expert_output = layer.experts[expert_id](expert_input)
-            expert_losses.append(expert_output.float().pow(2).mean())
-            hidden = hidden + memory_out
-        loss = torch.stack(expert_losses).mean()
+        # Route every layer through this expert, but optimize the actual
+        # next-token language-model objective. Shared layers/router/other
+        # experts stay frozen; only this expert's weights receive gradients.
+        output = model(x, force_expert_id=expert_id)
+        token_loss = F.cross_entropy(
+            output["logits"].reshape(-1, cfg.vocab_size), y.reshape(-1)
+        )
+        loss = token_loss + cfg.router_aux_loss_coefficient * output["router_aux_loss"]
         if not bool(torch.isfinite(loss)):
-            raise RuntimeError(f"non-finite loss for expert {expert_id}")
+            raise RuntimeError(f"non-finite next-token loss for expert {expert_id}")
         loss.backward()
         gradients = [p.grad for p in target_parameters if p.grad is not None]
         if not gradients or not any(bool(torch.count_nonzero(g).item()) for g in gradients):
@@ -177,6 +174,7 @@ def train_expert_shard(
         torch.nn.utils.clip_grad_norm_(target_parameters, 1.0)
         optimizer.step()
         losses.append(float(loss.detach().item()))
+    elapsed = max(time.perf_counter() - started, 1e-9)
 
     trained_state = model.state_dict()
     updated = {
@@ -191,6 +189,14 @@ def train_expert_shard(
         "config_fingerprint": cfg_hash,
         "steps": steps,
         "losses": losses,
+        "initial_loss": losses[0],
+        "final_loss": losses[-1],
+        "loss_reduction_fraction": (
+            (losses[0] - losses[-1]) / losses[0] if losses[0] else 0.0
+        ),
+        "training_elapsed_seconds": elapsed,
+        "training_tokens_per_second": steps * y.numel() / elapsed,
+        "objective": "next_token_cross_entropy_with_forced_expert_routing",
         "expert_state": updated,
     }
 
