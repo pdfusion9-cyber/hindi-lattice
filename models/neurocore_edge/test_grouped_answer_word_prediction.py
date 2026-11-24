@@ -65,7 +65,7 @@ def test_target_encodes_all_answers_with_alt_and_eos():
     prompt, target = encode_group(group, word_to_id)
     assert target.count(ALT) == 1
     assert target[-1] == EOS
-    assert len(target) == 6
+    assert len(target) == 5
 
 
 def test_collate_masks_prompt_and_padding_from_loss():
@@ -78,6 +78,9 @@ def test_collate_masks_prompt_and_padding_from_loss():
     assert x.shape == y.shape == loss_mask.shape == word_mask.shape
     assert loss_mask.dtype == torch.bool
     assert word_mask.dtype == torch.bool
-    assert torch.all(y[~loss_mask] == -100)
+    assert int(loss_mask[0].sum()) == len(examples[0][1])
+    assert int(loss_mask[1].sum()) == len(examples[1][1])
     assert torch.all(word_mask <= loss_mask)
+    assert torch.all(y[loss_mask] >= 0)
+    assert torch.all(y[~loss_mask] >= -100)
     assert len(SPECIAL) == 6
