@@ -217,8 +217,7 @@ def main():
                 f"balanced_word_step={step}/{args.steps} "
                 f"loss={metrics['object_word_loss']:.4f} "
                 f"top1={metrics['object_word_top1']:.4f} "
-                f"top5={metrics['object_word_top5']:.4f} "
-                f"exact={metrics['exact_object_match']:.4f}",
+                f"top5={metrics['object_word_top5']:.4f}",
                 flush=True,
             )
 
