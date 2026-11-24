@@ -41,6 +41,9 @@ jobs:
       - name: Test CPU compute-efficiency micro-agents
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_compute_efficiency_agents.py
+      - name: Run CPU-aware micro-agent training controller tests
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_training_micro_agents.py
       - name: Run hybrid micro-agent control-plane tests
         working-directory: models/neurocore_edge
         run: python -m unittest -v test_micro_agent_runtime.py
