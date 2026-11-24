@@ -23,6 +23,7 @@ on:
       - 'models/neurocore_edge/compute_efficiency_agents.py'
       - 'models/neurocore_edge/test_compute_efficiency_agents.py'
       - 'models/neurocore_edge/verify_cpu_runner_inventory.py'
+      - 'models/neurocore_edge/test_verify_cpu_runner_inventory.py'
       - 'models/neurocore_edge/CPU_MICRO_AGENT_TRAINING.md'
       - '.github/workflows/neurocore_cpu_micro_agent_preflight.yml'
   workflow_dispatch:
@@ -66,8 +67,6 @@ jobs:
           RUNNER_ID: ${{ matrix.runner_id }}
         run: python models/neurocore_edge/cpu_training_agents.py --runner-id "$RUNNER_ID" --profile-report "cpu-runner-$RUNNER_ID.json"
       - uses: actions/upload-artifact@v4
-        env:
-          RUNNER_ID: ${{ matrix.runner_id }}
         with:
           name: neurocore-cpu-runner-${{ matrix.runner_id }}
           path: cpu-runner-${{ matrix.runner_id }}.json
@@ -86,7 +85,7 @@ jobs:
           pattern: neurocore-cpu-runner-*
           path: cpu-inventory
           merge-multiple: true
-      - name: Verify exactly 20 distinct CPU runner hosts
+      - name: Verify exactly 20 unique GitHub runner identities
         run: |
           cd cpu-inventory
           python ../models/neurocore_edge/verify_cpu_runner_inventory.py
