@@ -49,6 +49,15 @@ jobs:
           OMP_NUM_THREADS: '1'
           MKL_NUM_THREADS: '1'
         run: python expert_domain_synthetic_benchmark.py --manifest expert_manifest.json --report-path expert_domain_benchmark.json --steps 40
+      - name: Test Micro-Agent compute-efficiency policies
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_compute_efficiency_agents.py
+      - name: Benchmark load balancing, adaptive batches and checkpoints
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+        run: python compute_efficiency_benchmark.py --manifest expert_manifest.json --report-path compute_efficiency_report.json --steps 40
       - name: Run 20-expert native topology synthetic smoke
         working-directory: models/neurocore_edge
         env:
@@ -97,6 +106,6 @@ jobs:
             models/neurocore_edge/micro_agent_training_report.json
             models/neurocore_edge/expert_training_plan.json
             models/neurocore_edge/expert20_smoke.json
-            models/neurocore_edge/expert_domain_benchmark.json
+            models/neurocore_edge/expert_domain_benchmark.json\n            models/neurocore_edge/compute_efficiency_report.json
           if-no-files-found: error
           retention-days: 14
