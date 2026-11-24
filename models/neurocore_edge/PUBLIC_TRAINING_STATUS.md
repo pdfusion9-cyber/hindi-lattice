@@ -39,3 +39,13 @@
 - CPU planner tests passed in run #45352812975; the independent public CI run #45352812840 passed its then-current CPU planner and reference suites. The compute-efficiency tests were added after that run, so they are not yet certified by that result.
 - Latest workflow/test corrections are committed on the PR branch, but a post-fix Actions run has not yet appeared. Inventory completion and distinct-host verification therefore remain pending.
 - The expert-domain scheduler is explicitly an equal-visit scheduler ordered by observed routing counts; it is not yet a measured CPU-throughput optimizer. Production training remains disabled.
+
+
+## Runner identity verification correction (2026-11-24)
+
+- The previous 20-job inventory did execute all 20 profiling steps, but log inspection found repeated hostnames across matrix jobs. The old hostname-uniqueness verifier was therefore too strict for this hosted environment and could not establish distinct VM identity from hostname alone.
+- CPUProfile now records GitHub runner metadata (`RUNNER_NAME`, `RUNNER_OS`, `RUNNER_ARCH`, `GITHUB_JOB`, `GITHUB_RUN_ID`) and an optional SHA-256 machine fingerprint derived from DMI product UUID or `/etc/machine-id`; raw machine identifiers are not stored.
+- Replaced hostname-based acceptance with unique GitHub `RUNNER_NAME` checks, exact runner IDs 0..19, complete CPU/RAM/disk measurements, and one common workflow run ID. Hostname is diagnostic only; machine fingerprints are reported when available.
+- Added verifier tests for repeated hostnames, duplicate runner names, and mixed workflow run IDs. Added those tests to the CPU preflight and public CI workflows.
+- The first Actions run after adding the verifier failed before jobs were created because a path-filter line contained a literal escaped newline. Fixed the YAML path list in the next commit and re-read the complete workflow file. No post-fix Actions result is available yet; do not claim the corrected inventory passes.
+- Current production gate remains closed. No production training was dispatched.
