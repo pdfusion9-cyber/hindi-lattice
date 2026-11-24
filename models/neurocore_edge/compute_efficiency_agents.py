@@ -10,7 +10,7 @@ from typing import Any
 
 
 class ExpertLoadBalancer:
-    """Create equal-visit domain scheduling while preferring lower measured route load."""
+    """Create deterministic equal-visit domain scheduling from route-load observations."""
 
     def plan(self, routing_profile: list[dict[str, Any]], steps: int) -> dict[str, Any]:
         if len(routing_profile) != 20:
@@ -30,9 +30,9 @@ class ExpertLoadBalancer:
             raise ValueError("routing profile must contain exactly 20 expert-domain rows")
         if not isinstance(steps, int) or steps < 20 or steps % 20:
             raise ValueError("steps must be a positive multiple of 20")
-        quotas = {domain: steps // 20 for domain in range(20)}
         # Average each domain's observed top-2 assignment load. This score is
-        # used only to deterministically order domains within equal visit quotas.
+        # used only to order equal-quota domain visits; it is not a measured
+        # CPU-cost model and must not be described as throughput optimization.
         load = {
             domain: sum(by_domain[domain]) / max(1, len(by_domain[domain]))
             for domain in range(20)
@@ -44,7 +44,7 @@ class ExpertLoadBalancer:
             "domain_schedule": schedule,
             "domain_visits": visits,
             "domain_load_score": {str(k): load[k] for k in range(20)},
-            "policy": "equal_domain_quotas_then_lowest_observed_route_load",
+            "policy": "equal_domain_visit_quotas_ordered_by_observed_route_load",
         }
 
 
