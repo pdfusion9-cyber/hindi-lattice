@@ -304,6 +304,8 @@ def create_cpu_training_plan(
         staging_reserve_bytes=staging_reserve_bytes,
     )
     shared_base_fits = shared_base_training_bytes <= safe_memory
+    if not shared_base_fits:
+        blockers.append("shared-backbone AdamW state exceeds the safe single-runner RAM budget")
 
     return {
         "status": "CPU_TRAINING_PLAN_APPROVED" if not blockers else "CPU_TRAINING_PLAN_BLOCKED",
