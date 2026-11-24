@@ -58,14 +58,19 @@ def load_payload(path: Path) -> dict[str, Any]:
     return value
 
 
-def build_shared_base(output: Path, *, steps: int, seed: int) -> dict[str, Any]:
+def build_shared_base(output: Path, *, steps: int, seed: int, cpu_threads: int = 1) -> dict[str, Any]:
+    if not 1 <= cpu_threads <= 4:
+        raise ValueError("cpu_threads must be in range 1..4")
+    torch.set_num_threads(cpu_threads)
     if steps < 1:
         raise ValueError("shared-base steps must be positive")
     torch.set_num_threads(1)
     torch.manual_seed(seed)
     cfg = tiny_native_config()
     model = NeuroCoreEdgeForCausalLM(cfg).cpu()
+    training_started = time.perf_counter()
     losses = train_shared_backbone(model, cfg, steps=steps, seed=seed)
+    training_elapsed = max(time.perf_counter() - training_started, 1e-9)
     state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
     cfg_hash = config_fingerprint(cfg)
     base_hash = state_fingerprint(state)
@@ -79,6 +84,11 @@ def build_shared_base(output: Path, *, steps: int, seed: int) -> dict[str, Any]:
         "base_fingerprint": base_hash,
         "shared_base_steps": steps,
         "shared_base_losses": losses,
+        "shared_base_initial_loss": losses[0],
+        "shared_base_final_loss": losses[-1],
+        "shared_base_elapsed_seconds": training_elapsed,
+        "shared_base_training_tokens_per_second": steps * 64 * 16 / training_elapsed,
+        "cpu_threads": cpu_threads,
         "parameter_count": count_parameters(model),
         "provenance": {
             "source_kind": "generated_in_memory_synthetic_only",
@@ -104,7 +114,11 @@ def run_one_expert(
     *,
     steps: int,
     seed: int,
+    cpu_threads: int = 1,
 ) -> dict[str, Any]:
+    if not 1 <= cpu_threads <= 4:
+        raise ValueError("cpu_threads must be in range 1..4")
+    torch.set_num_threads(cpu_threads)
     if expert_id not in range(NATIVE_MODEL_EXPERT_COUNT):
         raise ValueError("expert_id must be in range 0..19")
     if steps < 1:
@@ -144,6 +158,13 @@ def run_one_expert(
         "config_fingerprint": cfg_hash,
         "steps": steps,
         "losses": shard["losses"],
+        "initial_loss": shard["initial_loss"],
+        "final_loss": shard["final_loss"],
+        "loss_reduction_fraction": shard["loss_reduction_fraction"],
+        "training_elapsed_seconds": shard["training_elapsed_seconds"],
+        "training_tokens_per_second": shard["training_tokens_per_second"],
+        "objective": shard["objective"],
+        "cpu_threads": cpu_threads,
         "tensor_count": len(shard["expert_state"]),
         "tensor_numel": sum(t.numel() for t in shard["expert_state"].values()),
         "provenance": {
@@ -259,6 +280,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--steps", type=int, default=1)
+    parser.add_argument("--cpu-threads", type=int, choices=range(1, 5), default=1)
     parser.add_argument("--seed", type=int, default=29)
     parser.add_argument("--config", type=Path, default=Path("config.json"))
     parser.add_argument("--approvals", type=Path, default=Path("dataset_approval.json"))
@@ -267,7 +289,10 @@ def main() -> None:
     if args.stage == "shared-base":
         if not args.output:
             parser.error("--output is required for shared-base")
-        result = build_shared_base(args.output, steps=args.steps, seed=args.seed)
+        result = build_shared_base(
+            args.output, steps=args.steps, seed=args.seed,
+            cpu_threads=args.cpu_threads,
+        )
     elif args.stage == "expert":
         if not args.base_checkpoint or args.expert_id is None or not args.expert_checkpoint:
             parser.error("--base-checkpoint, --expert-id and --expert-checkpoint are required for expert stage")
