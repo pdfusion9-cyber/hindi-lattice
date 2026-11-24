@@ -18,6 +18,10 @@ from expert_domain_synthetic_benchmark import (
 )
 from compute_efficiency_agents import ComputeEfficiencyController
 
+# FP32 gradient summation order differs slightly between one full batch and
+# sequential micro-batch accumulation, even for the same token-additive loss.
+PARAMETER_PARITY_ATOL = 1e-5
+
 
 def profile_routing(model, streams: dict[int, torch.Tensor]) -> list[dict[str, Any]]:
     counts = {domain: [0] * 20 for domain in range(20)}
@@ -174,8 +178,11 @@ def run_compute_benchmark(report_path: Path, manifest_path: Path, *, steps=40, s
             checkpoint_interval=plan["checkpoint_interval"],
         )
         parity = _state_max_abs_difference(baseline["model"], managed["model"])
-        if parity > 1e-6:
-            raise RuntimeError(f"effective-batch parity failed: max parameter difference {parity}")
+        if parity > PARAMETER_PARITY_ATOL:
+            raise RuntimeError(
+                "effective-batch parity failed: max parameter difference "
+                f"{parity} exceeds FP32 accumulation tolerance {PARAMETER_PARITY_ATOL}"
+            )
         total_steps = len(schedule)
         report = {
             "status": "COMPUTE_EFFICIENCY_BENCHMARK_PASS",
@@ -197,6 +204,7 @@ def run_compute_benchmark(report_path: Path, manifest_path: Path, *, steps=40, s
             "micro_agent_managed": {k:v for k,v in managed.items() if k != "model"},
             "comparison": {
                 "max_abs_parameter_difference": parity,
+                "parameter_parity_absolute_tolerance": PARAMETER_PARITY_ATOL,
                 "training_time_ratio_baseline_over_managed": baseline["training_elapsed_seconds"] / managed["training_elapsed_seconds"],
                 "tokens_per_second_ratio_managed_over_baseline": managed["tokens_per_second"] / baseline["tokens_per_second"],
                 "checkpoint_time_seconds": managed["checkpoint_elapsed_seconds"],
