@@ -61,11 +61,12 @@ jobs:
         with:
           python-version: '3.12'
       - name: Profile this CPU runner
-        run: |
-          python models/neurocore_edge/cpu_training_agents.py \
-            --runner-id ${{ matrix.runner_id }} \
-            --profile-report cpu-runner-${{ matrix.runner_id }}.json
+        env:
+          RUNNER_ID: ${{ matrix.runner_id }}
+        run: python models/neurocore_edge/cpu_training_agents.py --runner-id "$RUNNER_ID" --profile-report "cpu-runner-$RUNNER_ID.json"
       - uses: actions/upload-artifact@v4
+        env:
+          RUNNER_ID: ${{ matrix.runner_id }}
         with:
           name: neurocore-cpu-runner-${{ matrix.runner_id }}
           path: cpu-runner-${{ matrix.runner_id }}.json
