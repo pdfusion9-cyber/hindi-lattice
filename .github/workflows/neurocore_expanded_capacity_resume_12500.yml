@@ -1,0 +1,123 @@
+name: NeuroCore Expanded Resume 12,500 Steps and Hindi Generation Probe
+
+on:
+  push:
+    branches: [feat/hybrid-micro-agent-architecture-20261123]
+    paths:
+      - '.github/workflows/neurocore_expanded_capacity_resume_12500.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  expanded-resume-and-generation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hybrid-micro-agent-architecture-20261123
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Download 7,500-step expanded checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: neurocore-expanded-capacity-resumed-7500-steps
+          repository: pdfusion9-cyber/hindi-lattice
+          run-id: 45399944801
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .
+      - name: Verify source checkpoint and corpus
+        run: |
+          test "$(git rev-parse HEAD:data/gyaan_base.txt)" = "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+          python -m py_compile tools/neurocore_native_corpus_training.py tools/neurocore_native_generation_probe.py
+          python - <<'PY'
+          import torch
+          p = torch.load("artifacts/neurocore-expanded-capacity-checkpoint-7500.pt", map_location="cpu", weights_only=True)
+          assert p["model_id"] == "neurocore_edge_native_reference"
+          assert p["step"] == 7500 and p["capacity_profile"] == "expanded"
+          assert p["config"]["num_experts"] == 20
+          assert p["corpus_git_blob_sha1"] == "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+          assert p["provenance"]["external_model_weights_used"] is False
+          assert p["provenance"]["open_source_model_integrated"] is False
+          assert p["production_training_gate"] == "CLOSED"
+          assert isinstance(p.get("optimizer_state_dict"), dict)
+          print("verified_source_checkpoint_step=", p["step"])
+          PY
+      - name: Resume native expanded NeuroCore for 5,000 more CPU steps
+        env:
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: |
+          python tools/neurocore_native_corpus_training.py \
+            --corpus data/gyaan_base.txt \
+            --capacity-profile expanded \
+            --resume-checkpoint artifacts/neurocore-expanded-capacity-checkpoint-7500.pt \
+            --steps 5000 \
+            --batch-size 8 \
+            --sequence-length 64 \
+            --cpu-threads 2 \
+            --learning-rate 0.00012 \
+            --report reports/neurocore-expanded-capacity-resume-12500.json \
+            --checkpoint artifacts/neurocore-expanded-capacity-checkpoint-12500.pt
+      - name: Verify 12,500-step training and run held-out Hindi generation probe
+        env:
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: |
+          python - <<'PY'
+          import json, torch
+          p = json.load(open("reports/neurocore-expanded-capacity-resume-12500.json", encoding="utf-8"))
+          assert p["status"] == "NEUROCORE_NATIVE_REAL_CORPUS_EXPERIMENT_PASS"
+          assert p["training"]["resume_used"] is True
+          assert p["training"]["resumed_from_step"] == 7500
+          assert p["training"]["steps"] == 5000
+          assert p["training"]["total_steps"] == 12500
+          assert p["model_parameter_count"] == 767664
+          assert p["production_training_gate"] == "CLOSED"
+          assert p["production_2_87b_training_started"] is False
+          ck = torch.load("artifacts/neurocore-expanded-capacity-checkpoint-12500.pt", map_location="cpu", weights_only=True)
+          assert ck["step"] == 12500 and ck["capacity_profile"] == "expanded"
+          PY
+          python tools/neurocore_native_generation_probe.py \
+            --checkpoint artifacts/neurocore-expanded-capacity-checkpoint-12500.pt \
+            --corpus data/gyaan_base.txt \
+            --output reports/neurocore-hindi-generation-probe-12500.json \
+            --samples 20 \
+            --max-new-bytes 96 \
+            --cpu-threads 2
+      - name: Verify generation probe report
+        run: |
+          python - <<'PY'
+          import json
+          p = json.load(open("reports/neurocore-hindi-generation-probe-12500.json", encoding="utf-8"))
+          assert p["status"] == "NATIVE_HELDOUT_HINDI_GENERATION_PROBE_COMPLETE"
+          assert p["checkpoint_step"] == 12500
+          assert p["samples_evaluated"] >= 2
+          assert p["production_training_gate"] == "CLOSED"
+          assert len(p["examples"]) == p["samples_evaluated"]
+          print(json.dumps({
+              "checkpoint_step": p["checkpoint_step"],
+              "samples_evaluated": p["samples_evaluated"],
+              "metrics": p["metrics"],
+              "scope": p["scope"],
+              "limitations": p["limitations"]
+          }, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload 12,500-step checkpoint and generation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-expanded-12500-steps-and-hindi-generation-probe
+          path: |
+            artifacts/neurocore-expanded-capacity-checkpoint-12500.pt
+            reports/neurocore-expanded-capacity-resume-12500.json
+            reports/neurocore-hindi-generation-probe-12500.json
+          if-no-files-found: error
+          retention-days: 30
