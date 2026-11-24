@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "generated_at": "2026-11-24",
   "purpose": "source review and technical candidate metadata only; not dataset approval or training dispatch",
   "target_expert": {
@@ -16,7 +16,23 @@
       "candidate_scope": {
         "config_name": "indiccorp_v2",
         "split": "hin_Deva",
-        "data_path": "data/hi-*.txt"
+        "data_files": [
+          {
+            "path": "data/hi-1.txt",
+            "size_label": "26.7 GB",
+            "sha256": "9c9dfed015247004176c12b831bc7a4720bd79ebd8ac424e46c13997b57f8a73"
+          },
+          {
+            "path": "data/hi-2.txt",
+            "size_label": "26.7 GB",
+            "sha256": "4a376363e65d426e475489ea2993464ac2c5a42da1e0f757bcd5584f303d401d"
+          },
+          {
+            "path": "data/hi-3.txt",
+            "size_label": "26.7 GB",
+            "sha256": "45981c189258d1c36cc5189d24c8aefdc4bdcecf6880bce7dabade06ee2513e4"
+          }
+        ]
       },
       "official_usage_example": "load_dataset('ai4bharat/IndicCorpV2','indiccorp_v2',data_dir='data/tel_Telu'); Hindi path is listed in the pinned README metadata",
       "observed_license_statement": "CC-0 / CC0-1.0; the Hugging Face dataset README and AI4Bharat IndicBERT README say all datasets created as part of the ACL 2023 work are released under CC-0",
@@ -25,19 +41,23 @@
       "official_dataset_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
       "pinned_readme_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2/blob/2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f/README.md",
       "source_paper_url": "https://aclanthology.org/2023.acl-long.693/",
-      "source_lineage_summary": "The ACL 2023 paper describes IndicCorpV2 as 20.9B tokens across 24 languages and says news articles were chosen as primary sources. This is a provenance clue, not a source-by-source rights clearance.",
-      "observed_repository_size": "275 GB total across languages; not the Hindi-only size",
+      "source_lineage_summary": "ACL 2023 paper describes IndicCorp as 20.9B tokens across 24 languages and says news articles were chosen as primary sources. Hindi Devanagari split maps to three hi-*.txt files. This is corpus-level provenance, not a per-article source-rights audit.",
+      "observed_repository_size": "Three Hindi Devanagari shards, each displayed as 26.7 GB (approximately 80.1 GB total, based on rounded Hub labels); full corpus not downloaded",
       "technical_review": {
         "readme_config_split_path": "verified_from_pinned_README",
-        "sample_schema": "pending_automated_metadata_audit",
+        "split_name": "hin_Deva",
+        "file_pattern": "data/hi-*.txt",
+        "sample_schema": "plain-text files; one text corpus shard per file; record-level row schema not declared in the README",
+        "file_metadata": "three pinned shards and SHA256 digests recorded",
+        "sample_rows_downloaded": false,
         "full_corpus_downloaded": false
       },
       "unresolved_review": [
         "verify upstream source rights and any source-level limitations for the news articles",
         "confirm CC-0 statement applies to the complete Hindi split and permits intended commercial model training and checkpoint publication",
         "complete privacy/PII and personal-data exclusion review",
-        "inspect a representative sample for duplicates, language contamination, and quality",
-        "record reviewer, review date, source-owner evidence, and allowed redistribution scope"
+        "inspect a representative sample for duplicates, language contamination, quality and any embedded metadata",
+        "record reviewer, review date, source-owner evidence and allowed redistribution scope"
       ],
       "commercial_training_allowed": false,
       "public_redistribution_allowed": false,
@@ -69,10 +89,17 @@
         "type": "string",
         "text": "string"
       },
-      "source_lineage_summary": "The Sangraha card and IndicLLMSuite curation README describe Verified data as a mixture of human-verified websites, OCR-extracted PDFs, and transcriptions of videos, podcasts, movies, and courses.",
+      "source_lineage_summary": "The dataset card and IndicLLMSuite README describe Verified as a mixture of scraped human-verified websites, OCR-extracted PDFs (Internet Archive noted as a prominent source), and transcribed videos, podcasts, movies and courses. The Hub file listing confirms the pinned Hindi Parquet shard.",
       "technical_review": {
-        "readme_config_split_path": "verified_from_dataset_card",
-        "sample_schema": "pending_automated_metadata_audit",
+        "readme_config_split_path": "verified_from_pinned_dataset_card",
+        "config_name": "verified",
+        "split_name": "hin",
+        "features": {
+          "doc_id": "string",
+          "type": "string",
+          "text": "string"
+        },
+        "sample_rows_downloaded": false,
         "full_corpus_downloaded": false
       },
       "unresolved_review": [
@@ -80,7 +107,7 @@
         "confirm CC-BY-4.0 attribution chain and checkpoint publication scope for each source type",
         "complete PII/privacy and consent review for each source class",
         "filter or exclude any records whose upstream rights cannot be substantiated",
-        "validate schema, duplicates and Hindi quality on a representative sample"
+        "inspect a representative row sample and validate document types, Hindi quality and duplicate rates"
       ],
       "commercial_training_allowed": false,
       "public_redistribution_allowed": false,
@@ -122,6 +149,6 @@
     "The official IndicCorp v1 site separately states CC BY-NC 4.0; do not apply that notice to v2 or apply v2's CC-0 statement to v1.",
     "A dataset-level license statement is evidence, not automatic proof of rights to every underlying third-party work or of PII/consent clearance."
   ],
-  "next_technical_action": "Run a metadata-only pinned-revision and sample-schema audit. Do not download either full corpus, modify dataset_approval.json, or start expert-11 production training until human rights review is recorded.",
+  "next_technical_action": "Pinned metadata, declared splits, file sizes and published feature schemas are recorded. Actual sample rows have not been downloaded or inspected. Next technical step may use a tiny API row preview or bounded sample only after the user/data steward authorizes that data access; do not download full 80.1 GB IndicCorpV2 or 37.3 GB Sangraha shard. Do not modify dataset_approval.json or start expert-11 training until human rights and privacy review is recorded.",
   "policy": "No candidate is approved. All canonical dataset approval rows remain default-deny."
 }
