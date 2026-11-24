@@ -174,12 +174,12 @@ def build_corpora(manifest_path: Path) -> dict[int, dict[str, Any]]:
             "expert_id": eid,
             "expert_name": domain["name"],
             "train_records": [
-                {"record_id": f"expert-{eid}-train-{i}", "input": a, "target": b,
+                {"record_id": f"expert-{eid}-train-{i}", "expert_id": eid, "input": a, "target": b,
                  "text": f"कार्य: {a}\nउत्तर: {b}\n"}
                 for i, (a, b) in enumerate(domain["train"])
             ],
             "validation_records": [
-                {"record_id": f"expert-{eid}-valid-{i}", "input": a, "target": b,
+                {"record_id": f"expert-{eid}-valid-{i}", "expert_id": eid, "input": a, "target": b,
                  "text": f"कार्य: {a}\nउत्तर: {b}\n"}
                 for i, (a, b) in enumerate(domain["valid"])
             ],
@@ -257,6 +257,7 @@ def train_trial(
     initial_val, _ = evaluate(model, valid_streams)
     generator = torch.Generator().manual_seed(seed + 1000)
     per_expert_steps = {str(eid): 0 for eid in range(20)}
+    sparse_inactive_parameter_steps = 0
     train_start = time.perf_counter()
     last_loss = 0.0
     for step in range(steps):
@@ -268,9 +269,16 @@ def train_trial(
         if not bool(torch.isfinite(loss)):
             raise RuntimeError(f"non-finite loss at step {step}")
         loss.backward()
-        if not all(bool(p.grad is not None and torch.isfinite(p.grad).all()) for p in model.parameters()):
-            raise RuntimeError(f"missing/non-finite gradients at step {step}")
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # Sparse top-2 routing intentionally leaves unselected experts without
+        # gradients on a given batch. Validate every gradient that is present.
+        present_grads = [p.grad for p in model.parameters() if p.grad is not None]
+        if not present_grads or not all(bool(torch.isfinite(g).all()) for g in present_grads):
+            raise RuntimeError(f"missing-all or non-finite gradients at step {step}")
+        torch.nn.utils.clip_grad_norm_(
+            [p for p in model.parameters() if p.grad is not None], max_norm=1.0
+        )
+        if len(present_grads) < len(list(model.parameters())):
+            sparse_inactive_parameter_steps += 1
         optimizer.step()
         per_expert_steps[str(eid)] += 1
         last_loss = float(loss.item())
@@ -287,6 +295,7 @@ def train_trial(
         "training_elapsed_seconds": training_elapsed,
         "micro_agent_gate_elapsed_seconds": gate_elapsed,
         "per_expert_steps": per_expert_steps,
+        "steps_with_sparse_inactive_parameters": sparse_inactive_parameter_steps,
         "per_expert_validation_loss": per_expert_val,
         "micro_agent_plan": plan,
         "_model": model,
