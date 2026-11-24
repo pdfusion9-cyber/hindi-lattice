@@ -49,8 +49,12 @@
         "file_pattern": "data/hi-*.txt",
         "sample_schema": "plain-text files; one text corpus shard per file; record-level row schema not declared in the README",
         "file_metadata": "three pinned shards and SHA256 digests recorded",
-        "sample_rows_downloaded": false,
-        "full_corpus_downloaded": false
+        "sample_rows_downloaded": true,
+        "full_corpus_downloaded": false,
+        "sample_rows_inspected": 15,
+        "sample_inspection_report": "reports/hindi-corpus-sample-inspection-summary.json",
+        "sample_result": "15 short samples from 3 byte ranges in hi-1.txt; 99.09% mean Devanagari-letter fraction; 0 exact duplicates in sample; no email/URL/phone/Aadhaar-like patterns detected",
+        "sample_scope_limit": "tiny sample only; no corpus-wide guarantee"
       },
       "unresolved_review": [
         "verify upstream source rights and any source-level limitations for the news articles",
@@ -100,7 +104,9 @@
           "text": "string"
         },
         "sample_rows_downloaded": false,
-        "full_corpus_downloaded": false
+        "full_corpus_downloaded": false,
+        "sample_inspection_status": "BLOCKED_HTTP_500",
+        "sample_inspection_report": "reports/hindi-corpus-sample-inspection-summary.json"
       },
       "unresolved_review": [
         "trace underlying websites, PDFs, videos, podcasts, movies and course materials to source-level licenses/permissions",
@@ -149,6 +155,6 @@
     "The official IndicCorp v1 site separately states CC BY-NC 4.0; do not apply that notice to v2 or apply v2's CC-0 statement to v1.",
     "A dataset-level license statement is evidence, not automatic proof of rights to every underlying third-party work or of PII/consent clearance."
   ],
-  "next_technical_action": "Pinned metadata, declared splits, file sizes and published feature schemas are recorded. Actual sample rows have not been downloaded or inspected. Next technical step may use a tiny API row preview or bounded sample only after the user/data steward authorizes that data access; do not download full 80.1 GB IndicCorpV2 or 37.3 GB Sangraha shard. Do not modify dataset_approval.json or start expert-11 training until human rights and privacy review is recorded.",
+  "next_technical_action": "IndicCorpV2 received a tiny bounded sample inspection; Sangraha viewer API returned HTTP 500 and requires an alternate bounded Parquet row-group read. Neither source is approved. Human rights/privacy review remains mandatory before expert training.",
   "policy": "No candidate is approved. All canonical dataset approval rows remain default-deny."
 }
