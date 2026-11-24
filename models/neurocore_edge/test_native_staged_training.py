@@ -130,3 +130,24 @@ def test_resume_refuses_wrong_seed_and_modified_config(tmp_path):
         load_resume_checkpoint(
             resume_path, expected_config_fingerprint="wrong", expected_seed=7
         )
+
+
+def test_expert_shard_uses_next_token_objective_and_reports_cpu_throughput():
+    from native_staged_training import (
+        config_fingerprint, state_fingerprint, tiny_native_config,
+        train_expert_shard,
+    )
+    cfg = tiny_native_config()
+    model = __import__("modeling_neurocore_edge").NeuroCoreEdgeForCausalLM(cfg)
+    base = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+    base_hash = state_fingerprint(base)
+    shard = train_expert_shard(
+        base, cfg, expert_id=3, steps=2,
+        base_hash=base_hash, cfg_hash=config_fingerprint(cfg), seed=31,
+    )
+    assert shard["objective"] == "next_token_cross_entropy_with_forced_expert_routing"
+    assert len(shard["losses"]) == 2
+    assert all(torch.isfinite(torch.tensor(value)) for value in shard["losses"])
+    assert shard["training_elapsed_seconds"] > 0
+    assert shard["training_tokens_per_second"] > 0
+    assert shard["expert_state"]
