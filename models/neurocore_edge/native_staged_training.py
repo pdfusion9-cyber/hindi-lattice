@@ -333,6 +333,14 @@ def run_staged_training(
     try:
         cfg = tiny_native_config()
         cfg_hash = config_fingerprint(cfg)
+        torch.manual_seed(seed)
+        initial_model = NeuroCoreEdgeForCausalLM(cfg).cpu()
+        parameter_count = count_parameters(initial_model)
+        try:
+            import os
+            available_memory = int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_AVPHYS_PAGES"))
+        except (AttributeError, OSError, ValueError):
+            available_memory = None
         controller = MicroAgentTrainingController()
         plan = controller.create_plan(
             requested_steps=base_steps + cfg.num_experts * expert_steps,
@@ -343,6 +351,8 @@ def run_staged_training(
             dataset_ids=[],
             external_weights_used=False,
             checkpoint_mode="ephemeral_synthetic_only",
+            model_parameter_count=parameter_count,
+            available_memory_bytes=available_memory,
         )
         if plan["model_under_test"] != NATIVE_MODEL_ID or plan["open_source_model_in_training_path"]:
             raise PermissionError("micro-agent rejected native-only training provenance")
@@ -353,12 +363,14 @@ def run_staged_training(
         if resume["completed_stage"] in {"shared_backbone", "expert_shards", "merged"}:
             shared_state = resume["shared_state"]
             base_hash = resume["shared_backbone_fingerprint"]
+            if state_fingerprint(shared_state) != base_hash:
+                raise ValueError("resume shared-backbone tensor fingerprint mismatch")
             shared_losses = resume.get("shared_losses", [])
-            shared_model = NeuroCoreEdgeForCausalLM(cfg).cpu()
+            shared_model = initial_model
             shared_model.load_state_dict(shared_state, strict=True)
         else:
             torch.manual_seed(seed)
-            shared_model = NeuroCoreEdgeForCausalLM(cfg).cpu()
+            shared_model = initial_model
             shared_losses = train_shared_backbone(
                 shared_model, cfg, steps=base_steps, seed=seed
             )
