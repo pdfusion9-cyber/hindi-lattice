@@ -214,6 +214,7 @@ def fetch_indiccorp_range_samples() -> dict:
             chunk, meta_range = fetch_range(url, offset)
             windows.append((offset, chunk, meta_range))
     samples: list[tuple[str, str]] = []
+    per_window_limit = SAMPLE_ROWS
     for offset, chunk, _ in windows:
         decoded = chunk.decode("utf-8", errors="replace")
         lines = decoded.splitlines()
@@ -221,14 +222,14 @@ def fetch_indiccorp_range_samples() -> dict:
             lines = lines[1:]  # first line may start mid-record
         if len(lines) > 1:
             lines = lines[:-1]  # last line may end mid-record
+        window_count = 0
         for local_index, line in enumerate(lines):
             value = line.strip()
             if len(value) >= 40:
                 samples.append((f"byte_{offset}_line_{local_index}", value))
-            if len(samples) >= SAMPLE_ROWS * 3:
+                window_count += 1
+            if window_count >= per_window_limit:
                 break
-        if len(samples) >= SAMPLE_ROWS * 3:
-            break
     if not samples:
         raise ValueError("IndicCorpV2 range sample returned no usable text lines")
     return {
