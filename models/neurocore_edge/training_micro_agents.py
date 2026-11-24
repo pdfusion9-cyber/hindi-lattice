@@ -145,7 +145,12 @@ def _budget_agent(task, _context) -> AgentResult:
     bytes_per_parameter = ctx.get("bytes_per_parameter", 16)
     memory_fraction = ctx.get("memory_safety_fraction", 0.70)
     cpu_threads = ctx.get("cpu_threads", 1)
-    if not isinstance(cpu_threads, int) or isinstance(cpu_threads, bool) or not 1 <= cpu_threads <= 4:
+    effective_cpus = ctx.get("effective_cpus", 1)
+    if (
+        not isinstance(cpu_threads, int) or isinstance(cpu_threads, bool)
+        or not isinstance(effective_cpus, int) or isinstance(effective_cpus, bool)
+        or not 1 <= cpu_threads <= min(4, effective_cpus)
+    ):
         return _result(
             task, "training_budget", TaskStatus.NEEDS_REVIEW,
             {"decision": "REFUSE", "reason": "cpu_threads must be an integer from 1 to 4"},
@@ -280,6 +285,7 @@ class MicroAgentTrainingController:
             "bytes_per_parameter": bytes_per_parameter,
             "memory_safety_fraction": memory_safety_fraction,
             "cpu_threads": selected_cpu_threads,
+            "effective_cpus": profile.effective_cpus,
         }
         task = make_task(
             "Prepare a bounded NeuroCore training session under governance and resource limits.",
