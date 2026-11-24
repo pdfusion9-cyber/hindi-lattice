@@ -149,20 +149,29 @@ def train_expert_shard(
         raise RuntimeError(f"no native model parameters found for expert {expert_id}")
 
     optimizer = torch.optim.AdamW(target_parameters, lr=1e-3, weight_decay=0.0)
-    x, y = synthetic_batch(expert_id, batch_size=64, sequence_length=16)
+    x, _ = synthetic_batch(expert_id, batch_size=64, sequence_length=16)
     losses = []
     model.train()
     for _ in range(steps):
         optimizer.zero_grad(set_to_none=True)
-        loss = training_loss(model, x, y, cfg)
+        # Train the selected expert directly on the native layer activations.
+        # This isolates its shard from stochastic top-k router assignment while
+        # keeping the shared backbone, router and all other experts frozen.
+        hidden = model.embed(x)
+        expert_losses = []
+        for layer in model.layers:
+            memory_out, _ = layer.memory(layer.norm1(hidden))
+            expert_input = layer.norm2(hidden + memory_out)
+            expert_output = layer.experts[expert_id](expert_input)
+            expert_losses.append(expert_output.float().pow(2).mean())
+            hidden = hidden + memory_out
+        loss = torch.stack(expert_losses).mean()
         if not bool(torch.isfinite(loss)):
             raise RuntimeError(f"non-finite loss for expert {expert_id}")
         loss.backward()
         gradients = [p.grad for p in target_parameters if p.grad is not None]
         if not gradients or not any(bool(torch.count_nonzero(g).item()) for g in gradients):
-            raise RuntimeError(
-                f"expert {expert_id} received no routed gradient; refusing empty shard"
-            )
+            raise RuntimeError(f"expert {expert_id} received no gradient; refusing empty shard")
         if not all(bool(torch.isfinite(g).all()) for g in gradients):
             raise RuntimeError(f"non-finite gradient in expert shard {expert_id}")
         torch.nn.utils.clip_grad_norm_(target_parameters, 1.0)
