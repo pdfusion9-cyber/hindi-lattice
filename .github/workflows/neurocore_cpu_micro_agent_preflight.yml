@@ -16,7 +16,7 @@ on:
       - 'models/neurocore_edge/CPU_MICRO_AGENT_TRAINING.md'
       - '.github/workflows/neurocore_cpu_micro_agent_preflight.yml'
   push:
-    branches: [main]
+    branches: [main, feat/hybrid-micro-agent-architecture-20261123]
     paths:
       - 'models/neurocore_edge/cpu_training_agents.py'
       - 'models/neurocore_edge/test_cpu_training_agents.py'
