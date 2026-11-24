@@ -1,0 +1,89 @@
+name: NeuroCore Relation-Balanced Hindi Word Prediction
+
+on:
+  push:
+    branches: [feat/hybrid-micro-agent-architecture-20261123]
+    paths:
+      - '.github/workflows/neurocore_word_prediction_balanced.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  relation-balanced-word-prediction:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hybrid-micro-agent-architecture-20261123
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+      - name: Validate trainer and source corpus
+        run: |
+          python -m py_compile tools/neurocore_native_word_prediction_balanced.py
+          test "$(git rev-parse HEAD:data/gyaan_base.txt)" = "3018157a78e6a35877e114b9297f8ae9e16a76ae"
+      - name: Train relation-balanced whole-word prediction
+        env:
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: |
+          python tools/neurocore_native_word_prediction_balanced.py \
+            --corpus data/gyaan_base.txt \
+            --steps 5000 \
+            --batch-size 16 \
+            --cpu-threads 2 \
+            --learning-rate 0.00015 \
+            --report reports/neurocore-word-prediction-balanced-5000.json \
+            --checkpoint artifacts/neurocore-word-prediction-balanced-5000.pt \
+            --tokenizer artifacts/neurocore-hindi-word-tokenizer-balanced.json
+      - name: Verify whole-word prediction metrics and checkpoint
+        run: |
+          python - <<'PY'
+          import json, math, torch
+          p = json.load(open("reports/neurocore-word-prediction-balanced-5000.json", encoding="utf-8"))
+          m = p["training"]["final_validation"]
+          assert p["status"] == "NEUROCORE_NATIVE_RELATION_BALANCED_WORD_PREDICTION_PASS"
+          assert p["objective"] == "relation_balanced_subject_relation_to_next_object_word_prediction"
+          assert p["training"]["steps"] == 5000
+          assert p["vocabulary"]["size"] > 8000
+          assert p["corpus"]["relation_groups"] >= 20
+          assert math.isfinite(m["object_word_loss"])
+          assert 0 <= m["object_word_top1"] <= 1
+          assert m["object_word_top5"] >= m["object_word_top1"]
+          assert 0 <= m["exact_object_match"] <= 1
+          assert p["provenance"]["external_model_weights_used"] is False
+          assert p["provenance"]["open_source_model_integrated"] is False
+          assert p["production_training_gate"] == "CLOSED"
+          ck = torch.load("artifacts/neurocore-word-prediction-balanced-5000.pt", map_location="cpu", weights_only=True)
+          assert ck["model_id"] == "neurocore_edge_native_reference_word_balanced_v2"
+          assert ck["tokenizer_format"] == "neurocore_whitespace_word_balanced_v2"
+          assert ck["step"] == 5000
+          print(json.dumps({
+              "vocabulary_size": p["vocabulary"]["size"],
+              "parameters": p["model_parameter_count"],
+              "initial_object_word_top1": p["training"]["initial_validation"]["object_word_top1"],
+              "final_object_word_loss": m["object_word_loss"],
+              "final_object_word_top1": m["object_word_top1"],
+              "final_object_word_top5": m["object_word_top5"],
+              "exact_object_match": m["exact_object_match"],
+              "rows_per_second": p["training"]["rows_per_second"],
+              "production_gate": p["production_training_gate"]
+          }, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload balanced word-prediction checkpoint, tokenizer and report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-relation-balanced-hindi-word-prediction-5000
+          path: |
+            artifacts/neurocore-word-prediction-balanced-5000.pt
+            artifacts/neurocore-hindi-word-tokenizer-balanced.json
+            reports/neurocore-word-prediction-balanced-5000.json
+          if-no-files-found: error
+          retention-days: 30
