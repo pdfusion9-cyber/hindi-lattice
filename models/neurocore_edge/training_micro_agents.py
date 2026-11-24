@@ -85,6 +85,10 @@ def _budget_agent(task, _context) -> AgentResult:
     ctx = task.context
     requested = ctx.get("requested_steps")
     ceiling = ctx.get("max_steps")
+    parameter_count = ctx.get("model_parameter_count")
+    available_memory = ctx.get("available_memory_bytes")
+    bytes_per_parameter = ctx.get("bytes_per_parameter", 16)
+    memory_fraction = ctx.get("memory_safety_fraction", 0.70)
     if not isinstance(requested, int) or isinstance(requested, bool) or requested < 10:
         return _result(
             task, "training_budget", TaskStatus.NEEDS_REVIEW,
@@ -95,6 +99,36 @@ def _budget_agent(task, _context) -> AgentResult:
             task, "training_budget", TaskStatus.NEEDS_REVIEW,
             {"decision": "REFUSE", "reason": "max_steps must be an integer >= 10"},
         )
+    # Reserve memory before model allocation. A full FP32 AdamW path is
+    # conservatively budgeted at 16 bytes/parameter before activations.
+    estimated_training_bytes = 0
+    if parameter_count is not None or available_memory is not None:
+        valid = (
+            isinstance(parameter_count, int) and not isinstance(parameter_count, bool)
+            and parameter_count > 0
+            and isinstance(available_memory, int) and not isinstance(available_memory, bool)
+            and available_memory > 0
+            and isinstance(bytes_per_parameter, int) and bytes_per_parameter >= 8
+            and isinstance(memory_fraction, (int, float)) and 0.0 < memory_fraction <= 0.9
+        )
+        if not valid:
+            return _result(
+                task, "training_budget", TaskStatus.NEEDS_REVIEW,
+                {"decision": "REFUSE", "reason": "compute capacity profile is incomplete or invalid"},
+            )
+        estimated_training_bytes = parameter_count * bytes_per_parameter
+        safe_memory_bytes = int(available_memory * memory_fraction)
+        if estimated_training_bytes > safe_memory_bytes:
+            return _result(
+                task, "training_budget", TaskStatus.NEEDS_REVIEW,
+                {
+                    "decision": "REFUSE",
+                    "reason": "model training-state estimate exceeds the safe available-memory budget",
+                    "estimated_training_bytes": estimated_training_bytes,
+                    "safe_memory_bytes": safe_memory_bytes,
+                    "model_parameter_count": parameter_count,
+                },
+            )
     steps = min(requested, ceiling, MAX_STEPS_HARD_CAP)
     return _result(
         task, "training_budget", TaskStatus.COMPLETED,
@@ -105,6 +139,9 @@ def _budget_agent(task, _context) -> AgentResult:
             "hard_step_cap": MAX_STEPS_HARD_CAP,
             "cpu_threads": 1,
             "budget_profile": "balanced_synthetic_pilot",
+            "estimated_training_state_bytes": estimated_training_bytes,
+            "safe_memory_bytes": int(available_memory * memory_fraction) if available_memory else None,
+            "model_parameter_count": parameter_count,
         },
     )
 
@@ -157,6 +194,10 @@ class MicroAgentTrainingController:
         dataset_ids: Sequence[str] = (),
         external_weights_used: bool = False,
         checkpoint_mode: str = "ephemeral_synthetic_only",
+        model_parameter_count: int | None = None,
+        available_memory_bytes: int | None = None,
+        bytes_per_parameter: int = 16,
+        memory_safety_fraction: float = 0.70,
     ) -> dict[str, Any]:
         context = {
             "source_kind": source_kind,
@@ -168,6 +209,10 @@ class MicroAgentTrainingController:
             "model_under_test": NATIVE_MODEL_ID,
             "external_weights_used": external_weights_used,
             "checkpoint_mode": checkpoint_mode,
+            "model_parameter_count": model_parameter_count,
+            "available_memory_bytes": available_memory_bytes,
+            "bytes_per_parameter": bytes_per_parameter,
+            "memory_safety_fraction": memory_safety_fraction,
         }
         task = make_task(
             "Prepare a bounded NeuroCore training session under governance and resource limits.",
