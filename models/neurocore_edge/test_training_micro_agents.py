@@ -48,6 +48,7 @@ def test_micro_agent_managed_training_uses_native_neurocore_and_synthetic_data(t
     assert report["micro_agent_training_control"]["status"] == "TRAINING_PLAN_APPROVED"
     assert report["micro_agent_training_control"]["allocated_steps"] == 40
     assert report["cpu_threads"] == report["micro_agent_training_control"]["cpu_threads"]
+    assert report["interop_threads"] == 1
     assert report["training_elapsed_seconds"] > 0
     assert report["training_tokens_per_second"] > 0
     assert report["checkpoint"]["sha256"]
