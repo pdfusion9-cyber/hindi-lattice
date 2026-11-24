@@ -7,7 +7,7 @@ on:
       - 'models/neurocore_edge/**'
       - '.github/workflows/neurocore_micro_agent_training.yml'
   push:
-    branches: [main]
+    branches: [main, feat/hybrid-micro-agent-architecture-20261123]
     paths:
       - 'models/neurocore_edge/**'
       - '.github/workflows/neurocore_micro_agent_training.yml'
@@ -29,12 +29,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
-      - name: Create native shared-base for 20-runner synthetic integration test
+      - name: Train native shared-base for bounded 20-runner CPU learning pilot
         working-directory: models/neurocore_edge
         env:
           OMP_NUM_THREADS: '1'
           MKL_NUM_THREADS: '1'
-        run: python native_20_runner.py --stage shared-base --steps 1 --seed 29 --output shared-base.pt
+        run: python native_20_runner.py --stage shared-base --steps 20 --cpu-threads 1 --seed 29 --output shared-base.pt
       - uses: actions/upload-artifact@v4
         with:
           name: neurocore-native-shared-base
@@ -64,14 +64,14 @@ jobs:
         with:
           name: neurocore-native-shared-base
           path: models/neurocore_edge/artifacts
-      - name: Train exactly one native expert shard on this runner
+      - name: Train one expert for 40 next-token steps on this separate CPU runner
         working-directory: models/neurocore_edge
         env:
           OMP_NUM_THREADS: '1'
           MKL_NUM_THREADS: '1'
           EXPERT_ID: ${{ matrix.expert_id }}
         run: |
-          python native_20_runner.py --stage expert --base-checkpoint artifacts/shared-base.pt --expert-id "$EXPERT_ID" --steps 1 --seed 29 --expert-checkpoint "expert-$EXPERT_ID.pt"
+          python native_20_runner.py --stage expert --base-checkpoint artifacts/shared-base.pt --expert-id "$EXPERT_ID" --steps 40 --cpu-threads 1 --seed 29 --expert-checkpoint "expert-$EXPERT_ID.pt"
       - uses: actions/upload-artifact@v4
         with:
           name: neurocore-expert-shard-${{ matrix.expert_id }}
@@ -101,7 +101,7 @@ jobs:
           pattern: neurocore-expert-shard-*
           path: models/neurocore_edge/artifacts/shards
           merge-multiple: true
-      - name: Strictly merge all 20 independently trained expert shards
+      - name: Strictly merge all 20 independently trained next-token expert shards
         working-directory: models/neurocore_edge
         run: |
           python native_20_runner.py --stage merge --base-checkpoint artifacts/base/shared-base.pt --shard-dir artifacts/shards --output native-20-runner-merged.pt --report native-20-runner-report.json
