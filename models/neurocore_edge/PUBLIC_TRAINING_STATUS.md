@@ -29,3 +29,13 @@
 - NOT YET CI-VERIFIED: latest CPU-first branch commit 536e2e60fd89d3018f091c49f2fb981354b9f15 has no workflow run/status returned by the available GitHub run/status lookup at the time of this update. Do not call the tests passed or claim a CPU speedup.
 - Important limitation: the active branch config is 0.2.0-pytorch-reference with 2,869,448,704 parameters and does not declare the shared/expert parameter split cited by an earlier v0.3.3 package candidate. Reconcile one canonical architecture before using parameter-count inputs for production planning.
 - Training remains synthetic-only in the pilot; production training.enabled remains false, all dataset approvals remain pending, and no production checkpoint or production training run has been created.
+
+
+## CPU inventory preflight diagnosis (2026-11-24)
+
+- GitHub Actions run #45352812975 reached all 20 CPU inventory jobs. Every observed runner successfully executed CPU profiling; the profile example reported 4 effective CPUs, 14.646 GiB available memory, and 85.147 GiB free disk.
+- The inventory job uploads failed because literal backslashes had been committed before GitHub Actions matrix expressions, producing invalid artifact names such as neurocore-cpu-runner-\\11. The profile step itself succeeded; the failure occurred at upload-artifact.
+- Fixed the workflow by removing escaped expression markers and using a single-line profile command with a RUNNER_ID environment variable. The verifier still requires exactly IDs 0..19 and 20 distinct hostnames.
+- CPU planner tests passed in run #45352812975; the independent public CI run #45352812840 passed its then-current CPU planner and reference suites. The compute-efficiency tests were added after that run, so they are not yet certified by that result.
+- Latest workflow/test corrections are committed on the PR branch, but a post-fix Actions run has not yet appeared. Inventory completion and distinct-host verification therefore remain pending.
+- The expert-domain scheduler is explicitly an equal-visit scheduler ordered by observed routing counts; it is not yet a measured CPU-throughput optimizer. Production training remains disabled.
