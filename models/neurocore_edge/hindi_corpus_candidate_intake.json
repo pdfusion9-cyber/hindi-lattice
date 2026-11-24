@@ -1,59 +1,43 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "generated_at": "2026-11-24",
-  "purpose": "candidate intake only; not an approval or training dispatch",
+  "purpose": "source review and technical candidate metadata only; not dataset approval or training dispatch",
   "target_expert": {
     "expert_id": 11,
     "expert_name": "hindi_indic_docs"
   },
   "production_approval_granted": false,
   "approval_registry_modified": false,
-  "candidates": [
-    {
-      "dataset_id": "ai4bharat/sangraha",
-      "candidate_scope": {
-        "config_name": "verified",
-        "split": "hin"
-      },
-      "observed_hub_license": "cc-by-4.0",
-      "license_evidence_url": "https://huggingface.co/datasets/ai4bharat/sangraha/blob/main/README.md",
-      "current_file_listing_url": "https://huggingface.co/datasets/ai4bharat/sangraha/tree/main/verified/hin",
-      "observed_split_size_label": "37.3 GB",
-      "evidence_summary": "Dataset card declares CC BY 4.0 and lists verified/hin. Card describes source mix including scraped websites, OCR-extracted PDFs and transcribed videos/podcasts/movies/courses.",
-      "review_required": [
-        "pin immutable dataset revision, config and split",
-        "inspect source-level provenance and upstream rights for websites, PDFs and transcripts",
-        "confirm model training and public checkpoint redistribution scope",
-        "complete PII/privacy and consent review for each source class",
-        "validate representative Hindi schema and deduplication policy"
-      ],
-      "commercial_training_allowed": false,
-      "public_redistribution_allowed": false,
-      "pii_reviewed": false,
-      "consent_reviewed": false,
-      "schema_reviewed": false,
-      "split_reviewed": false,
-      "revision_pinned": false,
-      "approved": false,
-      "disposition": "CANDIDATE_PENDING_HUMAN_REVIEW"
-    },
+  "sources_reviewed": [
     {
       "dataset_id": "ai4bharat/IndicCorpV2",
+      "candidate_role": "preferred Hindi text-only pretraining candidate for limited technical review; not a document OCR/QA dataset",
+      "pinned_revision": "2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f",
       "candidate_scope": {
         "config_name": "indiccorp_v2",
-        "split": "hin_Deva"
+        "split": "hin_Deva",
+        "data_path": "data/hi-*.txt"
       },
-      "observed_hub_license": "not clearly declared in current card header",
-      "license_evidence_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
-      "supplementary_license_statement_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
-      "observed_license_statement": "The dataset card says datasets created as part of the ACL 2023 work will be released under CC0; this statement needs scope/source verification for the actual corpus records.",
-      "evidence_summary": "Hub card exposes a Hindi Devanagari split. The linked ACL 2023 dataset description includes a CC0 release statement, but the current Hub card header does not clearly expose a license tag and underlying corpus-source rights still need review.",
-      "review_required": [
-        "pin immutable dataset revision, config and Hindi Devanagari split",
-        "confirm the CC0 statement applies to the actual distributed corpus and all records",
-        "audit source provenance and any third-party text restrictions",
-        "complete PII/privacy review and source-level exclusions",
-        "validate representative Hindi schema and deduplication policy"
+      "official_usage_example": "load_dataset('ai4bharat/IndicCorpV2','indiccorp_v2',data_dir='data/tel_Telu'); Hindi path is listed in the pinned README metadata",
+      "observed_license_statement": "CC-0 / CC0-1.0; the Hugging Face dataset README and AI4Bharat IndicBERT README say all datasets created as part of the ACL 2023 work are released under CC-0",
+      "license_terms_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "license_metadata_caveat": "The README prose states CC-0; the Hugging Face repository metadata front matter does not expose a machine-readable license field. Do not conflate IndicCorpV2 with the older IndicCorp v1 website corpus, which has a separate CC BY-NC 4.0 notice.",
+      "official_dataset_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
+      "pinned_readme_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2/blob/2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f/README.md",
+      "source_paper_url": "https://aclanthology.org/2023.acl-long.693/",
+      "source_lineage_summary": "The ACL 2023 paper describes IndicCorpV2 as 20.9B tokens across 24 languages and says news articles were chosen as primary sources. This is a provenance clue, not a source-by-source rights clearance.",
+      "observed_repository_size": "275 GB total across languages; not the Hindi-only size",
+      "technical_review": {
+        "readme_config_split_path": "verified_from_pinned_README",
+        "sample_schema": "pending_automated_metadata_audit",
+        "full_corpus_downloaded": false
+      },
+      "unresolved_review": [
+        "verify upstream source rights and any source-level limitations for the news articles",
+        "confirm CC-0 statement applies to the complete Hindi split and permits intended commercial model training and checkpoint publication",
+        "complete privacy/PII and personal-data exclusion review",
+        "inspect a representative sample for duplicates, language contamination, and quality",
+        "record reviewer, review date, source-owner evidence, and allowed redistribution scope"
       ],
       "commercial_training_allowed": false,
       "public_redistribution_allowed": false,
@@ -61,20 +45,64 @@
       "consent_reviewed": false,
       "schema_reviewed": false,
       "split_reviewed": false,
-      "revision_pinned": false,
+      "revision_pinned": true,
       "approved": false,
-      "disposition": "CANDIDATE_PENDING_HUMAN_REVIEW"
+      "disposition": "PREFERRED_TECHNICAL_CANDIDATE_PENDING_HUMAN_RIGHTS_REVIEW"
+    },
+    {
+      "dataset_id": "ai4bharat/sangraha",
+      "candidate_role": "secondary Hindi text pretraining candidate; not an OCR layout or document QA dataset",
+      "pinned_revision": "0c9510b4d6d908d32b8d76da877e64fd6c7a6086",
+      "candidate_scope": {
+        "config_name": "verified",
+        "split": "hin",
+        "file_path": "verified/hin.parquet"
+      },
+      "observed_hub_license": "CC-BY-4.0 declared by the Hugging Face dataset card",
+      "license_terms_url": "https://creativecommons.org/licenses/by/4.0/",
+      "official_dataset_url": "https://huggingface.co/datasets/ai4bharat/sangraha",
+      "pinned_file_url": "https://huggingface.co/datasets/ai4bharat/sangraha/blob/0c9510b4d6d908d32b8d76da877e64fd6c7a6086/verified/hin.parquet",
+      "observed_file_size": "37.3 GB",
+      "observed_file_sha256": "3504d62bd792734b59ac76640557de8d2b2067213f426c690fe664474784386d",
+      "expected_card_schema": {
+        "doc_id": "string",
+        "type": "string",
+        "text": "string"
+      },
+      "source_lineage_summary": "The Sangraha card and IndicLLMSuite curation README describe Verified data as a mixture of human-verified websites, OCR-extracted PDFs, and transcriptions of videos, podcasts, movies, and courses.",
+      "technical_review": {
+        "readme_config_split_path": "verified_from_dataset_card",
+        "sample_schema": "pending_automated_metadata_audit",
+        "full_corpus_downloaded": false
+      },
+      "unresolved_review": [
+        "trace underlying websites, PDFs, videos, podcasts, movies and course materials to source-level licenses/permissions",
+        "confirm CC-BY-4.0 attribution chain and checkpoint publication scope for each source type",
+        "complete PII/privacy and consent review for each source class",
+        "filter or exclude any records whose upstream rights cannot be substantiated",
+        "validate schema, duplicates and Hindi quality on a representative sample"
+      ],
+      "commercial_training_allowed": false,
+      "public_redistribution_allowed": false,
+      "pii_reviewed": false,
+      "consent_reviewed": false,
+      "schema_reviewed": false,
+      "split_reviewed": false,
+      "revision_pinned": true,
+      "approved": false,
+      "disposition": "SECONDARY_TECHNICAL_CANDIDATE_PENDING_SOURCE_LEVEL_RIGHTS_REVIEW"
     },
     {
       "dataset_id": "repository:data/gyaan_base.txt",
+      "candidate_role": "small factual triples corpus; suitable for a separate source-provenance and fact-quality review only",
       "candidate_scope": {
         "git_blob_sha1": "3018157a78e6a35877e114b9297f8ae9e16a76ae"
       },
       "observed_license": "unknown",
-      "evidence_summary": "Repository file contains 7,162 pipe-delimited triples across 26 relation labels; source provenance and license are not recorded in the current repository metadata.",
-      "review_required": [
+      "evidence_summary": "The repository file contains 7,162 pipe-delimited triples and 26 relation labels; current repository metadata does not identify the original source, compiler or license.",
+      "unresolved_review": [
         "identify original source/author and obtain source-owner permission or authoritative license",
-        "verify each fact source and correct known ambiguous or multi-valued records",
+        "audit factual accuracy, ambiguity, stale facts and duplicate/conflicting entities",
         "complete PII/privacy screening",
         "record reviewer, date, immutable file SHA and redistribution permission"
       ],
@@ -86,8 +114,14 @@
       "split_reviewed": false,
       "revision_pinned": true,
       "approved": false,
-      "disposition": "CANDIDATE_PENDING_PROVENANCE_REVIEW"
+      "disposition": "PENDING_PROVENANCE_AND_FACT_QUALITY_REVIEW"
     }
   ],
-  "policy": "Do not alter dataset_approval.json or start domain-specific training based on this candidate file. Approval requires a human-reviewed, source-specific record in the canonical registry."
+  "distinctions": [
+    "IndicCorpV2 is the ACL 2023 corpus and has a CC-0 statement in its dataset README; it is not the older IndicCorp v1 corpus.",
+    "The official IndicCorp v1 site separately states CC BY-NC 4.0; do not apply that notice to v2 or apply v2's CC-0 statement to v1.",
+    "A dataset-level license statement is evidence, not automatic proof of rights to every underlying third-party work or of PII/consent clearance."
+  ],
+  "next_technical_action": "Run a metadata-only pinned-revision and sample-schema audit. Do not download either full corpus, modify dataset_approval.json, or start expert-11 production training until human rights review is recorded.",
+  "policy": "No candidate is approved. All canonical dataset approval rows remain default-deny."
 }
