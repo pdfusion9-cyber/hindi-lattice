@@ -49,3 +49,14 @@ def test_verifier_rejects_mixed_workflow_run_ids(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit, match="multiple workflow runs"):
         main()
+
+
+def test_verifier_rejects_missing_runner_name(tmp_path, monkeypatch):
+    _write_reports(tmp_path)
+    report_path = tmp_path / "cpu-runner-7.json"
+    payload = json.loads(report_path.read_text())
+    payload["cpu_profile"]["runner_name"] = None
+    report_path.write_text(json.dumps(payload))
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit, match="missing GitHub RUNNER_NAME"):
+        main()
