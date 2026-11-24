@@ -46,3 +46,14 @@ def test_micro_agent_managed_training_uses_native_neurocore_and_synthetic_data(t
     assert report["micro_agent_training_control"]["allocated_steps"] == 40
     assert report["checkpoint"]["sha256"]
     assert json.loads(report_path.read_text(encoding="utf-8"))["training_started"] is True
+
+
+def test_micro_agent_refuses_training_when_memory_budget_is_insufficient():
+    controller = MicroAgentTrainingController()
+    with pytest.raises(PermissionError, match="training gate refused"):
+        controller.create_plan(
+            requested_steps=40,
+            max_steps=40,
+            model_parameter_count=10_000_000,
+            available_memory_bytes=1024 * 1024,
+        )
