@@ -306,18 +306,12 @@ def run_managed_training(
     plan = controller.create_plan(requested_steps=requested_steps, max_steps=max_steps)
     if torch is None:
         raise RuntimeError("PyTorch is required to execute the synthetic training pilot")
-    torch.set_num_threads(plan["cpu_threads"])
-    try:
-        torch.set_num_interop_threads(1)
-    except RuntimeError:
-        # PyTorch only permits this setting before parallel work starts.
-        # A previously initialized host runtime retains its existing setting.
-        pass
     report = run_experiment(
         report_path,
         steps=plan["allocated_steps"],
         seed=seed,
         num_experts=NATIVE_MODEL_EXPERT_COUNT,
+        cpu_threads=plan["cpu_threads"],
     )
     report["micro_agent_training_control"] = plan
     report["experiment"] = "neurocore_micro_agent_managed_synthetic_pilot_v1"
