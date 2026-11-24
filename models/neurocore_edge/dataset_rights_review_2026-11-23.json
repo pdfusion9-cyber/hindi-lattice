@@ -1,0 +1,88 @@
+{
+  "review_date": "2026-11-23",
+  "review_type": "preliminary_public_source_desk_review_not_legal_approval",
+  "source_scope": "four HF datasets with no SPDX/license field in latest metadata audit",
+  "registry_approval_rows": 27,
+  "approved_rows": 0,
+  "corpus_preparation_gate": "CLOSED",
+  "production_training_gate": "CLOSED",
+  "decisions": [
+    {
+      "dataset_id": "HuggingFaceM4/DocumentVQA",
+      "disposition": "HOLD_DO_NOT_TRAIN",
+      "confidence": "high_for_missing_metadata_low_for_rights_conclusion",
+      "evidence": [
+        "HF dataset card exposes document image/question/answer fields and UCSF document identifiers; current metadata audit had no SPDX field.",
+        "Dataset paper and UCSF Industry Documents Library are discovery sources, not blanket commercial reuse permission."
+      ],
+      "unresolved": [
+        "Underlying document/image rights",
+        "UCSF library terms",
+        "PII/confidentiality/redaction",
+        "Commercial training and redistribution permissions"
+      ],
+      "sources": [
+        "https://huggingface.co/datasets/HuggingFaceM4/DocumentVQA",
+        "https://arxiv.org/abs/2007.00398",
+        "https://www.industrydocuments.ucsf.edu/"
+      ]
+    },
+    {
+      "dataset_id": "ai4bharat/IndicCorpV2",
+      "disposition": "HOLD_CONDITIONAL_CANDIDATE_NOT_APPROVED",
+      "confidence": "medium",
+      "evidence": [
+        "AI4Bharat corpus/research materials describe a multilingual web corpus and a corpus-level CC0 release statement.",
+        "Current HF metadata audit found no SPDX field; multiple language splits are listed."
+      ],
+      "unresolved": [
+        "Whether CC0 applies to every upstream work and component",
+        "News/Wikipedia/crawl provenance and source terms",
+        "Personal data, opt-outs and takedowns",
+        "Commercial-training interpretation and evidence"
+      ],
+      "sources": [
+        "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
+        "https://github.com/AI4Bharat",
+        "https://arxiv.org/search/?query=IndicCorp&searchtype=all"
+      ]
+    },
+    {
+      "dataset_id": "ccdv/govreport-summarization",
+      "disposition": "HOLD_MIRROR_VERIFY_CANONICAL_RELEASE",
+      "confidence": "medium",
+      "evidence": [
+        "Canonical GovReport/LAUNCH project materials identify a CC BY 4.0 release; current HF mirror audit found no SPDX field."
+      ],
+      "unresolved": [
+        "Exact mirror-to-canonical content match",
+        "Pinned revision/config/splits",
+        "Attribution and notices",
+        "Underlying report rights and commercial training/redistribution permission"
+      ],
+      "sources": [
+        "https://huggingface.co/datasets/ccdv/govreport-summarization",
+        "https://arxiv.org/abs/2104.08643",
+        "https://github.com/launch"
+      ]
+    },
+    {
+      "dataset_id": "teknium/OpenHermes-2.5",
+      "disposition": "EXCLUDE_PENDING_COMPONENT_LEVEL_CLEARANCE",
+      "confidence": "high_for_mixed_provenance_risk",
+      "evidence": [
+        "HF card describes a mixture of sources and generated conversations; current metadata audit found no SPDX field."
+      ],
+      "unresolved": [
+        "Per-component licenses and terms",
+        "Upstream restrictions",
+        "Rights in model-generated outputs",
+        "Commercial training and redistribution permission for each component"
+      ],
+      "sources": [
+        "https://huggingface.co/datasets/teknium/OpenHermes-2.5"
+      ]
+    }
+  ],
+  "disclaimer": "Research triage only, not legal advice. No automatic or legal approval granted."
+}

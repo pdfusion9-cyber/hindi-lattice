@@ -72,6 +72,17 @@ jobs:
       - name: Run corpus builder gate tests
         working-directory: models/neurocore_edge
         run: python -m pytest -q test_prepare_expert_corpus.py
+      - name: Validate fail-closed dataset approval policy
+        working-directory: models/neurocore_edge
+        run: |
+          python dataset_approval_policy.py --report-path dataset_approval_policy_report.json
+          python -m pytest -q test_dataset_approval_policy.py
+      - name: Upload dataset approval policy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-dataset-approval-policy
+          path: models/neurocore_edge/dataset_approval_policy_report.json
+          if-no-files-found: error
       - name: Audit Hugging Face dataset metadata, splits and sample schemas
         working-directory: models/neurocore_edge
         run: python verify_dataset_metadata.py
@@ -80,6 +91,31 @@ jobs:
         with:
           name: neurocore-dataset-verification
           path: models/neurocore_edge/dataset_verification_report.json
+          if-no-files-found: error
+      - name: Build human dataset review matrix
+        working-directory: models/neurocore_edge
+        run: |
+          python build_dataset_review_matrix.py --report-path dataset_review_matrix_report.json
+          python -m pytest -q test_build_dataset_review_matrix.py
+      - name: Validate external dataset rights triage
+        working-directory: models/neurocore_edge
+        run: python -m pytest -q test_external_dataset_rights_review.py
+      - name: Generate human dataset review workflow packet
+        working-directory: models/neurocore_edge
+        run: |
+          python dataset_review_workflow.py --output dataset_human_review_packet.json
+          python -m pytest -q test_dataset_review_workflow.py
+      - name: Upload human dataset review workflow packet
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-human-dataset-review-packet
+          path: models/neurocore_edge/dataset_human_review_packet.json
+          if-no-files-found: error
+      - name: Upload dataset review matrix
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-dataset-review-matrix
+          path: models/neurocore_edge/dataset_review_matrix_report.json
           if-no-files-found: error
       - name: Verify training and dataset gates remain closed
         run: |
