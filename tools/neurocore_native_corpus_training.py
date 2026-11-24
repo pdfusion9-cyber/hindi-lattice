@@ -135,6 +135,8 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=Path, default=Path("artifacts/neurocore-corpus-checkpoint.pt"))
     parser.add_argument("--expected-blob-sha", default=EXPECTED_CORPUS_BLOB)
     parser.add_argument("--resume-checkpoint", type=Path, default=None)
+    parser.add_argument("--expand-from-checkpoint", type=Path, default=None)
+    parser.add_argument("--capacity-profile", choices=("compact", "expanded"), default="compact")
     args = parser.parse_args()
 
     if args.steps < 1 or args.batch_size < 1 or args.sequence_length < 4:
@@ -161,23 +163,108 @@ def main() -> None:
 
     torch.set_num_threads(args.cpu_threads)
     torch.manual_seed(args.seed)
-    cfg = NeuroCoreEdgeConfig(
-        vocab_size=256,
-        hidden_size=32,
-        num_hidden_layers=2,
-        num_experts=20,
-        experts_per_token=2,
-        expert_intermediate_size=32,
-        attention_heads=4,
-        kv_heads=2,
-        sliding_window=16,
-        recurrent_state_size=8,
-        router_aux_loss_coefficient=0.01,
-    )
+    if args.resume_checkpoint is not None and args.expand_from_checkpoint is not None:
+        parser.error("--resume-checkpoint and --expand-from-checkpoint are mutually exclusive")
+    if args.capacity_profile == "compact":
+        cfg = NeuroCoreEdgeConfig(
+            vocab_size=256,
+            hidden_size=32,
+            num_hidden_layers=2,
+            num_experts=20,
+            experts_per_token=2,
+            expert_intermediate_size=32,
+            attention_heads=4,
+            kv_heads=2,
+            sliding_window=16,
+            recurrent_state_size=8,
+            router_aux_loss_coefficient=0.01,
+        )
+    else:
+        cfg = NeuroCoreEdgeConfig(
+            vocab_size=256,
+            hidden_size=64,
+            num_hidden_layers=3,
+            num_experts=20,
+            experts_per_token=2,
+            expert_intermediate_size=64,
+            attention_heads=4,
+            kv_heads=2,
+            sliding_window=16,
+            recurrent_state_size=16,
+            router_aux_loss_coefficient=0.01,
+        )
     model = NeuroCoreEdgeForCausalLM(cfg).cpu()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     resume_from_step = 0
     resume_used = False
+    warm_start_info = None
+    if args.expand_from_checkpoint is not None:
+        source_path = args.expand_from_checkpoint
+        if args.capacity_profile != "expanded":
+            parser.error("--expand-from-checkpoint requires --capacity-profile expanded")
+        if not source_path.is_file():
+            raise FileNotFoundError(f"expansion checkpoint not found: {source_path}")
+        try:
+            saved = torch.load(source_path, map_location="cpu", weights_only=True)
+        except TypeError:
+            saved = torch.load(source_path, map_location="cpu")
+        if not isinstance(saved, dict) or saved.get("model_id") != "neurocore_edge_native_reference":
+            raise ValueError("expansion checkpoint model ID mismatch")
+        if saved.get("corpus_git_blob_sha1") != actual_blob:
+            raise ValueError("expansion checkpoint corpus Git blob SHA mismatch")
+        if saved.get("corpus_sha256") != corpus_summary["sha256"]:
+            raise ValueError("expansion checkpoint corpus SHA256 mismatch")
+        old_cfg = saved.get("config", {})
+        expected_old = {
+            "vocab_size": 256, "hidden_size": 32, "num_hidden_layers": 2,
+            "num_experts": 20, "experts_per_token": 2,
+            "expert_intermediate_size": 32, "attention_heads": 4,
+            "kv_heads": 2, "sliding_window": 16, "recurrent_state_size": 8,
+        }
+        if any(old_cfg.get(key) != value for key, value in expected_old.items()):
+            raise ValueError("expansion checkpoint is not the verified compact NeuroCore profile")
+        provenance = saved.get("provenance", {})
+        if provenance.get("external_model_weights_used") is not False:
+            raise ValueError("expansion checkpoint provenance includes external model weights")
+        if provenance.get("open_source_model_integrated") is not False:
+            raise ValueError("expansion checkpoint provenance includes an external model")
+        if saved.get("production_training_gate") != "CLOSED":
+            raise ValueError("expansion checkpoint production gate is not closed")
+        old_state = saved.get("model_state_dict")
+        if not isinstance(old_state, dict):
+            raise ValueError("expansion checkpoint has no model state")
+        expanded_state = model.state_dict()
+        copied_tensors = 0
+        copied_numel = 0
+        for key, target in expanded_state.items():
+            source = old_state.get(key)
+            if not isinstance(source, torch.Tensor) or source.ndim != target.ndim:
+                continue
+            slices = tuple(slice(0, min(a, b)) for a, b in zip(source.shape, target.shape))
+            if any(part.stop == 0 for part in slices):
+                continue
+            target[slices].copy_(source[slices].to(dtype=target.dtype))
+            copied_tensors += 1
+            copied_numel += target[slices].numel()
+        model.load_state_dict(expanded_state, strict=True)
+        warm_start_info = {
+            "source_checkpoint": str(source_path),
+            "source_step": int(saved.get("step", 0)),
+            "source_parameter_count": sum(t.numel() for t in old_state.values() if isinstance(t, torch.Tensor)),
+            "target_parameter_count": count_parameters(model),
+            "copied_tensor_count": copied_tensors,
+            "copied_parameter_numel": copied_numel,
+            "optimizer_state": "reinitialized_for_expanded_tensor_shapes",
+            "policy": "copy_overlapping_slices_for_matching_tensor_names_and_ranks; retain target initialization elsewhere",
+        }
+        if warm_start_info["source_step"] != 6000:
+            raise ValueError("expected the audited 6,000-step source checkpoint")
+        print(
+            f"expanded_warm_start_from_step={warm_start_info['source_step']} "
+            f"copied_tensors={copied_tensors} copied_numel={copied_numel} "
+            f"new_parameter_count={count_parameters(model)}",
+            flush=True,
+        )
     if args.resume_checkpoint is not None:
         resume_path = args.resume_checkpoint
         if not resume_path.is_file():
@@ -271,7 +358,9 @@ def main() -> None:
         "status": "NEUROCORE_NATIVE_REAL_CORPUS_EXPERIMENT_PASS",
         "model_id": "neurocore_edge_native_reference",
         "training_started": True,
-        "training_scale": "tiny_20_expert_reference_shared_backbone",
+        "training_scale": f"tiny_20_expert_reference_{args.capacity_profile}",
+        "capacity_profile": args.capacity_profile,
+        "capacity_warm_start": warm_start_info,
         "model_config": vars(cfg),
         "model_parameter_count": count_parameters(model),
         "trainable_parameter_count": trainable_parameters,
@@ -293,6 +382,7 @@ def main() -> None:
             "resumed_from_step": resume_from_step,
             "total_steps": resume_from_step + args.steps,
             "resume_used": resume_used,
+            "warm_start_from_checkpoint": warm_start_info,
             "batch_size": args.batch_size,
             "sequence_length": args.sequence_length,
             "optimizer": "AdamW",
@@ -333,6 +423,8 @@ def main() -> None:
         "format_version": 1,
         "model_id": report["model_id"],
         "training_scale": report["training_scale"],
+        "capacity_profile": args.capacity_profile,
+        "capacity_warm_start": warm_start_info,
         "config": vars(cfg),
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
