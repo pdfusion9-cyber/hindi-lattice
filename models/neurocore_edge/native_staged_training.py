@@ -264,6 +264,55 @@ def production_gate(config_path: Path, approvals_path: Path) -> dict[str, Any]:
     }
 
 
+
+def atomic_torch_save(payload: dict[str, Any], path: Path) -> None:
+    """Write a checkpoint atomically so interrupted writes cannot replace a good one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        torch.save(payload, temporary)
+        with temporary.open("rb") as stream:
+            import os
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def load_resume_checkpoint(
+    path: Path, *, expected_config_fingerprint: str, expected_seed: int,
+) -> dict[str, Any]:
+    """Load only a native checkpoint with matching config, seed and provenance."""
+    if not path.exists():
+        return {"completed_stage": "none", "expert_shards": []}
+    try:
+        payload = torch.load(path, map_location="cpu", weights_only=True)
+    except TypeError:
+        payload = torch.load(path, map_location="cpu")
+    if not isinstance(payload, dict):
+        raise ValueError("resume checkpoint must be a mapping")
+    if payload.get("model_id") != NATIVE_MODEL_ID:
+        raise ValueError("resume checkpoint belongs to a different model")
+    if payload.get("config_fingerprint") != expected_config_fingerprint:
+        raise ValueError("resume checkpoint config fingerprint mismatch")
+    if payload.get("seed") != expected_seed:
+        raise ValueError("resume checkpoint seed mismatch")
+    provenance = payload.get("provenance", {})
+    if provenance.get("external_weights_used") is not False or provenance.get("open_source_model_integrated") is not False:
+        raise ValueError("resume checkpoint provenance is not native-only")
+    if provenance.get("external_data_used") is not False or provenance.get("user_data_used") is not False:
+        raise ValueError("synthetic-only resume checkpoint has unapproved data provenance")
+    stage = payload.get("completed_stage")
+    if stage not in {"none", "shared_backbone", "expert_shards", "merged"}:
+        raise ValueError("resume checkpoint has unknown stage")
+    shards = payload.get("expert_shards", [])
+    if not isinstance(shards, list):
+        raise ValueError("resume checkpoint expert_shards must be a list")
+    ids = [item.get("expert_id") for item in shards if isinstance(item, dict)]
+    if len(ids) != len(shards) or len(ids) != len(set(ids)) or any(i not in range(20) for i in ids):
+        raise ValueError("resume checkpoint has invalid or duplicate expert shard IDs")
+    return payload
+
 def run_staged_training(
     report_path: Path,
     checkpoint_path: Path,
@@ -273,6 +322,7 @@ def run_staged_training(
     seed: int = 7,
     config_path: Path = Path("config.json"),
     approvals_path: Path = Path("dataset_approval.json"),
+    resume_path: Path | None = None,
 ) -> dict[str, Any]:
     """Run native shared-base + 20 expert-shard synthetic integration."""
     if base_steps < 1 or expert_steps < 1:
@@ -297,20 +347,48 @@ def run_staged_training(
         if plan["model_under_test"] != NATIVE_MODEL_ID or plan["open_source_model_in_training_path"]:
             raise PermissionError("micro-agent rejected native-only training provenance")
 
-        torch.manual_seed(seed)
-        shared_model = NeuroCoreEdgeForCausalLM(cfg).cpu()
-        shared_losses = train_shared_backbone(
-            shared_model, cfg, steps=base_steps, seed=seed
-        )
-        shared_state = {
-            key: value.detach().cpu().clone()
-            for key, value in shared_model.state_dict().items()
-        }
-        base_hash = state_fingerprint(shared_state)
+        resume = load_resume_checkpoint(
+            resume_path, expected_config_fingerprint=cfg_hash, expected_seed=seed
+        ) if resume_path else {"completed_stage": "none", "expert_shards": []}
+        if resume["completed_stage"] in {"shared_backbone", "expert_shards", "merged"}:
+            shared_state = resume["shared_state"]
+            base_hash = resume["shared_backbone_fingerprint"]
+            shared_losses = resume.get("shared_losses", [])
+            shared_model = NeuroCoreEdgeForCausalLM(cfg).cpu()
+            shared_model.load_state_dict(shared_state, strict=True)
+        else:
+            torch.manual_seed(seed)
+            shared_model = NeuroCoreEdgeForCausalLM(cfg).cpu()
+            shared_losses = train_shared_backbone(
+                shared_model, cfg, steps=base_steps, seed=seed
+            )
+            shared_state = {
+                key: value.detach().cpu().clone()
+                for key, value in shared_model.state_dict().items()
+            }
+            base_hash = state_fingerprint(shared_state)
+            if resume_path:
+                atomic_torch_save({
+                    "model_id": NATIVE_MODEL_ID,
+                    "config_fingerprint": cfg_hash,
+                    "seed": seed,
+                    "completed_stage": "shared_backbone",
+                    "shared_state": shared_state,
+                    "shared_backbone_fingerprint": base_hash,
+                    "shared_losses": shared_losses,
+                    "expert_shards": [],
+                    "provenance": {
+                        "external_data_used": False, "user_data_used": False,
+                        "external_weights_used": False, "open_source_model_integrated": False,
+                    },
+                }, resume_path)
         parameter_count_before = count_parameters(shared_model)
 
-        shards = []
+        shards = list(resume.get("expert_shards", []))
+        completed_ids = {item["expert_id"] for item in shards}
         for expert_id in range(cfg.num_experts):
+            if expert_id in completed_ids:
+                continue
             shard = train_expert_shard(
                 shared_state,
                 cfg,
@@ -321,6 +399,21 @@ def run_staged_training(
                 seed=seed,
             )
             shards.append(shard)
+            if resume_path:
+                atomic_torch_save({
+                    "model_id": NATIVE_MODEL_ID,
+                    "config_fingerprint": cfg_hash,
+                    "seed": seed,
+                    "completed_stage": "expert_shards",
+                    "shared_state": shared_state,
+                    "shared_backbone_fingerprint": base_hash,
+                    "shared_losses": shared_losses,
+                    "expert_shards": shards,
+                    "provenance": {
+                        "external_data_used": False, "user_data_used": False,
+                        "external_weights_used": False, "open_source_model_integrated": False,
+                    },
+                }, resume_path)
 
         merged_state = merge_expert_shards(
             shared_state,
@@ -335,12 +428,14 @@ def run_staged_training(
         merged_hash = state_fingerprint(merged_state)
 
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({
+        atomic_torch_save({
             "format_version": 1,
             "model_id": NATIVE_MODEL_ID,
             "training_scale": "tiny_20_expert_reference",
             "config": vars(cfg),
             "config_fingerprint": cfg_hash,
+            "seed": seed,
+            "completed_stage": "merged",
             "shared_backbone_fingerprint": base_hash,
             "merged_state_fingerprint": merged_hash,
             "model_state_dict": merged_state,
