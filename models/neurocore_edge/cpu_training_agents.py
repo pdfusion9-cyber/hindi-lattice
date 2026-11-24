@@ -8,6 +8,7 @@ workers so a runner never materializes all 20 experts merely to update one.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -32,6 +33,13 @@ class CPUProfile:
     available_memory_bytes: int
     free_disk_bytes: int
     hostname: str
+    runner_name: str | None = None
+    runner_os: str | None = None
+    runner_arch: str | None = None
+    github_job: str | None = None
+    github_run_id: str | None = None
+    machine_instance_fingerprint: str | None = None
+    machine_fingerprint_source: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(self)
@@ -86,6 +94,22 @@ def _cpu_quota() -> float | None:
         return None
 
 
+def _machine_identity() -> tuple[str | None, str | None]:
+    """Return a hashed VM identity without exposing raw machine identifiers."""
+    candidates = (
+        (Path("/sys/class/dmi/id/product_uuid"), "dmi_product_uuid"),
+        (Path("/etc/machine-id"), "etc_machine_id"),
+    )
+    for path, source in candidates:
+        try:
+            raw = path.read_text(encoding="ascii").strip()
+        except OSError:
+            continue
+        if raw:
+            return hashlib.sha256(raw.encode("utf-8")).hexdigest(), source
+    return None, None
+
+
 def detect_cpu_profile() -> CPUProfile:
     logical = max(1, os.cpu_count() or 1)
     try:
@@ -100,6 +124,7 @@ def detect_cpu_profile() -> CPUProfile:
         free_disk = shutil.disk_usage(Path.cwd()).free
     except OSError:
         free_disk = 0
+    machine_fingerprint, fingerprint_source = _machine_identity()
     return CPUProfile(
         logical_cpus=logical,
         affinity_cpus=max(1, affinity),
@@ -108,6 +133,13 @@ def detect_cpu_profile() -> CPUProfile:
         available_memory_bytes=_memory_available_bytes(),
         free_disk_bytes=int(free_disk),
         hostname=socket.gethostname(),
+        runner_name=os.environ.get("RUNNER_NAME"),
+        runner_os=os.environ.get("RUNNER_OS"),
+        runner_arch=os.environ.get("RUNNER_ARCH"),
+        github_job=os.environ.get("GITHUB_JOB"),
+        github_run_id=os.environ.get("GITHUB_RUN_ID"),
+        machine_instance_fingerprint=machine_fingerprint,
+        machine_fingerprint_source=fingerprint_source,
     )
 
 
