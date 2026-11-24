@@ -314,7 +314,7 @@ def main() -> None:
         batches=20, seed=args.seed + 200, cfg=cfg,
     )
 
-    generator = torch.Generator(device="cpu").manual_seed(args.seed + 300)
+    generator = torch.Generator(device="cpu").manual_seed(args.seed + 300 + resume_from_step)
     upper = train_stream.numel() - args.sequence_length - 1
     losses: list[float] = []
     validation_curve = []
