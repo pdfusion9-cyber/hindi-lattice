@@ -75,3 +75,65 @@ def test_cpu_thread_override_is_bounded_and_reported():
         MicroAgentTrainingController().create_plan(
             requested_steps=40, max_steps=40, cpu_threads=8
         )
+
+
+
+def test_bounded_internal_corpus_is_allowed_without_production_approval():
+    controller = MicroAgentTrainingController()
+    plan = controller.create_plan(
+        requested_steps=40,
+        max_steps=40,
+        source_kind="bounded_internal_corpus",
+        external_data_used=False,
+        user_data_used=False,
+        dataset_ids=(),
+        external_weights_used=False,
+        checkpoint_mode="ephemeral_internal_only",
+        model_under_test="neurocore_edge_native_grouped_answer_word_v1",
+        internal_only=True,
+        public_artifacts=False,
+        corpus_rights_status="UNVERIFIED_PENDING_OWNER_AND_LICENSE_REVIEW",
+        privacy_status="NOT_FORMALLY_CLEARED",
+        model_parameter_count=100_000,
+        available_memory_bytes=1024 * 1024 * 1024,
+        cpu_threads=1,
+    )
+    assert plan["status"] == "TRAINING_PLAN_APPROVED"
+    assert plan["training_data"] == "bounded_internal_corpus"
+    assert plan["training_scale"] == "bounded_native_grouped_word_reference"
+    assert plan["external_weights_used"] is False
+    assert plan["production_2_87b_training_started"] is False
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"public_artifacts": True},
+        {"internal_only": False},
+        {"corpus_rights_status": "APPROVED"},
+        {"privacy_status": "CLEARED"},
+        {"checkpoint_mode": "ephemeral_synthetic_only"},
+    ],
+)
+def test_internal_corpus_gate_refuses_scope_or_provenance_mismatch(overrides):
+    kwargs = {
+        "requested_steps": 40,
+        "max_steps": 40,
+        "source_kind": "bounded_internal_corpus",
+        "external_data_used": False,
+        "user_data_used": False,
+        "dataset_ids": (),
+        "external_weights_used": False,
+        "checkpoint_mode": "ephemeral_internal_only",
+        "model_under_test": "neurocore_edge_native_grouped_answer_word_v1",
+        "internal_only": True,
+        "public_artifacts": False,
+        "corpus_rights_status": "UNVERIFIED_PENDING_OWNER_AND_LICENSE_REVIEW",
+        "privacy_status": "NOT_FORMALLY_CLEARED",
+        "model_parameter_count": 100_000,
+        "available_memory_bytes": 1024 * 1024 * 1024,
+        "cpu_threads": 1,
+    }
+    kwargs.update(overrides)
+    with pytest.raises(PermissionError, match="training gate refused"):
+        MicroAgentTrainingController().create_plan(**kwargs)

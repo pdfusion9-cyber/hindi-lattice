@@ -29,6 +29,8 @@ from modeling_neurocore_edge import (
     NeuroCoreEdgeForCausalLM,
     count_parameters,
 )
+from training_micro_agents import MicroAgentTrainingController
+from cpu_training_agents import detect_cpu_profile
 
 UNK, BOS, EOS, SEP, PAD, ALT = range(6)
 SPECIAL = ["<UNK>", "<BOS>", "<EOS>", "<SEP>", "<PAD>", "<ALT>"]
@@ -299,16 +301,83 @@ def evaluate(model, groups, word_to_id, id_to_word, *, batch_size, generation_li
     }
 
 
+def atomic_torch_save(payload, path: Path) -> None:
+    """Write a checkpoint atomically so interruption cannot corrupt the last save."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".tmp")
+    try:
+        torch.save(payload, temp)
+        temp.replace(path)
+    finally:
+        if temp.exists():
+            temp.unlink()
+
+
+def validate_resume_checkpoint(
+    checkpoint,
+    *,
+    model_config: dict,
+    training_fingerprint: dict,
+    corpus_blob: str,
+    corpus_sha256: str,
+    tokenizer_sha256: str,
+    target_steps: int,
+) -> int:
+    """Fail closed when a resume checkpoint belongs to another run/corpus/model."""
+    if not isinstance(checkpoint, dict):
+        raise ValueError("resume checkpoint must contain a dictionary")
+    required = {
+        "model_state_dict", "optimizer_state_dict", "step",
+        "python_rng_state", "torch_rng_state", "validation_curve",
+        "initial_validation", "elapsed_seconds",
+    }
+    missing = sorted(required - set(checkpoint))
+    if missing:
+        raise ValueError("resume checkpoint is missing fields: " + ", ".join(missing))
+    if checkpoint.get("model_id") != "neurocore_edge_native_grouped_answer_word_v1":
+        raise ValueError("resume checkpoint model ID mismatch")
+    if checkpoint.get("config") != model_config:
+        raise ValueError("resume checkpoint model configuration mismatch")
+    if checkpoint.get("training_fingerprint") != training_fingerprint:
+        raise ValueError("resume checkpoint training configuration mismatch")
+    if checkpoint.get("corpus_git_blob_sha1") != corpus_blob:
+        raise ValueError("resume checkpoint corpus Git blob mismatch")
+    if checkpoint.get("corpus_sha256") != corpus_sha256:
+        raise ValueError("resume checkpoint corpus SHA-256 mismatch")
+    if checkpoint.get("tokenizer_sha256") != tokenizer_sha256:
+        raise ValueError("resume checkpoint tokenizer fingerprint mismatch")
+    if checkpoint.get("production_training_gate") != "CLOSED":
+        raise ValueError("resume checkpoint production gate is not closed")
+    if checkpoint.get("internal_experiment_gate") != "MICRO_AGENT_APPROVED_BOUNDED_INTERNAL_ONLY":
+        raise ValueError("resume checkpoint is not an approved internal-only experiment")
+    if checkpoint.get("public_artifacts_created") is not False:
+        raise ValueError("resume checkpoint is marked as public")
+    step = checkpoint.get("step")
+    if not isinstance(step, int) or isinstance(step, bool) or step < 0:
+        raise ValueError("resume checkpoint step is invalid")
+    if step >= target_steps:
+        raise ValueError("resume checkpoint step must be below the requested total steps")
+    if not isinstance(checkpoint.get("python_rng_state"), (tuple, list)):
+        raise ValueError("resume checkpoint Python RNG state is invalid")
+    if not isinstance(checkpoint.get("torch_rng_state"), torch.Tensor):
+        raise ValueError("resume checkpoint Torch RNG state is invalid")
+    return step
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, default=Path("data/gyaan_base.txt"))
-    parser.add_argument("--steps", type=int, default=5000)
+    parser.add_argument("--steps", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=12)
     parser.add_argument("--cpu-threads", type=int, default=2)
     parser.add_argument("--learning-rate", type=float, default=0.00015)
     parser.add_argument("--seed", type=int, default=211)
     parser.add_argument("--validation-percent", type=int, default=5)
     parser.add_argument("--generation-limit", type=int, default=96)
+    parser.add_argument("--checkpoint-every", type=int, default=50,
+                        help="atomically save resumable state every N optimizer steps")
+    parser.add_argument("--resume-checkpoint", type=Path, default=None,
+                        help="resume locally from a trusted internal checkpoint; --steps is the total target")
     parser.add_argument("--report", type=Path, default=Path("reports/neurocore-grouped-answer-word-prediction-5000.json"))
     parser.add_argument("--checkpoint", type=Path, default=Path("artifacts/neurocore-grouped-answer-word-prediction-5000.pt"))
     parser.add_argument("--tokenizer", type=Path, default=Path("artifacts/neurocore-hindi-grouped-word-tokenizer.json"))
@@ -316,6 +385,8 @@ def main():
 
     if args.steps < 1 or args.batch_size < 1 or not 1 <= args.validation_percent <= 20:
         parser.error("steps/batch-size must be positive and validation-percent must be in 1..20")
+    if args.checkpoint_every < 1:
+        parser.error("checkpoint-every must be a positive integer")
     if not 1 <= args.cpu_threads <= min(4, os.cpu_count() or 1):
         parser.error("cpu-threads must be between 1 and min(4, available CPUs)")
 
@@ -335,6 +406,19 @@ def main():
     if vocab_size > 20000:
         raise ValueError(f"unexpected vocabulary size: {vocab_size}")
 
+
+    tokenizer = {
+        "format": "neurocore_whitespace_word_grouped_answer_v1",
+        "special_tokens": {
+            "unk": UNK, "bos": BOS, "eos": EOS, "field_separator": SEP,
+            "pad": PAD, "alternative_answer_separator": ALT,
+        },
+        "id_to_word": id_to_word,
+        "normalization": "Unicode NFC; split on whitespace; object answers sorted deterministically; <ALT> separates distinct answers",
+    }
+    tokenizer_bytes = json.dumps(tokenizer, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    tokenizer_sha = hashlib.sha256(tokenizer_bytes).hexdigest()
+
     relation_groups = defaultdict(list)
     for group in train_groups:
         relation_groups[group["relation"]].append(group)
@@ -343,7 +427,6 @@ def main():
     # massively oversampling relations that have only a handful of examples.
     relation_weights = [len(relation_groups[name]) ** 0.5 for name in relation_names]
 
-    torch.set_num_threads(args.cpu_threads)
     torch.manual_seed(args.seed)
     rng = random.Random(args.seed + 1)
     cfg = NeuroCoreEdgeConfig(
@@ -359,18 +442,119 @@ def main():
         recurrent_state_size=16,
         router_aux_loss_coefficient=0.01,
     )
+    # Count parameters on the meta device so the resource gate runs before
+    # allocating real model weights or optimizer state.
+    with torch.device("meta"):
+        model_for_budget = NeuroCoreEdgeForCausalLM(cfg)
+    model_parameter_count = count_parameters(model_for_budget)
+    del model_for_budget
+
+    profile = detect_cpu_profile()
+    selected_threads = min(args.cpu_threads, profile.effective_cpus, 4)
+    rng_state_before_agents = torch.get_rng_state()
+    controller = MicroAgentTrainingController()
+    micro_agent_plan = controller.create_plan(
+        requested_steps=args.steps,
+        max_steps=args.steps,
+        source_kind="bounded_internal_corpus",
+        external_data_used=False,
+        user_data_used=False,
+        dataset_ids=(),
+        external_weights_used=False,
+        checkpoint_mode="ephemeral_internal_only",
+        model_under_test="neurocore_edge_native_grouped_answer_word_v1",
+        internal_only=True,
+        public_artifacts=False,
+        corpus_rights_status="UNVERIFIED_PENDING_OWNER_AND_LICENSE_REVIEW",
+        privacy_status="NOT_FORMALLY_CLEARED",
+        model_parameter_count=model_parameter_count,
+        available_memory_bytes=profile.available_memory_bytes,
+        cpu_threads=selected_threads,
+    )
+    # The CPU proxy calibration uses its own seed; restore the model/training
+    # random stream so --seed is reproducible across fresh and resumed runs.
+    torch.set_rng_state(rng_state_before_agents)
+    training_steps = micro_agent_plan["allocated_steps"]
+    torch.set_num_threads(micro_agent_plan["cpu_threads"])
     model = NeuroCoreEdgeForCausalLM(cfg).cpu()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-
-    initial = evaluate(
-        model, validation_groups, word_to_id, id_to_word,
-        batch_size=args.batch_size, generation_limit=args.generation_limit,
-    )
+    training_fingerprint = {
+        "batch_size": args.batch_size,
+        "learning_rate": args.learning_rate,
+        "seed": args.seed,
+        "validation_percent": args.validation_percent,
+        "generation_limit": args.generation_limit,
+        "cpu_threads": micro_agent_plan["cpu_threads"],
+        "checkpoint_every": args.checkpoint_every,
+        "model_id": "neurocore_edge_native_grouped_answer_word_v1",
+    }
+    checkpoint_path = args.checkpoint if args.checkpoint.is_absolute() else ROOT / args.checkpoint
+    start_step = 0
+    elapsed_before_resume = 0.0
     validation_curve = []
-    started = time.perf_counter()
+    if args.resume_checkpoint is not None:
+        resume_path = args.resume_checkpoint if args.resume_checkpoint.is_absolute() else ROOT / args.resume_checkpoint
+        if not resume_path.is_file():
+            raise FileNotFoundError(f"resume checkpoint not found: {resume_path}")
+        # Only load trusted, locally-held checkpoint tensors and primitive metadata.
+        saved = torch.load(resume_path, map_location="cpu", weights_only=True)
+        start_step = validate_resume_checkpoint(
+            saved,
+            model_config=vars(cfg),
+            training_fingerprint=training_fingerprint,
+            corpus_blob=blob,
+            corpus_sha256=hashlib.sha256(raw).hexdigest(),
+            tokenizer_sha256=tokenizer_sha,
+            target_steps=training_steps,
+        )
+        model.load_state_dict(saved["model_state_dict"], strict=True)
+        optimizer.load_state_dict(saved["optimizer_state_dict"])
+        rng.setstate(tuple(saved["python_rng_state"]))
+        torch.set_rng_state(saved["torch_rng_state"].cpu())
+        validation_curve = list(saved["validation_curve"])
+        initial = saved["initial_validation"]
+        elapsed_before_resume = float(saved["elapsed_seconds"])
+    else:
+        initial = evaluate(
+            model, validation_groups, word_to_id, id_to_word,
+            batch_size=args.batch_size, generation_limit=args.generation_limit,
+        )
+
+    segment_started = time.perf_counter()
     model.train()
 
-    for step in range(1, args.steps + 1):
+    def save_training_checkpoint(current_step: int, elapsed_seconds: float) -> None:
+        payload = {
+            "format_version": 2,
+            "model_id": "neurocore_edge_native_grouped_answer_word_v1",
+            "config": vars(cfg),
+            "training_fingerprint": training_fingerprint,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "step": current_step,
+            "python_rng_state": rng.getstate(),
+            "torch_rng_state": torch.get_rng_state(),
+            "validation_curve": validation_curve,
+            "initial_validation": initial,
+            "elapsed_seconds": elapsed_seconds,
+            "corpus_git_blob_sha1": blob,
+            "corpus_sha256": hashlib.sha256(raw).hexdigest(),
+            "tokenizer_sha256": tokenizer_sha,
+            "tokenizer_format": tokenizer["format"],
+            "provenance": {
+                "external_model_weights_used": False,
+                "open_source_model_integrated": False,
+                "external_tokenizer_used": False,
+                "external_data_used": False,
+                "initialization": "native_random_initialization",
+            },
+            "production_training_gate": "CLOSED",
+            "internal_experiment_gate": "MICRO_AGENT_APPROVED_BOUNDED_INTERNAL_ONLY",
+            "public_artifacts_created": False,
+        }
+        atomic_torch_save(payload, checkpoint_path)
+
+    for step in range(start_step + 1, training_steps + 1):
         batch = []
         for _ in range(args.batch_size):
             rel = rng.choices(relation_names, weights=relation_weights, k=1)[0]
@@ -387,7 +571,7 @@ def main():
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
-        if step % 500 == 0 or step == args.steps:
+        if step % 50 == 0 or step == training_steps:
             metrics = evaluate(
                 model, validation_groups, word_to_id, id_to_word,
                 batch_size=args.batch_size, generation_limit=args.generation_limit,
@@ -401,7 +585,7 @@ def main():
                 "answer_set_f1": metrics["answer_set_f1"],
             })
             print(
-                f"grouped_word_step={step}/{args.steps} "
+                f"grouped_word_step={step}/{training_steps} "
                 f"loss={metrics['sequence_loss_per_target_token']:.4f} "
                 f"word_top1={metrics['next_word_top1_accuracy']:.4f} "
                 f"word_top5={metrics['next_word_top5_accuracy']:.4f} "
@@ -410,23 +594,16 @@ def main():
                 flush=True,
             )
 
-    elapsed = max(time.perf_counter() - started, 1e-9)
+        if step % args.checkpoint_every == 0 or step == training_steps:
+            elapsed_so_far = elapsed_before_resume + (time.perf_counter() - segment_started)
+            save_training_checkpoint(step, elapsed_so_far)
+
+    elapsed = max(elapsed_before_resume + time.perf_counter() - segment_started, 1e-9)
     final = evaluate(
         model, validation_groups, word_to_id, id_to_word,
         batch_size=args.batch_size, generation_limit=args.generation_limit,
     )
     data_audit = audit_groups(source_rows, groups, markup_rows)
-    tokenizer = {
-        "format": "neurocore_whitespace_word_grouped_answer_v1",
-        "special_tokens": {
-            "unk": UNK, "bos": BOS, "eos": EOS, "field_separator": SEP,
-            "pad": PAD, "alternative_answer_separator": ALT,
-        },
-        "id_to_word": id_to_word,
-        "normalization": "Unicode NFC; split on whitespace; object answers sorted deterministically; <ALT> separates distinct answers",
-    }
-    tokenizer_bytes = json.dumps(tokenizer, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    tokenizer_sha = hashlib.sha256(tokenizer_bytes).hexdigest()
     report = {
         "status": "NEUROCORE_NATIVE_GROUPED_ANSWER_WORD_PREDICTION_PASS",
         "objective": "subject_relation_to_complete_grouped_answer_list",
@@ -455,16 +632,22 @@ def main():
             "group_leakage": False,
         },
         "training": {
-            "steps": args.steps,
+            "steps": micro_agent_plan["allocated_steps"],
             "batch_size": args.batch_size,
             "learning_rate": args.learning_rate,
+            "micro_agent_control": micro_agent_plan,
+            "cpu_threads": micro_agent_plan["cpu_threads"],
+            "training_scope": "bounded_internal_only_no_public_artifacts",
+            "resumed_from_step": start_step,
+            "total_target_steps": training_steps,
+            "checkpoint_every": args.checkpoint_every,
             "relation_sampling": "relation probability proportional to square root of training group count",
             "target_format": "sorted distinct objects separated by ALT; EOS terminates the complete answer list",
             "initial_validation": {k: v for k, v in initial.items() if k != "generation_examples"},
             "final_validation": {k: v for k, v in final.items() if k != "generation_examples"},
             "validation_curve": validation_curve,
             "elapsed_seconds": elapsed,
-            "training_groups_per_second": args.steps * args.batch_size / elapsed,
+            "training_groups_per_second": training_steps * args.batch_size / elapsed,
         },
         "generation_examples": final["generation_examples"],
         "provenance": {
@@ -475,27 +658,14 @@ def main():
             "initialization": "native_random_initialization",
         },
         "production_training_gate": "CLOSED",
+        "internal_experiment_gate": "MICRO_AGENT_APPROVED_BOUNDED_INTERNAL_ONLY",
+        "public_artifacts_created": False,
         "production_2_87b_training_started": False,
         "limitations": [
             "Grouping resolves the training-label collision but does not certify that source facts are current or correct.",
             "Multiple objects are preserved, not automatically judged true; questionable pairs need human/source review.",
             "This small experiment is not a production Hindi language model or general fluency benchmark.",
         ],
-    }
-
-    checkpoint = {
-        "format_version": 1,
-        "model_id": report["model_id"],
-        "config": vars(cfg),
-        "model_state_dict": model.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "step": args.steps,
-        "corpus_git_blob_sha1": blob,
-        "corpus_sha256": hashlib.sha256(raw).hexdigest(),
-        "tokenizer_sha256": tokenizer_sha,
-        "tokenizer_format": tokenizer["format"],
-        "provenance": report["provenance"],
-        "production_training_gate": "CLOSED",
     }
 
     def output_path(path: Path) -> Path:
@@ -512,11 +682,7 @@ def main():
         **data_audit,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    checkpoint_path = output_path(args.checkpoint)
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    temp = checkpoint_path.with_name(checkpoint_path.name + ".tmp")
-    torch.save(checkpoint, temp)
-    temp.replace(checkpoint_path)
     tokenizer_path = output_path(args.tokenizer)
     tokenizer_path.parent.mkdir(parents=True, exist_ok=True)
     tokenizer_path.write_text(json.dumps(tokenizer, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

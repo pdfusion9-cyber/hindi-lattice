@@ -1,0 +1,151 @@
+name: Wikidata 200 Record Quality Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/integrated-word-grouped-pipeline-20261124]
+    paths:
+      - 'tools/export_wikidata_structured_corpus.py'
+      - 'tools/audit_wikidata_structured_corpus.py'
+      - 'tools/enrich_wikidata_statement_references.py'
+      - 'tests/test_export_wikidata_structured_corpus.py'
+      - 'tests/test_audit_wikidata_structured_corpus.py'
+      - 'tests/test_enrich_wikidata_statement_references.py'
+      - 'tools/build_wikidata_citation_review.py'
+      - 'tests/test_build_wikidata_citation_review.py'
+      - '.github/workflows/wikidata_quality_audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-quality-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/integrated-word-grouped-pipeline-20261124
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate offline export plan
+        run: |
+          python tools/export_wikidata_structured_corpus.py \
+            --dry-run \
+            --scopes country city river mountain \
+            --limit-per-property 20 \
+            --page-size 20 \
+            --max-records 200 > /tmp/wikidata-plan.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          plan = json.loads(Path("/tmp/wikidata-plan.json").read_text(encoding="utf-8"))
+          assert plan["status"] == "DRY_RUN_NO_NETWORK"
+          assert plan["planned_query_count"] == 16
+          assert plan["limit_per_property"] == 20
+          assert plan["max_records"] == 200
+          print("Offline plan valid; no network request in this step.")
+          PY
+      - name: Export at most 200 balanced structured records
+        run: |
+          python tools/export_wikidata_structured_corpus.py \
+            --scopes country city river mountain \
+            --limit-per-property 20 \
+            --page-size 20 \
+            --max-records 200 \
+            --request-interval 1.25 \
+            --jsonl-out /tmp/wikidata-audit-200.jsonl \
+            --triples-out /tmp/wikidata-audit-200-triples.txt \
+            --manifest-out /tmp/wikidata-audit-200-manifest.json
+      - name: Enrich statement references from Wikidata Action API
+        run: |
+          python tools/enrich_wikidata_statement_references.py \
+            --input /tmp/wikidata-audit-200.jsonl \
+            --output /tmp/wikidata-audit-200-enriched.jsonl \
+            --manifest /tmp/wikidata-audit-200-enrichment-manifest.json \
+            --request-interval 1.25
+      - name: Run structural quality audit on enriched records
+        run: |
+          python tools/audit_wikidata_structured_corpus.py \
+            --input /tmp/wikidata-audit-200-enriched.jsonl \
+            --report /tmp/wikidata-audit-200-report.json
+      - name: Build property-wise citation and human review report
+        run: |
+          python tools/build_wikidata_citation_review.py \
+            --input /tmp/wikidata-audit-200-enriched.jsonl \
+            --json-report /tmp/wikidata-citation-review.json \
+            --markdown-report /tmp/wikidata-citation-review.md
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/wikidata-citation-review.json").read_text(encoding="utf-8"))
+          assert report["record_count"] <= 200
+          assert report["training_approved_record_count"] == 0
+          assert report["citation_gap_review_count"] <= report["record_count"]
+          assert report["multi_value_group_count"] >= 0
+          assert report["overall"]["statements_unmatched"] == 0
+          assert Path("/tmp/wikidata-citation-review.md").is_file()
+          print(json.dumps({
+              "status": report["status"],
+              "per_property": report["per_property"],
+              "citation_gap_review_count": report["citation_gap_review_count"],
+              "multi_value_group_count": report["multi_value_group_count"],
+              "training_approved_records": 0
+          }, ensure_ascii=False))
+          PY
+      - name: Verify outputs and keep training approval closed
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+          jsonl = Path("/tmp/wikidata-audit-200.jsonl")
+          enriched_jsonl = Path("/tmp/wikidata-audit-200-enriched.jsonl")
+          enrichment = json.loads(Path("/tmp/wikidata-audit-200-enrichment-manifest.json").read_text(encoding="utf-8"))
+          triples = Path("/tmp/wikidata-audit-200-triples.txt")
+          manifest = json.loads(Path("/tmp/wikidata-audit-200-manifest.json").read_text(encoding="utf-8"))
+          audit = json.loads(Path("/tmp/wikidata-audit-200-report.json").read_text(encoding="utf-8"))
+          rows = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line]
+          triple_lines = [line for line in triples.read_text(encoding="utf-8").splitlines() if line]
+          assert rows, "live Wikidata export returned no records"
+          assert len(rows) <= 200, "global export cap exceeded"
+          assert manifest["record_count"] == len(rows)
+          assert manifest["query_count"] == 16
+          assert manifest["dataset_id"] == "wikidata_structured_hindi_traceable_v1"
+          assert manifest["source_license"] == "CC0-1.0"
+          assert all(row.get("statement_rank") and "DeprecatedRank" not in row["statement_rank"] for row in rows)
+          assert all(row.get("subject_qid") and row.get("property_id") and row.get("statement_uri") for row in rows)
+          assert manifest["outputs"]["jsonl"]["sha256"] == hashlib.sha256(jsonl.read_bytes()).hexdigest()
+          assert manifest["outputs"]["triples"]["sha256"] == hashlib.sha256(triples.read_bytes()).hexdigest()
+          enriched_rows = [json.loads(line) for line in enriched_jsonl.read_text(encoding="utf-8").splitlines() if line]
+          assert len(enriched_rows) == len(rows)
+          assert enrichment["input_sha256"] == hashlib.sha256(jsonl.read_bytes()).hexdigest()
+          assert enrichment["output_sha256"] == hashlib.sha256(enriched_jsonl.read_bytes()).hexdigest()
+          assert enrichment["training_approved_record_count"] == 0
+          assert audit["record_count"] == len(rows)
+          assert audit["input_sha256"] == hashlib.sha256(enriched_jsonl.read_bytes()).hexdigest()
+          assert audit["training_approved_record_count"] == 0
+          assert audit["training_approval"] == "NOT_GRANTED_BY_AUTOMATED_AUDIT"
+          assert audit["factual_accuracy"] == "NOT_ASSESSED"
+          assert audit["privacy_clearance"] == "NOT_ASSESSED"
+          print(json.dumps({
+              "status": "LIVE_WIKIDATA_200_RECORD_AUDIT_PASS",
+              "records": len(rows),
+              "compatibility_triples": len(triple_lines),
+              "property_distribution": audit["property_distribution"],
+              "with_any_reference_records": audit["records_with_any_reference_records"],
+              "without_any_reference_records": audit["records_without_any_reference_records"],
+              "with_external_citations": audit["records_with_external_citations"],
+              "without_external_citations": audit["records_without_external_citations"],
+              "with_imported_from_markers": audit["records_with_imported_from_markers"],
+              "import_marker_only": audit["records_with_import_marker_only"],
+              "statements_matched": audit["statements_enrichment_matched"],
+              "statements_unmatched": enrichment["summary"]["statements_unmatched"],
+              "audit_issue_counts": audit["issue_counts"],
+              "multi_value_groups_for_review": audit["multi_value_group_count"],
+              "manifest_hashes_verified": True,
+              "training_approved_records": 0,
+              "artifacts_uploaded": False
+          }, ensure_ascii=False))
+          PY
