@@ -27,6 +27,20 @@ def sample_binding():
     }
 
 
+def test_dry_run_emits_plan_without_network():
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--dry-run", "--scopes", "country"],
+        check=True, capture_output=True, text=True,
+    )
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "DRY_RUN_NO_NETWORK"
+    assert payload["planned_query_count"] == 6
+    assert payload["endpoint"] == EXPORTER.ENDPOINT
+
+
 def test_build_query_is_bounded_and_scoped():
     query = EXPORTER.build_query("Q6256", "P36", 100, 200)
     assert "wd:Q6256" in query
