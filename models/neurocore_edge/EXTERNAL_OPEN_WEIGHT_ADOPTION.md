@@ -1,60 +1,36 @@
-# External open-weight adoption for NeuroCore / Fabric Swarm
+# NeuroCore cross-model weight assimilation
 
-## Decision
+## Correct target
 
-Adopt strong Indian and international pretrained models as **frozen external specialist backends** first. Do not directly transplant or average their tensors into NeuroCore: architectures, hidden dimensions, vocabularies, tokenizers, positional schemes, MoE layouts and training objectives differ. The supported bridge is:
+The foreign model is **not** a runtime replacement for NeuroCore. Its pretrained checkpoint is read through its own original architecture and tokenizer as a frozen teacher. The knowledge encoded in those weights is transferred into NeuroCore by training NeuroCore's own expert parameters. The end product is a native NeuroCore checkpoint; teacher files are not required for ordinary NeuroCore inference after distillation.
 
-1. preserve each upstream model and tokenizer in its native runtime;
-2. give each NeuroCore expert a fixed worker ID and task-specific adapter;
-3. route task requests to the assigned frozen specialist;
-4. evaluate specialists independently against the same held-out suite;
-5. optionally distil approved teacher outputs into native NeuroCore expert shards later.
+## Assimilation stages
 
-This is an adoption/inference integration, not a claim that the external weights have already been downloaded or trained into NeuroCore.
+1. **Acquire and verify teacher checkpoint** — pin immutable Hugging Face commit SHA; verify the exact model-card license and use terms; record repository, revision, weight file hashes, dtype, architecture and tokenizer hashes. Keep checkpoints in private artifact storage, never in this public Git repo.
+2. **Load the teacher's true architecture** — instantiate its native Transformers/model implementation and tokenizer. Freeze all teacher parameters and run inference only.
+3. **Choose expert assignment** — runner ID equals expert ID 0–19, fixed for the complete training campaign. Each expert receives only its assigned teacher/task mix and its own permitted prompt/data mixture.
+4. **Generate teacher supervision** — each teacher reads the input examples with its own tokenizer and produces targets/soft outputs. For different tokenizers, use sequence/text distillation: tokenize teacher answers with the NeuroCore tokenizer and train the selected NeuroCore expert. When tokenizer and vocab fingerprints are identical, optional logits-level KL distillation is allowed. Do not compare logits from unrelated vocabularies.
+5. **Train NeuroCore's own weights** — teacher remains frozen; only selected expert parameters are trainable. The shared backbone, router, other 19 experts and any unassigned modules stay frozen in the independent expert stage. The student forward path must force routing through the worker's expert ID.
+6. **Optional exact tensor warm-start** — copy source tensors only when an explicit key mapping, exact tensor shape, compatible semantics and dtype are validated. No flattening, arbitrary reshape, truncation or averaging of unlike model layers.
+7. **Checkpoint/resume and merge** — persist student expert weights, optimizer, scheduler, RNG, tokenizer/data/teacher/base fingerprints and data cursor every 250 steps and at the session boundary. Strict merge requires exactly one compatible shard for each expert 0–19 from the same base/config/tokenizer contract.
+8. **Evaluate and consolidate** — held-out task success, Hindi/English metrics, factuality, citation precision, contamination checks, latency/memory and safety. Only after a measured pass may teacher supervision be distilled further and teacher endpoints removed from the serving graph.
 
-## Model registry
+## Model candidates
 
-See `external_weight_registry.json` for 20 fixed expert assignments, candidate model repositories, license notes, modality, runtime, and access status. Model weights are not committed to Git; fetch only immutable upstream commit revisions into a private model cache.
+The registry lists Indian teachers (Sarvam-30B/105B, Dhīr-5B/2B, IndicTrans2 and Indic Parler-TTS) and international teachers (Qwen3.5-35B-A3B, GPT-OSS-20B/120B and Mistral Small 4) with task-specific fixed assignments, upstream license, access and hardware notes. Candidate models are not automatically approved by being called open weight; each source revision and intended use still needs review.
 
-Primary Indian candidates:
-- Sarvam-30B (Apache-2.0): multilingual Indian-language generalist and MoE.
-- Sarvam-105B-1711 (Apache-2.0): high-capability agent/teacher candidate; its published NVFP4 build is hardware-specific and not appropriate for ordinary CPU runners.
-- Dhīr-5B-A1.7B and Dhīr-2B (Apache-2.0): Indic language and smaller edge/gating specialists.
-- AI4Bharat IndicTrans2 (MIT): translation specialist; Hugging Face access terms must be accepted.
-- AI4Bharat Indic Parler-TTS (Apache-2.0): speech-generation sidecar; separate audio runtime.
+## Weight compatibility reality
 
-International candidates:
-- Qwen3.5-35B-A3B (Apache-2.0): vision/document QA, tables and multimodal tasks.
-- GPT-OSS-20B and GPT-OSS-120B (Apache-2.0): reasoning, critique, tool-use and technical tasks; 120B needs substantial accelerator memory.
-- Mistral Small 4 (Apache-2.0): optional high-memory multimodal/agent alternative.
+Raw weights are not a text corpus. A GPT-OSS expert matrix is meaningful only inside GPT-OSS's own layer layout; a Qwen tensor cannot be blindly loaded into a Dhīr or NeuroCore parameter. For unrelated architectures, the correct assimilation path is frozen teacher forward passes plus student losses (sequence distillation, optionally feature/logit distillation where dimensions and tokenizers permit). This actually trains NeuroCore's own parameters rather than just routing user requests to an outside model.
 
-Conditional candidates:
-- Bodhan Indic-Translate and Indic-Speak use the Indic Open Model License and access gates. Do not enable until the project accepts the exact terms, access requirements and derivative/hosting conditions.
+## Modalities
 
-## 20 fixed workers
+Text-only NeuroCore experts can distil text capabilities from vision/audio teachers only after a suitable teacher task produces text supervision. For pixel-level OCR or image understanding, the student needs a compatible vision encoder/projector; for speech synthesis it needs an audio decoder/codec/vocoder student. A text-only MLP expert cannot acquire image/audio input/output capability by copying text-model tensors.
 
-Expert IDs 0..19 are mapped in the registry. A worker must never rotate to another expert. External backend parameters remain frozen. Model/tokenizer revisions must be immutable commit hashes, and all weights stay outside this public Git repository.
+## Current implementation status
 
-## Runtime and hardware
-
-A 15-24 GiB GPU cannot serve every model listed here. The registry intentionally separates small, medium and large models. Use the small Indic specialists where the worker hardware allows; use larger models only on suitable GPU hosts or as separately provisioned teacher endpoints. Do not claim 20 simultaneous model instances are loaded until a hardware inventory and VRAM admission test proves it.
-
-## Distillation path
-
-After inference parity and task evaluation:
-- capture permitted teacher demonstrations with source and license provenance;
-- remove PII and enforce consent/redistribution rules;
-- keep fixed train/validation/test splits;
-- distil one expert at a time on its permanently assigned runner;
-- save base/tokenizer/model/optimizer/RNG/data-cursor fingerprints;
-- merge only 20 compatible native NeuroCore expert shards from the same base fingerprint;
-- compare native model before/after with held-out metrics.
-
-Do not distil teacher outputs if their source terms prohibit the intended use or if evaluation contamination cannot be ruled out.
-
-## Verification
-
-Run:
-`python -m unittest models/neurocore_edge/test_external_expert_adapter.py`
-
-The test uses a fake backend and verifies fixed expert routing only. It does not download models or claim model quality.
+- Registry, fixed one-runner-to-one-expert assignments and source/license/hardware records are present.
+- `teacher_weight_assimilation.py` implements pinned teacher loading, freezing, teacher-generated sequence targets, selected-expert-only student loss and exact-shape-only tensor copy.
+- The trainer deliberately requires a canonical NeuroCore student forward callback that forces the assigned expert ID; it refuses arbitrary model implementations.
+- The included tests use a tiny fake teacher/student to verify the assimilation mechanism without downloading large checkpoints.
+- This does **not** mean model weights have already been downloaded or the 3.075B campaign has started. Full run needs canonical student architecture/runner wiring, license-cleared datasets, private checkpoint storage and qualified hardware.
