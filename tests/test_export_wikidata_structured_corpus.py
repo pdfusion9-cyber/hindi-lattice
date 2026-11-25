@@ -17,6 +17,7 @@ def sample_binding():
         "subject_label_hi": {"type": "literal", "value": "संयुक्त राज्य अमेरिका", "xml:lang": "hi"},
         "subject_label_en": {"type": "literal", "value": "United States", "xml:lang": "en"},
         "statement": {"type": "uri", "value": "http://www.wikidata.org/entity/statement/Q30-ABC"},
+        "statement_rank": {"type": "uri", "value": "http://wikiba.se/ontology#NormalRank"},
         "object": {"type": "uri", "value": "http://www.wikidata.org/entity/Q60"},
         "object_qid": {"type": "literal", "value": "Q60"},
         "object_label_hi": {"type": "literal", "value": "न्यूयॉर्क नगर", "xml:lang": "hi"},
@@ -32,6 +33,8 @@ def test_build_query_is_bounded_and_scoped():
     assert "p:P36" in query
     assert "LIMIT 100" in query
     assert "OFFSET 200" in query
+    assert "wikibase:rank ?statement_rank" in query
+    assert "FILTER(?statement_rank != wikibase:DeprecatedRank)" in query
     assert 'STRAFTER(STR(?object), "http://www.wikidata.org/entity/")' in query
     assert 'STRAFTER(STR(?object), "https://www.wikidata.org/entity/")' in query
     with pytest.raises(ValueError):
@@ -54,6 +57,7 @@ def test_row_keeps_qids_statement_and_retrieval_provenance():
     assert row["object_qid"] == "Q60"
     assert row["property_id"] == "P36"
     assert row["statement_uri"].endswith("Q30-ABC")
+    assert row["statement_rank"].endswith("#NormalRank")
     assert row["has_statement_reference"] is True
     assert row["source_references"][0]["value"] == "https://example.org/source"
     assert row["retrieved_at_utc"].endswith("Z")
