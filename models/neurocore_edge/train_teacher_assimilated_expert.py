@@ -116,13 +116,15 @@ def main() -> None:
         revision=args.teacher_revision,
         expert_id=args.expert_id,
     )
+    teacher_model.to(device)
     teacher = FrozenTeacher(
         spec=spec,
         model=teacher_model,
         tokenizer=teacher_tokenizer,
-        device=device,
     )
     student = load_student(args.base_checkpoint, device)
+    if student.config.vocab_size != len(student_tokenizer):
+        raise ValueError("student tokenizer vocabulary size must match NeuroCore config.vocab_size")
     distiller = build_native_neurocore_expert_distiller(
         teacher=teacher,
         student_model=student,
