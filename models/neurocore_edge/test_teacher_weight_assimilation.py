@@ -44,7 +44,7 @@ class FakeStudent(torch.nn.Module):
         expert_id = force_expert_id if force_expert_id is not None else expert_id
         if expert_id is None:
             raise ValueError('an expert ID must be forced in this test model')
-        x = torch.nn.functional.one_hot(input_ids % 31, num_classes=1).float()
+        x = input_ids.unsqueeze(-1).float() / 31.0
         return {"logits": self.experts[expert_id]["head"](x)}
 
 
