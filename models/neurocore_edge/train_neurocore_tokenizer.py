@@ -14,6 +14,44 @@ SPECIAL_TOKENS = ["<|unk|>", "<|bos|>", "<|eos|>", "<|pad|>"] + [
 ]
 EXPECTED_VOCAB_SIZE = 65536
 
+ROUND_TRIP_SAMPLES = [
+    "नमस्ते। NeuroCore हिंदी और भारतीय भाषाओं के लिए बनाया जा रहा है।",
+    "The quick brown fox tests English byte-level tokenization.",
+    "संविधान, अनुच्छेद 21, ₹1,23,456.78 — मिश्रित चिह्न और अंक।",
+    "தமிழ் తెలుగు বাংলা ગુજરાતી ಕನ್ನಡ മലയാളം ਪੰਜਾਬੀ ଓଡ଼ିଆ मराठी",
+    "Email: user@example.org; URL: https://example.org/a?b=1&c=2",
+]
+
+def validate_tokenizer_object(tokenizer) -> dict[str, Any]:
+    actual_vocab=tokenizer.get_vocab_size(with_added_tokens=True)
+    if actual_vocab != EXPECTED_VOCAB_SIZE:
+        raise RuntimeError(f"tokenizer vocabulary is {actual_vocab}, expected {EXPECTED_VOCAB_SIZE}")
+    special_ids={}
+    for token in SPECIAL_TOKENS:
+        token_id=tokenizer.token_to_id(token)
+        if token_id is None:
+            raise RuntimeError(f"missing required special token: {token}")
+        special_ids[token]=int(token_id)
+    if len(set(special_ids.values())) != len(SPECIAL_TOKENS):
+        raise RuntimeError("special token IDs must all be unique")
+    for token in SPECIAL_TOKENS:
+        ids=tokenizer.encode(token,add_special_tokens=False).ids
+        if ids != [special_ids[token]]:
+            raise RuntimeError(f"special token must encode to exactly one dedicated ID: {token}")
+    for sample in ROUND_TRIP_SAMPLES:
+        encoded=tokenizer.encode(sample)
+        decoded=tokenizer.decode(encoded.ids,skip_special_tokens=True)
+        if decoded != sample:
+            raise RuntimeError(f"Unicode encode/decode round trip failed for sample: {sample[:40]!r}")
+    return {
+        "vocab_size":actual_vocab,
+        "special_token_count":len(SPECIAL_TOKENS),
+        "control_token_count":127,
+        "round_trip_samples":len(ROUND_TRIP_SAMPLES),
+        "unicode_round_trip":"PASS",
+        "special_token_ids":"UNIQUE_AND_SINGLE_TOKEN",
+    }
+
 def sha256_file(path: Path) -> str:
     digest=hashlib.sha256()
     with path.open("rb") as f:
@@ -106,9 +144,8 @@ def main() -> int:
         special_tokens=[("<|bos|>",tokenizer.token_to_id("<|bos|>")),
                         ("<|eos|>",tokenizer.token_to_id("<|eos|>"))],
     )
-    actual_vocab=tokenizer.get_vocab_size()
-    if actual_vocab != EXPECTED_VOCAB_SIZE:
-        raise RuntimeError(f"tokenizer produced {actual_vocab} tokens, expected {EXPECTED_VOCAB_SIZE}")
+    validation=validate_tokenizer_object(tokenizer)
+    actual_vocab=validation["vocab_size"]
     out=args.output_dir/"tokenizer.json"
     tokenizer.save(str(out))
     metadata={
@@ -120,6 +157,7 @@ def main() -> int:
       "sources":[{k:v for k,v in s.items() if k!="text_columns"} for s in sources],
       "source_manifest_sha256":sha256_file(args.approval_manifest),
       "tokenizer_sha256":sha256_file(out),
+      "validation":validation,
       "training_parameters":{"min_frequency":2,"initial_alphabet":"ByteLevel"},
       "status":"BUILT_PENDING_TOKENIZER_SHA_APPROVAL",
     }
