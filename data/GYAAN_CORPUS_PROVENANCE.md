@@ -144,3 +144,24 @@ The bounded live smoke workflow completed successfully on commit `95d27976b74145
 
 The 12 records without statement-level references remain explicitly flagged in the generated manifest; do not silently describe them as having external citations. The smoke test demonstrates that the live endpoint request, parsing, serialization, and local hash verification work for this bounded sample. It does not establish factual correctness, privacy clearance, full-corpus completeness, or approval for model training. Production training remains disabled, and no model training was run.
 
+## Wikidata 200-record structural audit — 2026-11-25
+
+A bounded live export and structural audit completed successfully.
+
+- Workflow run: [45599526067](https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45599526067)
+- Commit tested: `12b7c98ec490e4d8d0e49ddeb2536ead9bad2e57`
+- Scope: country, city, river, mountain; 16 queries
+- JSONL records: 200
+- Compatibility triple lines: 198 (JSONL is canonical; triple projection is not one-to-one)
+- Property distribution: P1082 16, P131 16, P17 16, P2043 16, P2044 16, P2046 15, P30 15, P36 15, P37 15, P38 15, P403 15, P4552 15, P571 15
+- Statement-level references present: 56/200 (28%)
+- Statement-level references absent: 144/200 (72%)
+- Multi-value subject-property groups flagged for human review: 18
+- Structural issue count: 144 missing statement-level references
+- Manifest SHA-256 checks: passed
+- Audit input SHA-256: `bf4e42a38a762ef13732a0f269867cfd09286448e581fb2ffa13b9a9ec8c5d4b`
+- Training-approved records: 0
+- Public workflow artifacts: none
+
+Interpretation: missing statement-level references are provenance gaps in this export, not proof that statements are false. Multiple values may be legitimate for multi-valued properties; the 18 groups are review flags, not automatic contradictions. Factual accuracy, freshness, privacy clearance, and training suitability were not assessed. Do not use this sample for model training until source coverage and human review are completed.
+
