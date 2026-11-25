@@ -75,3 +75,26 @@ def test_action_api_batch_limit_is_enforced():
         assert "1..50" in str(exc)
     else:
         raise AssertionError("more than 50 QIDs should be rejected")
+
+def test_guid_suffix_fallback_matches_unique_claim_even_when_qid_prefix_differs():
+    claim = {"id": "Q30$aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "references": []}
+    entity = {"id": "Q30", "claims": {"P36": [claim]}}
+    matched, method = ENRICH.match_statement(
+        entity,
+        "http://www.wikidata.org/entity/statement/Q30-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    )
+    assert matched is claim
+    assert method == "UNIQUE_GUID_SUFFIX"
+
+
+def test_guid_suffix_fallback_rejects_ambiguous_matches():
+    first = {"id": "Q30$aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+    second = {"id": "Q30$aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+    entity = {"id": "Q30", "claims": {"P36": [first, second]}}
+    matched, method = ENRICH.match_statement(
+        entity,
+        "http://www.wikidata.org/entity/statement/Q30-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    )
+    assert matched is None
+    assert method == "AMBIGUOUS_GUID_SUFFIX"
+
