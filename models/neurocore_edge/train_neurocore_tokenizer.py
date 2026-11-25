@@ -23,16 +23,24 @@ def sha256_file(path: Path) -> str:
 
 def load_approved_sources(manifest_path: Path) -> list[dict[str,Any]]:
     manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
-    sources=manifest.get("approved_tokenizer_sources",[])
-    if manifest.get("status") != "TOKENIZER_SOURCES_APPROVED" or not sources:
+    approval=manifest.get("tokenizer_source_approval",{})
+    sources=approval.get("approved_sources",[])
+    if approval.get("status") != "APPROVED" or not sources:
         raise RuntimeError("tokenizer training blocked: no explicitly approved tokenizer sources")
     seen=set()
     for row in sources:
         required=("dataset_id","revision","config_name","split","license_id",
-                  "license_terms_url","approval_id")
+                  "license_terms_url","approval_id","reviewer","reviewed_at","text_columns")
         missing=[key for key in required if not row.get(key)]
         if missing:
             raise RuntimeError(f"incomplete tokenizer source approval: {row.get('dataset_id')}: {missing}")
+        revision=row.get("revision","")
+        if len(revision)!=40 or any(ch not in "0123456789abcdefABCDEF" for ch in revision):
+            raise RuntimeError(f"tokenizer source revision must be an immutable 40-char commit SHA: {row.get('dataset_id')}")
+        if not str(row.get("license_terms_url","")).startswith("https://"):
+            raise RuntimeError(f"license_terms_url must use HTTPS: {row.get('dataset_id')}")
+        if not isinstance(row.get("text_columns"),list) or not row["text_columns"] or not all(isinstance(x,str) and x for x in row["text_columns"]):
+            raise RuntimeError(f"approved source must specify exact text_columns: {row.get('dataset_id')}")
         if row.get("approved") is not True:
             raise RuntimeError(f"tokenizer source not approved: {row.get('dataset_id')}")
         for flag in ("commercial_training_allowed","pii_reviewed","consent_reviewed","schema_reviewed","split_reviewed"):
@@ -55,10 +63,9 @@ def iter_approved_text(sources: list[dict[str,Any]]):
             name=source["config_name"],
             split=source["split"],
             revision=source["revision"],
+            streaming=True,
         )
-        columns=source.get("text_columns")
-        if not isinstance(columns,list) or not columns:
-            raise RuntimeError(f"approved source must specify exact text_columns: {source['dataset_id']}")
+        columns=source["text_columns"]
         for row in ds:
             pieces=[]
             for column in columns:
