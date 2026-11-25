@@ -43,11 +43,12 @@ jobs:
             python -m pytest -q models/neurocore_edge/test_reference_model.py
           fi
       - name: Run canonical architecture and budget audit tests
+        working-directory: models/neurocore_edge
         env:
-          PYTHONPATH: models/neurocore_edge
-        run: |
-          python -m unittest -v test_canonical_architecture_audit.py
-          python models/neurocore_edge/canonical_architecture_audit.py --repo-root .
+          PYTHONPATH: .
+        run: python -m unittest -v test_canonical_architecture_audit
+      - name: Report current canonical readiness blockers
+        run: python models/neurocore_edge/canonical_architecture_audit.py --repo-root .
       - name: Verify default-deny gates
         run: |
           python - <<'PY'
