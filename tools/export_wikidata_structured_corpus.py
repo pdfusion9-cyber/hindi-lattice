@@ -164,12 +164,21 @@ def row_from_binding(
     reference_item_qid = uri_tail(reference_item_uri)
     source_references = []
     if reference_url:
-        source_references.append({"kind": "url", "value": reference_url})
+        source_references.append({
+            "kind": "url",
+            "value": reference_url,
+            "retrieved_at_utc": retrieved_at_utc,
+            "source_endpoint": endpoint,
+            "source_query_sha256": query_sha256,
+        })
     if reference_item_qid:
         source_references.append({
             "kind": "wikidata_item",
             "value": reference_item_qid,
             "url": f"https://www.wikidata.org/wiki/{reference_item_qid}",
+            "retrieved_at_utc": retrieved_at_utc,
+            "source_endpoint": endpoint,
+            "source_query_sha256": query_sha256,
         })
 
     identity = {
@@ -349,7 +358,24 @@ def export(
                     retrieved_at_utc=retrieved,
                 )
                 for row in batch:
-                    records[row["record_id"]] = row
+                    existing = records.get(row["record_id"])
+                    if existing is None:
+                        records[row["record_id"]] = row
+                        continue
+                    # One Wikidata statement may have multiple references. Keep
+                    # every distinct reference instead of overwriting the row.
+                    merged = {
+                        canonical_json(reference): reference
+                        for reference in (
+                            existing["source_references"] + row["source_references"]
+                        )
+                    }
+                    existing["source_references"] = [
+                        merged[key] for key in sorted(merged)
+                    ]
+                    existing["has_statement_reference"] = bool(
+                        existing["source_references"]
+                    )
                 query_log.append({
                     "scope": scope["name"],
                     "class_qid": scope["class_qid"],
