@@ -16,6 +16,8 @@ on:
       - 'tests/test_audit_wikidata_structured_corpus.py'
       - 'tools/enrich_wikidata_statement_references.py'
       - 'tests/test_enrich_wikidata_statement_references.py'
+      - 'tools/build_wikidata_citation_review.py'
+      - 'tests/test_build_wikidata_citation_review.py'
       - '.github/workflows/neurocore_integrated_word_grouped_tests.yml'
   push:
     branches: [feat/integrated-word-grouped-pipeline-20261124]
@@ -62,6 +64,7 @@ jobs:
           python -m py_compile tools/export_wikidata_structured_corpus.py
           python -m py_compile tools/audit_wikidata_structured_corpus.py
           python -m py_compile tools/enrich_wikidata_statement_references.py
+          python -m py_compile tools/build_wikidata_citation_review.py
       - name: Run grouped-answer and micro-agent gate tests
         run: |
           python -m pytest -q \
@@ -70,6 +73,7 @@ jobs:
             tests/test_export_wikidata_structured_corpus.py \
             tests/test_audit_wikidata_structured_corpus.py \
             tests/test_enrich_wikidata_statement_references.py
+            tests/test_build_wikidata_citation_review.py
       - name: Confirm production training remains disabled
         run: |
           python - <<'PY'
