@@ -27,7 +27,12 @@ jobs:
           python-version: '3.12'
       - name: Validate offline export plan
         run: |
-          python tools/export_wikidata_structured_corpus.py --dry-run --scopes country city river mountain > /tmp/wikidata-plan.json
+          python tools/export_wikidata_structured_corpus.py \
+            --dry-run \
+            --scopes country city river mountain \
+            --limit-per-property 20 \
+            --page-size 20 \
+            --max-records 200 > /tmp/wikidata-plan.json
           python - <<'PY'
           import json
           from pathlib import Path
