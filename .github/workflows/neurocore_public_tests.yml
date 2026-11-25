@@ -49,6 +49,11 @@ jobs:
         run: |
           python -m unittest -v test_canonical_architecture_audit
           python -m unittest -v test_count_canonical_parameters
+      - name: Run tokenizer provenance gate tests
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+        run: python -m unittest -v test_train_neurocore_tokenizer
       - name: Verify full canonical parameter count on meta device
         run: python models/neurocore_edge/count_canonical_parameters.py --repo-root .
       - name: Report current canonical readiness blockers
