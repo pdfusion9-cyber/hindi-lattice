@@ -168,6 +168,32 @@ def test_export_merges_multiple_statement_references():
     assert records[0]["has_statement_reference"] is True
 
 
+def test_export_applies_global_property_stratified_record_cap():
+    bindings = {
+        "P36": sample_binding(),
+        "P30": sample_binding(),
+        "P37": sample_binding(),
+    }
+    for prop, binding in bindings.items():
+        binding["statement"] = {
+            "type": "uri", "value": "http://www.wikidata.org/entity/statement/Q30-" + prop
+        }
+    scope = {
+        "name": "tiny", "class_qid": "Q6256",
+        "properties": (("P36", "राजधानी"), ("P30", "महाद्वीप"), ("P37", "राजभाषा")),
+    }
+    records, _ = EXPORTER.export(
+        scopes=[scope], limit_per_property=1, page_size=1,
+        endpoint="https://example.test/sparql", request_interval=1,
+        max_records=2, sleep=lambda _: None,
+        fetch=lambda query, endpoint: {
+            "results": {"bindings": [bindings[next(p for p in bindings if "ps:" + p in query)]]}
+        },
+    )
+    assert len(records) == 2
+    assert {row["property_id"] for row in records} == {"P30", "P36"}
+
+
 def test_export_refuses_aggressive_request_rate():
     scope = {"name": "tiny", "class_qid": "Q6256", "properties": (("P36", "राजधानी"),)}
     with pytest.raises(ValueError):
