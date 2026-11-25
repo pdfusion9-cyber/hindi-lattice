@@ -23,12 +23,12 @@
   "router": "BG-Gate_top2",
   "attention": "RoPE_GQA_sliding_causal",
   "expert_activation": "ReLU_squared_gated_MLP",
-  "expected_total_parameters": 3074885656,
+  "expected_total_parameters": 3074921472,
   "parameter_budget_estimate": {
-    "total_parameters": 3074885656,
-    "raw_bf16_weight_size_gb_decimal": 6.149771312,
-    "raw_1_58bit_weight_size_mb_decimal": 607.28991706,
-    "note": "Arithmetic estimates only; not a packed model artifact."
+    "total_parameters": 3074921472,
+    "raw_bf16_weight_size_gb_decimal": 6.149842944,
+    "raw_1_58bit_weight_size_mb_decimal": 607.29699072,
+    "note": "Unquantized parameter arithmetic only; not a packed model artifact. Total is pending executable meta-device CI verification."
   },
   "training": {
     "enabled": false,
