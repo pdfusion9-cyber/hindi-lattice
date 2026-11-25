@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "architecture_version": "0.3.2-canonical",
+  "source": "v0.3.3 readiness audit of the supplied NeuroCore-Edge package (2026-11-23)",
+  "expected_total_parameters": 3074885656,
+  "expected_shared_parameters": 872876056,
+  "expected_expert_parameters": 2202009600,
+  "expert_parameter_formula": "unique_parameterized_blocks * num_experts * 3 * hidden_size * expert_intermediate_size",
+  "expert_parameter_formula_assumptions": [
+    "Each expert has gate, up and down dense matrices",
+    "The three matrices have no bias",
+    "Every unique parameterized block owns num_experts expert MLPs",
+    "Repeated core execution reuses the same parameters and does not multiply parameter count"
+  ],
+  "derived_expert_intermediate_size": 2240,
+  "status": "BUDGET_CONTRACT_REQUIRES_SOURCE_RECONCILIATION",
+  "note": "The canonical config currently says expert_intermediate_size=2899. Under the explicit formula above, that produces 2,849,832,960 expert parameters, not the audited 2,202,009,600. Do not silently change either value until the canonical module implementation and budget source are reconciled."
+}
