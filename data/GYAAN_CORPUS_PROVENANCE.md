@@ -125,3 +125,22 @@ The exporter query now excludes Wikidata statements whose rank is `wikibase:Depr
 
 The offline `--dry-run` plan is also covered by a synthetic subprocess test. It verifies the planned query count and endpoint without making a network request. Passing this test does not verify that the live SPARQL endpoint accepts or executes every query.
 
+## Live Wikidata smoke test result — 2026-11-25
+
+The bounded live smoke workflow completed successfully on commit `95d27976b7414544a56fac86e4e231146720034f`.
+
+- Workflow: `Wikidata Structured Data Smoke Test`
+- Run: `45581169456`
+- Result: `LIVE_WIKIDATA_SMOKE_PASS`
+- Scope: country; six allow-listed properties; per-property limit 5
+- Records exported: 28 (within the 30-record upper bound)
+- Compatibility triples: 28
+- Queries executed: 6
+- Statements with statement-level references: 16
+- Statements without statement-level references: 12
+- JSONL and triples manifest SHA-256 checks: passed
+- Uploaded workflow artifacts: none
+- Temporary output remained in the runner's `/tmp` directory.
+
+The 12 records without statement-level references remain explicitly flagged in the generated manifest; do not silently describe them as having external citations. The smoke test demonstrates that the live endpoint request, parsing, serialization, and local hash verification work for this bounded sample. It does not establish factual correctness, privacy clearance, full-corpus completeness, or approval for model training. Production training remains disabled, and no model training was run.
+
