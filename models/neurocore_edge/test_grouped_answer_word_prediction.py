@@ -213,3 +213,53 @@ def test_integrated_whole_word_and_grouped_answer_objective_backpropagates():
     loss.backward()
     assert model.embed.weight.grad is not None
     assert torch.isfinite(model.embed.weight.grad).all()
+
+
+def test_integrated_optimizer_step_updates_native_model_weights_on_synthetic_fixture():
+    torch.manual_seed(73)
+    word_to_id, _ = make_vocab({
+        "विषय": 3,
+        "संबंध": 3,
+        "उत्तर": 2,
+        "दूसरा": 1,
+    })
+    examples = [
+        encode_group(
+            {"subject": "विषय", "relation": "संबंध", "objects": ["उत्तर", "दूसरा"]},
+            word_to_id,
+        ),
+        encode_group(
+            {"subject": "विषय", "relation": "संबंध", "objects": ["दूसरा"]},
+            word_to_id,
+        ),
+    ]
+    x, y, loss_mask, _ = collate(examples)
+    cfg = NeuroCoreEdgeConfig(
+        vocab_size=len(word_to_id) + len(SPECIAL),
+        hidden_size=8,
+        num_hidden_layers=1,
+        num_experts=2,
+        experts_per_token=2,
+        expert_intermediate_size=8,
+        attention_heads=2,
+        kv_heads=1,
+        sliding_window=16,
+        recurrent_state_size=4,
+    )
+    model = NeuroCoreEdgeForCausalLM(cfg)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2)
+    before = model.embed.weight.detach().clone()
+
+    output = model(x)
+    loss = torch.nn.functional.cross_entropy(
+        output["logits"][loss_mask], y[loss_mask]
+    ) + cfg.router_aux_loss_coefficient * output["router_aux_loss"]
+    assert torch.isfinite(loss)
+    optimizer.zero_grad(set_to_none=True)
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    optimizer.step()
+
+    after = model.embed.weight.detach()
+    assert torch.isfinite(after).all()
+    assert not torch.equal(before, after), "optimizer step did not update model weights"
