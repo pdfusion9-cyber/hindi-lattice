@@ -32,7 +32,8 @@ def test_build_query_is_bounded_and_scoped():
     assert "p:P36" in query
     assert "LIMIT 100" in query
     assert "OFFSET 200" in query
-    assert r"www\\.wikidata\\.org/entity/" in query
+    assert 'STRAFTER(STR(?object), "http://www.wikidata.org/entity/")' in query
+    assert 'STRAFTER(STR(?object), "https://www.wikidata.org/entity/")' in query
     with pytest.raises(ValueError):
         EXPORTER.build_query("Q6256; SERVICE", "P36", 100, 0)
     with pytest.raises(ValueError):
