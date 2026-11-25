@@ -4,7 +4,7 @@
 
 ## Canonical architecture contract
 
-- 3,074,885,656 unique parameters, intended to be verified by PyTorch meta-device counting with tied embedding/output weights counted once.
+- 3,074,921,472 unique parameters, verified by PyTorch meta-device counting in GitHub Actions run #124 (shared: 225,088,512; experts: 2,849,832,960), with tied embedding/output weights counted once.
 - 20 distinct sparse experts per unique block; normal inference/training routes Top-2.
 - Sandwich execution: 2 prelude + 4 unique core blocks repeated 5 times + 2 coda = 24 effective operations over 8 unique parameterized blocks.
 - RoPE grouped-query causal attention (16 query heads / 4 KV heads), sliding-window mask, recurrent reference memory cell, gated ReLU-squared expert MLPs.
@@ -21,6 +21,7 @@
 
 - config.json keeps training disabled; explicit CLI opt-in alone does not approve data.
 - Dataset approval manifest defaults every dataset to pending and has empty exact-SHA approval lists for tokenized corpora and tokenizer.
+- Tokenizer construction requires exact source-dataset revisions/splits and explicit commercial-training, redistribution, PII, consent, schema and split approvals; generated tokenizer SHA-256 must then be approved before model training.
 - Training must reject any tokenized corpus or tokenizer whose exact SHA-256 is not uniquely approved for its stage/expert.
 - CI never launches training. CPU preflight is not evidence of 3B training capacity.
 - Quantization and mobile export remain disabled until packing kernels, calibration, parity, memory, latency, energy and thermal tests pass.
