@@ -79,7 +79,7 @@ class AssimilationTests(unittest.TestCase):
                    if not torch.equal(a, b.detach())]
         allowed = {i for i, name in enumerate(
             n for n, _ in student.named_parameters()
-        ) if ".experts.3." in name}
+        ) if name.startswith("experts.3.") or ".experts.3." in name}
         self.assertTrue(changed)
         self.assertTrue(set(changed).issubset(allowed))
 
@@ -102,7 +102,7 @@ class AssimilationTests(unittest.TestCase):
             student_tokenizer=FakeTokenizer(), expert_id=7,
         )
         self.assertEqual(distiller.expert_id, 7)
-        self.assertTrue(all('.experts.7.' in name for name, _ in distiller.trainable_named_parameters))
+        self.assertTrue(all(name.startswith('experts.7.') or '.experts.7.' in name for name, _ in distiller.trainable_named_parameters))
 
     def test_checkpoint_resume_and_fingerprint_rejection(self):
         spec = TeacherSpec('org/teacher', '0123456789abcdef0123456789abcdef01234567', 3)
@@ -134,7 +134,7 @@ class AssimilationTests(unittest.TestCase):
             "org/model", "0123456789abcdef0123456789abcdef01234567", 2
         ))
         named = [(name, p) for name, p in student.named_parameters()
-                 if ".experts.3." in name]
+                 if name.startswith("experts.3.") or ".experts.3." in name]
         with self.assertRaises(ValueError):
             TeacherToStudentExpertDistiller(
                 teacher=teacher, student_model=student,
