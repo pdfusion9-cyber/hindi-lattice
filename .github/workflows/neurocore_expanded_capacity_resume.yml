@@ -1,5 +1,6 @@
 name: NeuroCore Expanded Capacity Resume 7,500 Steps
 
+# CPU resume retrigger requested 2026-11-25; training code and safety gates unchanged.
 on:
   push:
     branches: [feat/hybrid-micro-agent-architecture-20261123]
