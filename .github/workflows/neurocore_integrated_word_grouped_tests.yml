@@ -28,6 +28,10 @@ on:
       - 'models/neurocore_edge/test_grouped_answer_word_prediction.py'
       - 'tools/export_wikidata_structured_corpus.py'
       - 'tests/test_export_wikidata_structured_corpus.py'
+      - 'tools/audit_wikidata_structured_corpus.py'
+      - 'tests/test_audit_wikidata_structured_corpus.py'
+      - 'tools/enrich_wikidata_statement_references.py'
+      - 'tests/test_enrich_wikidata_statement_references.py'
       - '.github/workflows/neurocore_integrated_word_grouped_tests.yml'
   workflow_dispatch:
 
