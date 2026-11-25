@@ -105,7 +105,7 @@ WHERE {{
     ?subject rdfs:label ?subject_label_en .
     FILTER(LANG(?subject_label_en) = "en")
   }}
-  ?statement ps:${property_id} ?object ;
+  ?statement ps:{property_id} ?object ;
              wikibase:rank ?statement_rank .
   FILTER(?statement_rank != wikibase:DeprecatedRank)
   OPTIONAL {{
@@ -288,8 +288,14 @@ def fetch_query(
                 return parsed
         except urllib.error.HTTPError as exc:
             retryable = exc.code in (429, 500, 502, 503, 504)
+            try:
+                error_body = exc.read(1000).decode("utf-8", errors="replace")
+                error_body = " ".join(error_body.split())[:500]
+            except Exception:
+                error_body = ""
             if not retryable or attempt == retries - 1:
-                raise RuntimeError(f"Wikidata SPARQL HTTP {exc.code}") from exc
+                detail = f": {error_body}" if error_body else ""
+                raise RuntimeError(f"Wikidata SPARQL HTTP {exc.code}{detail}") from exc
             retry_after = exc.headers.get("Retry-After")
             try:
                 delay = max(2, min(60, int(retry_after))) if retry_after else min(60, 5 * (2 ** attempt))
