@@ -94,6 +94,7 @@ def build_query(class_qid: str, property_id: str, limit: int, offset: int) -> st
     return f"""SELECT ?subject ?subject_label_hi ?subject_label_en ?statement
                     ?object ?object_label_hi ?object_label_en ?object_qid
                     ?object_lexical ?object_datatype ?object_language
+                    ?statement_rank
                     ?reference_url ?reference_item
 WHERE {{
   ?subject wdt:P31 wd:{class_qid} ;
@@ -104,7 +105,9 @@ WHERE {{
     ?subject rdfs:label ?subject_label_en .
     FILTER(LANG(?subject_label_en) = "en")
   }}
-  ?statement ps:{property_id} ?object .
+  ?statement ps:${property_id} ?object ;
+             wikibase:rank ?statement_rank .
+  FILTER(?statement_rank != wikibase:DeprecatedRank)
   OPTIONAL {{
     ?object rdfs:label ?object_label_hi .
     FILTER(LANG(?object_label_hi) = "hi")
@@ -203,6 +206,7 @@ def row_from_binding(
         "relation_label_hi": relation_hi,
         "class_qid": class_qid,
         "statement_uri": statement_uri,
+        "statement_rank": binding_value(binding, "statement_rank"),
         "object_qid": object_qid,
         "object_label_hi": object_hi,
         "object_label_en": object_en,
