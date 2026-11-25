@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "audit_id": "wikidata_structured_hindi_traceable_v1_200_2026-11-25",
+  "workflow": {
+    "name": "Wikidata 200 Record Quality Audit",
+    "run_id": 45599526067,
+    "run_url": "https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45599526067",
+    "commit": "12b7c98ec490e4d8d0e49ddeb2536ead9bad2e57",
+    "status": "success"
+  },
+  "dataset": {
+    "source": "Wikidata structured data only",
+    "scope": [
+      "country",
+      "city",
+      "river",
+      "mountain"
+    ],
+    "query_count": 16,
+    "record_count": 200,
+    "compatibility_triple_count": 198,
+    "property_distribution": {
+      "P1082": 16,
+      "P131": 16,
+      "P17": 16,
+      "P2043": 16,
+      "P2044": 16,
+      "P2046": 15,
+      "P30": 15,
+      "P36": 15,
+      "P37": 15,
+      "P38": 15,
+      "P403": 15,
+      "P4552": 15,
+      "P571": 15
+    },
+    "statement_reference_coverage": {
+      "records_with_references": 56,
+      "records_without_references": 144,
+      "coverage_percent": 28
+    },
+    "multi_value_subject_property_groups": 18
+  },
+  "structural_audit": {
+    "status": "AUDITED_REQUIRES_HUMAN_REVIEW",
+    "issue_counts": {
+      "missing_statement_reference": 144
+    },
+    "manifest_hashes_verified": true,
+    "input_sha256": "bf4e42a38a762ef13732a0f269867cfd09286448e581fb2ffa13b9a9ec8c5d4b",
+    "training_approved_records": 0,
+    "factual_accuracy": "NOT_ASSESSED",
+    "privacy_clearance": "NOT_ASSESSED"
+  },
+  "limitations": [
+    "A Wikidata statement without a statement-level reference is not independently cited by this export.",
+    "Multiple values may be legitimate for multi-valued properties; the 18 groups are review flags, not automatically false facts.",
+    "The compatibility triple projection contains 198 lines for 200 JSONL records and loses statement-level identity; JSONL remains canonical.",
+    "This structural audit does not assess factual accuracy, freshness, privacy, safety, or model-training suitability.",
+    "No training artifacts or raw corpus files were uploaded by the workflow."
+  ],
+  "decision": "NOT_APPROVED_FOR_TRAINING_PENDING_SOURCE_COVERAGE_AND_HUMAN_REVIEW",
+  "latest_enriched_run": {
+    "workflow_run_id": 45605095884,
+    "workflow_url": "https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45605095884",
+    "commit": "f4423f5d26a31e0f48a169816ebcf948b0138596",
+    "workflow_status": "success",
+    "exporter_records": 200,
+    "statements_matched": 200,
+    "statements_unmatched": 0,
+    "statement_match_rate_percent": 100,
+    "reference_records_present": 138,
+    "reference_records_absent": 62,
+    "external_citations_present": 65,
+    "external_citations_absent": 135,
+    "records_with_imported_from_markers": 81,
+    "records_with_import_marker_only": 71,
+    "multi_value_groups_for_human_review": 18,
+    "structural_issue_counts": {
+      "import_marker_without_external_citation": 71,
+      "missing_external_citation": 135,
+      "missing_reference_records": 62
+    },
+    "training_approved_records": 0,
+    "artifacts_uploaded": false,
+    "manifest_hashes_verified": true,
+    "note": "This is a fresh live export with the same configured scope and limits. The 200/200 matches should not be interpreted as proof that each of the 60 previously unmatched row identities was individually recovered unless the raw row sets are compared."
+  },
+  "latest_integrated_test_run": {
+    "workflow_run_id": 45605109461,
+    "workflow_url": "https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45605109461",
+    "commit": "f4423f5d26a31e0f48a169816ebcf948b0138596",
+    "status": "success",
+    "pytest": "49 passed, 1 warning",
+    "production_training_gate": "CLOSED"
+  }
+}
