@@ -72,7 +72,7 @@ jobs:
             models/neurocore_edge/test_grouped_answer_word_prediction.py \
             tests/test_export_wikidata_structured_corpus.py \
             tests/test_audit_wikidata_structured_corpus.py \
-            tests/test_enrich_wikidata_statement_references.py
+            tests/test_enrich_wikidata_statement_references.py \\
             tests/test_build_wikidata_citation_review.py
       - name: Confirm production training remains disabled
         run: |
