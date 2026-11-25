@@ -165,3 +165,26 @@ A bounded live export and structural audit completed successfully.
 
 Interpretation: missing statement-level references are provenance gaps in this export, not proof that statements are false. Multiple values may be legitimate for multi-valued properties; the 18 groups are review flags, not automatic contradictions. Factual accuracy, freshness, privacy clearance, and training suitability were not assessed. Do not use this sample for model training until source coverage and human review are completed.
 
+## Statement-reference enrichment results — 2026-11-25
+
+The 200-record live enrichment workflow completed successfully:
+[run 45602033164](https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45602033164).
+
+Observed results from its logs:
+- Exported records: 200
+- Distinct subject entities fetched in two Action API batches
+- Statement IDs matched: 140
+- Statement IDs unmatched: 60
+- Records with any Wikidata reference record: 102
+- Records without any Wikidata reference record: 98
+- Records with URL or named-source external citations: 37
+- Records without an external citation: 163
+- Automated training approvals: 0
+
+These are distinct measures. A Wikidata reference record can contain only an import marker such as P143; that is not counted as an external citation. The 60 unmatched statement IDs are an enrichment limitation and are not evidence that the statements are false. The run's first structural report used the old broad `missing_statement_reference` label; the audit schema is being clarified to separately report reference-record presence, external citation presence, import-only markers, and statement match status.
+
+The integrated test workflow passed 46 tests, including the five reference-enrichment tests:
+[run 45602086294](https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45602086294).
+
+No factual accuracy or privacy clearance is inferred. Training approval remains zero; this dataset is not approved for training.
+
