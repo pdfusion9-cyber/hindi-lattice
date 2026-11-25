@@ -81,7 +81,7 @@ def test_guid_suffix_fallback_matches_unique_claim_even_when_qid_prefix_differs(
     entity = {"id": "Q30", "claims": {"P36": [claim]}}
     matched, method = ENRICH.match_statement(
         entity,
-        "http://www.wikidata.org/entity/statement/Q30-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "http://www.wikidata.org/entity/statement/Q30-ffffffff-1111-2222-3333-444444444444",
     )
     assert matched is claim
     assert method == "UNIQUE_GUID_SUFFIX"
@@ -89,11 +89,11 @@ def test_guid_suffix_fallback_matches_unique_claim_even_when_qid_prefix_differs(
 
 def test_guid_suffix_fallback_rejects_ambiguous_matches():
     first = {"id": "Q30$aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
-    second = {"id": "Q30$aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+    second = {"id": "Q31$aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
     entity = {"id": "Q30", "claims": {"P36": [first, second]}}
     matched, method = ENRICH.match_statement(
         entity,
-        "http://www.wikidata.org/entity/statement/Q30-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        "http://www.wikidata.org/entity/statement/Q30-ffffffff-1111-2222-3333-444444444444",
     )
     assert matched is None
     assert method == "AMBIGUOUS_GUID_SUFFIX"
