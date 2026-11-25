@@ -1,0 +1,219 @@
+{
+  "schema_version": "1.0",
+  "report_id": "wikidata-citation-review-200-2026-11-25",
+  "workflow": {
+    "name": "Wikidata 200 Record Quality Audit",
+    "run_id": 45626683159,
+    "url": "https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45626683159",
+    "source_commit": "9bf3e5752e68e6b46c1ea5673760a9bec22ccf1b",
+    "status": "success"
+  },
+  "data": {
+    "source": "Wikidata structured data only",
+    "sample_size": 200,
+    "statements_matched": 200,
+    "statements_unmatched": 0,
+    "reference_records_present": 138,
+    "reference_records_absent": 62,
+    "external_citation_records": 65,
+    "records_without_external_citation": 135,
+    "import_marker_only_records": 71,
+    "url_citation_count": 38,
+    "named_source_item_count": 33,
+    "overall_external_citation_coverage_percent": 32.5,
+    "multi_value_groups_for_human_review": 18,
+    "compatibility_triple_lines": 198
+  },
+  "property_coverage": {
+    "P1082": {
+      "records": 16,
+      "with_external_citation": 16,
+      "coverage_percent": 100,
+      "import_marker_only": 0,
+      "without_reference": 0,
+      "url_citations": 1,
+      "named_source_items": 16
+    },
+    "P131": {
+      "records": 16,
+      "with_external_citation": 3,
+      "coverage_percent": 18.8,
+      "import_marker_only": 7,
+      "without_reference": 6,
+      "url_citations": 3,
+      "named_source_items": 0
+    },
+    "P17": {
+      "records": 16,
+      "with_external_citation": 4,
+      "coverage_percent": 25,
+      "import_marker_only": 7,
+      "without_reference": 5,
+      "url_citations": 1,
+      "named_source_items": 3
+    },
+    "P2043": {
+      "records": 16,
+      "with_external_citation": 0,
+      "coverage_percent": 0,
+      "import_marker_only": 16,
+      "without_reference": 0,
+      "url_citations": 0,
+      "named_source_items": 0
+    },
+    "P2044": {
+      "records": 16,
+      "with_external_citation": 1,
+      "coverage_percent": 6.2,
+      "import_marker_only": 13,
+      "without_reference": 2,
+      "url_citations": 1,
+      "named_source_items": 0
+    },
+    "P2046": {
+      "records": 15,
+      "with_external_citation": 4,
+      "coverage_percent": 26.7,
+      "import_marker_only": 11,
+      "without_reference": 0,
+      "url_citations": 4,
+      "named_source_items": 2
+    },
+    "P30": {
+      "records": 15,
+      "with_external_citation": 15,
+      "coverage_percent": 100,
+      "import_marker_only": 0,
+      "without_reference": 0,
+      "url_citations": 15,
+      "named_source_items": 0
+    },
+    "P36": {
+      "records": 15,
+      "with_external_citation": 2,
+      "coverage_percent": 13.3,
+      "import_marker_only": 0,
+      "without_reference": 13,
+      "url_citations": 1,
+      "named_source_items": 2
+    },
+    "P37": {
+      "records": 15,
+      "with_external_citation": 9,
+      "coverage_percent": 60,
+      "import_marker_only": 1,
+      "without_reference": 5,
+      "url_citations": 1,
+      "named_source_items": 10
+    },
+    "P38": {
+      "records": 15,
+      "with_external_citation": 3,
+      "coverage_percent": 20,
+      "import_marker_only": 0,
+      "without_reference": 12,
+      "url_citations": 3,
+      "named_source_items": 0
+    },
+    "P403": {
+      "records": 15,
+      "with_external_citation": 0,
+      "coverage_percent": 0,
+      "import_marker_only": 4,
+      "without_reference": 11,
+      "url_citations": 0,
+      "named_source_items": 0
+    },
+    "P4552": {
+      "records": 15,
+      "with_external_citation": 2,
+      "coverage_percent": 13.3,
+      "import_marker_only": 10,
+      "without_reference": 3,
+      "url_citations": 2,
+      "named_source_items": 0
+    },
+    "P571": {
+      "records": 15,
+      "with_external_citation": 6,
+      "coverage_percent": 40,
+      "import_marker_only": 2,
+      "without_reference": 5,
+      "url_citations": 6,
+      "named_source_items": 0
+    }
+  },
+  "source_domains": {
+    "workwithdata.com": 14,
+    "en.wikipedia.org": 3,
+    "de.wikipedia.org": 3,
+    "ru.wikipedia.org": 3,
+    "data.worldbank.org": 2,
+    "investopedia.com": 2,
+    "sandre.eaufrance.fr": 1,
+    "montsame.mn": 1,
+    "gemeentegeschiedenis.nl": 1,
+    "inafed.gob.mx": 1,
+    "visitthegambia.gm": 1,
+    "instat.mg": 1,
+    "dbpedia.org": 1,
+    "thecommonwealth.org": 1,
+    "statoids.com": 1,
+    "databank.worldbank.org": 1,
+    "peakware.com": 1
+  },
+  "issues": {
+    "no_external_citation": 135,
+    "import_marker_without_external_citation": 71,
+    "no_reference_record": 62,
+    "multi_value_groups_for_human_review": 18
+  },
+  "priorities": [
+    {
+      "priority": 1,
+      "properties": [
+        "P2043",
+        "P403"
+      ],
+      "reason": "0% external citation coverage in this sample"
+    },
+    {
+      "priority": 2,
+      "properties": [
+        "P2044"
+      ],
+      "reason": "6.2% external citation coverage"
+    },
+    {
+      "priority": 3,
+      "properties": [
+        "P36",
+        "P4552"
+      ],
+      "reason": "13.3% external citation coverage"
+    },
+    {
+      "priority": 4,
+      "properties": [
+        "P131",
+        "P17",
+        "P38"
+      ],
+      "reason": "18.8%–25.0% external citation coverage"
+    }
+  ],
+  "interpretation": [
+    "Coverage is calculated at the record level: an external citation is a P854/P4656 URL or a P248 named source item.",
+    "P143 imported-from markers are not counted as external citations.",
+    "Source-domain frequencies are descriptive only; they are not a trustworthiness, accuracy, or license assessment.",
+    "The 18 multi-value groups can be valid multi-valued properties or conflicts; human review is required.",
+    "The 198 compatibility triple lines are a lossy projection; the 200-record JSONL is canonical."
+  ],
+  "gates": {
+    "training_approved_records": 0,
+    "production_training": "DISABLED",
+    "factual_accuracy": "NOT_ASSESSED",
+    "privacy_clearance": "NOT_ASSESSED",
+    "source_rights_review": "PENDING"
+  }
+}
