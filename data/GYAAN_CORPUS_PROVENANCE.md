@@ -115,3 +115,7 @@ The canonical JSONL preserves subject QID, property ID, statement URI, object QI
 
 The exporter defaults to a conservative request interval, caps page size and per-property row limits, sends a descriptive User-Agent, and retries transient HTTP failures. CI uses synthetic fixtures and does not contact Wikidata. A live export is not automatically approved for training: it still requires factual-quality, privacy, safety, scope, and dataset-owner review. The exporter does not modify dataset approvals or enable production training.
 
+### Exporter integrity follow-up
+
+A code review identified that a statement can have more than one Wikidata reference. The exporter now merges distinct statement-level reference URLs and reference-item IDs when the same statement appears in multiple query rows, instead of allowing deduplication to overwrite earlier references. The references retain the retrieval timestamp, endpoint, and query hash. A synthetic regression test covers this case. This is a metadata-preservation improvement; it does not constitute a live endpoint validation or dataset approval.
+
