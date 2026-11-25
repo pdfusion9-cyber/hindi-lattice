@@ -38,7 +38,8 @@
     "modality_adapters_required": true,
     "checkpoint_storage": "private_artifact_storage_outside_git",
     "immutable_revision_required_before_download": true,
-    "never_upload_weight_blobs_to_public_repository": true
+    "never_upload_weight_blobs_to_public_repository": true,
+    "raw_tensor_transplant_rule": "only exact-shape, explicit-key-mapped, semantically compatible tensors; otherwise distill outputs using student tokenizer"
   },
   "model_sources": {
     "sarvam_30b": {
@@ -347,161 +348,141 @@
       "expert_id": 0,
       "expert_name": "doc_editing",
       "worker_id": 0,
-      "model_key": "sarvam_30b",
-      "runtime": "vllm_or_transformers",
-      "profile": "frozen_indic_writing_backend"
+      "teacher_key": "sarvam_30b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 1,
       "expert_name": "doc_creation",
       "worker_id": 1,
-      "model_key": "qwen_35b_a3b",
-      "runtime": "vllm_or_transformers",
-      "profile": "frozen_document_generation_backend"
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 2,
       "expert_name": "summarization",
       "worker_id": 2,
-      "model_key": "gpt_oss_20b",
-      "runtime": "vllm_or_transformers",
-      "profile": "frozen_summarization_backend"
+      "teacher_key": "gpt_oss_20b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 3,
       "expert_name": "reading_qa",
       "worker_id": 3,
-      "model_key": "qwen_35b_a3b",
-      "runtime": "vllm_multimodal",
-      "profile": "frozen_vision_document_qa_backend"
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 4,
       "expert_name": "read_aloud",
       "worker_id": 4,
-      "model_key": "indic_parler_tts",
-      "runtime": "parler_tts",
-      "profile": "frozen_indic_tts_backend"
+      "teacher_key": "indic_parler_tts",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 5,
       "expert_name": "user_guidance",
       "worker_id": 5,
-      "model_key": "dhir_5b",
-      "runtime": "llama_cpp_or_transformers",
-      "profile": "frozen_indic_guidance_backend"
+      "teacher_key": "dhir_5b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 6,
       "expert_name": "legal_contracts",
       "worker_id": 6,
-      "model_key": "gpt_oss_120b",
-      "runtime": "vllm",
-      "profile": "frozen_legal_drafting_backend_with_rag"
+      "teacher_key": "gpt_oss_120b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 7,
       "expert_name": "legal_compliance",
       "worker_id": 7,
-      "model_key": "sarvam_30b",
-      "runtime": "vllm_or_transformers",
-      "profile": "frozen_indian_context_backend_with_rag"
+      "teacher_key": "sarvam_30b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 8,
       "expert_name": "professional_comms",
       "worker_id": 8,
-      "model_key": "sarvam_30b",
-      "runtime": "vllm_or_transformers",
-      "profile": "frozen_professional_communication_backend"
+      "teacher_key": "sarvam_30b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 9,
       "expert_name": "tables_ledgers",
       "worker_id": 9,
-      "model_key": "qwen_35b_a3b",
-      "runtime": "vllm_multimodal",
-      "profile": "frozen_table_understanding_backend"
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 10,
       "expert_name": "ocr_pdf_layout",
       "worker_id": 10,
-      "model_key": "qwen_35b_a3b",
-      "runtime": "vllm_multimodal",
-      "profile": "frozen_ocr_layout_backend"
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 11,
       "expert_name": "hindi_indic_docs",
       "worker_id": 11,
-      "model_key": "dhir_5b",
-      "runtime": "llama_cpp_or_transformers",
-      "profile": "frozen_indic_language_backend"
+      "teacher_key": "dhir_5b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 12,
       "expert_name": "translation",
       "worker_id": 12,
-      "model_key": "indictrans2_indic_indic",
-      "runtime": "indictrans_toolkit",
-      "profile": "frozen_indic_translation_backend"
+      "teacher_key": "indictrans2_indic_indic",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 13,
       "expert_name": "citations_dola",
       "worker_id": 13,
-      "model_key": "gpt_oss_20b",
-      "runtime": "vllm",
-      "profile": "frozen_citation_audit_backend_with_retrieval"
+      "teacher_key": "gpt_oss_20b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 14,
       "expert_name": "technical_academic",
       "worker_id": 14,
-      "model_key": "gpt_oss_120b",
-      "runtime": "vllm",
-      "profile": "frozen_technical_reasoning_backend"
+      "teacher_key": "gpt_oss_120b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 15,
       "expert_name": "hippocampal_d2l",
       "worker_id": 15,
-      "model_key": "qwen_35b_a3b",
-      "runtime": "vllm_or_transformers",
-      "profile": "frozen_long_context_reasoning_backend"
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 16,
       "expert_name": "self_correction_mnl",
       "worker_id": 16,
-      "model_key": "gpt_oss_20b",
-      "runtime": "vllm",
-      "profile": "frozen_critic_and_revision_backend"
+      "teacher_key": "gpt_oss_20b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 17,
       "expert_name": "coconut_planning",
       "worker_id": 17,
-      "model_key": "sarvam_105b_1711",
-      "runtime": "vllm",
-      "profile": "frozen_high_capability_planning_backend"
+      "teacher_key": "sarvam_105b_1711",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 18,
       "expert_name": "bg_gate_early_exit",
       "worker_id": 18,
-      "model_key": "dhir_2b",
-      "runtime": "llama_cpp_or_transformers",
-      "profile": "frozen_low_latency_gate_assistant"
+      "teacher_key": "dhir_2b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     },
     {
       "expert_id": 19,
       "expert_name": "fabric_swarm_tools",
       "worker_id": 19,
-      "model_key": "sarvam_105b_1711",
-      "runtime": "vllm",
-      "profile": "frozen_agentic_tool_backend"
+      "teacher_key": "sarvam_105b_1711",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
     }
   ],
   "evaluation_contract": {
