@@ -88,3 +88,30 @@ This is a potential basis for a **new, independently generated and traceable str
 - Production training: remains disabled.
 - Privacy review: remains not formally cleared; CC0 status does not itself answer privacy, factual quality, or safety questions.
 
+## New traceable exporter (candidate corpus only)
+
+A separate exporter is available at `tools/export_wikidata_structured_corpus.py`. It queries a small reviewed allow-list of Wikidata structured-data classes and properties. It does not read, overwrite, or merge `data/gyaan_base.txt`.
+
+Run a no-network plan first:
+
+```bash
+python tools/export_wikidata_structured_corpus.py --dry-run
+```
+
+A bounded live export (requires network access) can be run explicitly:
+
+```bash
+python tools/export_wikidata_structured_corpus.py \
+  --scopes country city river mountain \
+  --limit-per-property 200 \
+  --page-size 100 \
+  --request-interval 1.25 \
+  --jsonl-out data/wikidata_structured.jsonl \
+  --triples-out data/wikidata_structured_triples.txt \
+  --manifest-out data/wikidata_structured_manifest.json
+```
+
+The canonical JSONL preserves subject QID, property ID, statement URI, object QID or literal datatype/language, Hindi/English labels, any statement-level reference URL/item, query SHA-256, endpoint, retrieval timestamp, and CC0 policy metadata. Records with no statement-level references are explicitly flagged; no citation is fabricated. The plain triple file is only a compatibility projection and must not replace the JSONL source of record.
+
+The exporter defaults to a conservative request interval, caps page size and per-property row limits, sends a descriptive User-Agent, and retries transient HTTP failures. CI uses synthetic fixtures and does not contact Wikidata. A live export is not automatically approved for training: it still requires factual-quality, privacy, safety, scope, and dataset-owner review. The exporter does not modify dataset approvals or enable production training.
+
