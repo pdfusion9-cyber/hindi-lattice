@@ -193,12 +193,19 @@ def match_statement(entity: dict[str, Any], statement_uri: str) -> tuple[dict[st
     if not wanted_suffix:
         return None, "NO_GUID_SUFFIX"
     candidates = []
+    seen_statement_objects = set()
     for candidate_id, statement in statements.items():
         candidate_suffix = statement_guid_suffix(candidate_id)
-        if candidate_suffix and candidate_suffix == wanted_suffix and statement not in candidates:
-            candidates.append(statement)
+        object_identity = id(statement)
+        if (
+            candidate_suffix
+            and candidate_suffix == wanted_suffix
+            and object_identity not in seen_statement_objects
+        ):
+            candidates.append((candidate_id, statement))
+            seen_statement_objects.add(object_identity)
     if len(candidates) == 1:
-        return candidates[0], "UNIQUE_GUID_SUFFIX"
+        return candidates[0][1], "UNIQUE_GUID_SUFFIX"
     if len(candidates) > 1:
         return None, "AMBIGUOUS_GUID_SUFFIX"
     return None, "NO_MATCH"
