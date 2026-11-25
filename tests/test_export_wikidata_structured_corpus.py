@@ -122,6 +122,32 @@ def test_export_pages_deduplicates_and_records_query_metadata():
     assert log[0]["query_sha256"] != log[1]["query_sha256"]
 
 
+def test_export_merges_multiple_statement_references():
+    first = sample_binding()
+    second = sample_binding()
+    second["reference_url"] = {"type": "uri", "value": "https://example.org/second"}
+    second["reference_item"] = {
+        "type": "uri", "value": "http://www.wikidata.org/entity/Q456"
+    }
+
+    calls = []
+
+    def fake_fetch(query, endpoint):
+        calls.append(query)
+        binding = first if len(calls) == 1 else second
+        return {"results": {"bindings": [binding]}}
+
+    scope = {"name": "tiny", "class_qid": "Q6256", "properties": (("P36", "राजधानी"),)}
+    records, _ = EXPORTER.export(
+        scopes=[scope], limit_per_property=2, page_size=1,
+        endpoint="https://example.test/sparql", request_interval=1,
+        sleep=lambda _: None, fetch=fake_fetch,
+    )
+    assert len(records) == 1
+    assert len(records[0]["source_references"]) == 4
+    assert records[0]["has_statement_reference"] is True
+
+
 def test_export_refuses_aggressive_request_rate():
     scope = {"name": "tiny", "class_qid": "Q6256", "properties": (("P36", "राजधानी"),)}
     with pytest.raises(ValueError):
