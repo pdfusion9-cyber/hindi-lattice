@@ -107,7 +107,7 @@ class AssimilationTests(unittest.TestCase):
     def test_checkpoint_resume_and_fingerprint_rejection(self):
         spec = TeacherSpec('org/teacher', '0123456789abcdef0123456789abcdef01234567', 3)
         teacher, student = FakeTeacher(spec), FakeStudent()
-        named = [(n, p) for n, p in student.named_parameters() if '.experts.3.' in n]
+        named = [(n, p) for n, p in student.named_parameters() if n.startswith('experts.3.') or '.experts.3.' in n]
         distiller = TeacherToStudentExpertDistiller(
             teacher=teacher, student_model=student, student_tokenizer=FakeTokenizer(),
             expert_id=3, trainable_named_parameters=named,
