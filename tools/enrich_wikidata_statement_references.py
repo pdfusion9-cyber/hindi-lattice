@@ -176,10 +176,14 @@ def entity_statement_map(entity: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 def statement_guid_suffix(statement_uri: str) -> str:
     tail = statement_uri.rsplit("/", 1)[-1]
+    # Strip the entity QID before normalizing the GUID. QID digits are
+    # hexadecimal characters too, so merely removing punctuation would
+    # accidentally include Q30/Q31 in the UUID comparison.
+    tail = re.sub(r"^Q[1-9][0-9]*[$-]", "", tail, flags=re.IGNORECASE)
     if "$" in tail:
         tail = tail.split("$", 1)[-1]
-    elif "-" in tail:
-        tail = tail.split("-", 1)[-1]
+    elif "-" in tail and re.match(r"^[0-9a-f]{8}-", tail, re.IGNORECASE):
+        tail = tail
     return re.sub(r"[^0-9a-f]", "", tail.lower())
 
 
