@@ -1,0 +1,536 @@
+{
+  "schema_version": 1,
+  "registry_id": "neurocore_external_foundation_weights_v1",
+  "reviewed_on": "2026-11-25",
+  "purpose": "Assimilate pretrained Indian and international open-weight checkpoints into native NeuroCore expert weights through frozen-teacher sequence distillation and exact-compatible tensor warm-starts.",
+  "integration_contract": {
+    "worker_assignment": "fixed_one_runner_to_one_expert",
+    "worker_id_equals_expert_id": true,
+    "expert_ids": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "teacher_checkpoints_are_frozen": true,
+    "student_is_native_neurocore": true,
+    "student_expert_weights_are_trainable": true,
+    "raw_tensor_transplant_into_neurocore": false,
+    "direct_tensor_copy_rule": "explicit_key_map_and_exact_shape_and_compatible_semantics_only",
+    "fallback_for_architecture_or_tokenizer_mismatch": "teacher_generated_sequence_distillation_using_student_tokenizer",
+    "logits_distillation": "only_if_vocab_and_tokenizer_fingerprints_match",
+    "modality_adapters_required": true,
+    "checkpoint_storage": "private_artifact_storage_outside_git",
+    "immutable_revision_required_before_download": true,
+    "never_upload_weight_blobs_to_public_repository": true,
+    "raw_tensor_transplant_rule": "only exact-shape, explicit-key-mapped, semantically compatible tensors; otherwise distill outputs using student tokenizer"
+  },
+  "model_sources": {
+    "sarvam_30b": {
+      "repo_id": "sarvamai/sarvam-30b",
+      "origin": "India",
+      "family": "Sarvam MoE",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "total_parameters": 30000000000,
+      "active_parameters_per_token": 2400000000,
+      "languages": 23,
+      "modalities": [
+        "text"
+      ],
+      "tasks": [
+        "Indic_language_reasoning",
+        "writing",
+        "coding",
+        "conversation",
+        "tool_use"
+      ],
+      "weight_format": "upstream safetensors; inspect exact dtype and size at pinned revision",
+      "access": "public",
+      "model_card": "https://huggingface.co/sarvamai/sarvam-30b",
+      "license_reference": "https://huggingface.co/sarvamai/sarvam-30b",
+      "readiness": "candidate",
+      "notes": "Indian-language MoE specialist. Keep native Sarvam tokenizer and runtime; do not reshape these tensors into NeuroCore."
+    },
+    "sarvam_105b_1711": {
+      "repo_id": "sarvamai/sarvam-105b-1711",
+      "origin": "India",
+      "family": "Sarvam 105B MoE",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "total_parameters": 105000000000,
+      "active_parameters_per_token": 10300000000,
+      "languages": [
+        "Indian languages",
+        "English"
+      ],
+      "modalities": [
+        "text"
+      ],
+      "tasks": [
+        "agentic_workflows",
+        "tool_calling",
+        "instruction_following",
+        "complex_Indian_language_tasks"
+      ],
+      "weight_format": "NVFP4",
+      "reported_weight_payload_gb": 65,
+      "access": "public",
+      "model_card": "https://huggingface.co/sarvamai/sarvam-105b-1711",
+      "license_reference": "https://huggingface.co/sarvamai/sarvam-105b-1711",
+      "readiness": "high_memory_candidate",
+      "hardware_note": "The published NVFP4 build is Blackwell-oriented; do not schedule on ordinary 15-24 GB GPUs. BF16 weights are in the separate sarvamai/sarvam-105b-1711-bf16 repository.",
+      "notes": "Use as a high-capability frozen teacher/agent backend, not as a 20-runner shared base."
+    },
+    "dhir_5b": {
+      "repo_id": "zenteiq-ai/Dhir-5B-A1.7B",
+      "origin": "India",
+      "family": "Dhīr 5B MoE",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "total_parameters": 5090000000,
+      "active_parameters_per_token": 1790000000,
+      "languages": [
+        "English",
+        "Hindi",
+        "Bengali",
+        "Tamil",
+        "Telugu",
+        "Marathi",
+        "Gujarati",
+        "Kannada",
+        "Malayalam",
+        "Punjabi",
+        "Odia"
+      ],
+      "modalities": [
+        "text"
+      ],
+      "tasks": [
+        "Indic_documents",
+        "edge_guidance",
+        "offline_text"
+      ],
+      "weight_format": "upstream BF16/FP16; optional independently verified Q4 GGUF",
+      "reported_fp16_weight_gb": 10.19,
+      "reported_q4_weight_gb": 2.95,
+      "access": "public",
+      "model_card": "https://huggingface.co/zenteiq-ai/Dhir-5B-A1.7B",
+      "license_reference": "https://www.zenteiq.ai/dhir/",
+      "readiness": "candidate",
+      "notes": "Compact India-trained expert; preserve its 131k tokenizer and Dhīr architecture."
+    },
+    "dhir_2b": {
+      "repo_id": "zenteiq-ai/Dhir-2B",
+      "origin": "India",
+      "family": "Dhīr 2B dense",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "total_parameters": 2030000000,
+      "active_parameters_per_token": 2030000000,
+      "languages": [
+        "English",
+        "Hindi",
+        "Bengali",
+        "Tamil",
+        "Telugu",
+        "Marathi",
+        "Gujarati",
+        "Kannada",
+        "Malayalam",
+        "Punjabi",
+        "Odia"
+      ],
+      "modalities": [
+        "text"
+      ],
+      "tasks": [
+        "low_latency_guidance",
+        "router_support",
+        "early_exit_candidate"
+      ],
+      "weight_format": "upstream BF16/FP16; optional independently verified 4-bit build",
+      "reported_fp16_weight_gb": 4.06,
+      "reported_q4_weight_gb": 1.21,
+      "access": "public",
+      "model_card": "https://huggingface.co/zenteiq-ai/Dhir-2B",
+      "license_reference": "https://www.zenteiq.ai/dhir/",
+      "readiness": "candidate",
+      "notes": "Small specialist option for low-memory early-exit/gating support; do not let it replace BG-Gate until calibrated."
+    },
+    "qwen_35b_a3b": {
+      "repo_id": "Qwen/Qwen3.5-35B-A3B",
+      "origin": "International",
+      "family": "Qwen3.5 MoE multimodal",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "total_parameters": 35000000000,
+      "active_parameters_per_token": 3000000000,
+      "modalities": [
+        "text",
+        "image"
+      ],
+      "tasks": [
+        "document_qa",
+        "ocr_layout",
+        "tables",
+        "reasoning",
+        "summarization",
+        "self_review"
+      ],
+      "weight_format": "upstream BF16/F32 safetensors; HF page reports 71.9 GB repository payload",
+      "reported_weight_payload_gb": 71.9,
+      "access": "public",
+      "model_card": "https://huggingface.co/Qwen/Qwen3.5-35B-A3B",
+      "license_reference": "https://huggingface.co/Qwen/Qwen3.5-35B-A3B",
+      "readiness": "high_memory_or_quantized_candidate",
+      "notes": "Vision-language capability makes it a strong candidate for OCR/document QA. Quantization must be generated and parity-tested separately."
+    },
+    "gpt_oss_120b": {
+      "repo_id": "openai/gpt-oss-120b",
+      "origin": "International",
+      "family": "GPT-OSS MoE",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "total_parameters": 117000000000,
+      "active_parameters_per_token": 5100000000,
+      "modalities": [
+        "text"
+      ],
+      "tasks": [
+        "high_reasoning",
+        "legal_drafting_support",
+        "technical_academic",
+        "agentic_planning",
+        "complex_tool_use"
+      ],
+      "weight_format": "upstream MXFP4",
+      "hardware_note": "Model card targets a single 80 GB GPU; verify runtime, KV-cache and serving headroom before assignment.",
+      "access": "public",
+      "model_card": "https://huggingface.co/openai/gpt-oss-120b",
+      "license_reference": "https://huggingface.co/openai/gpt-oss-120b",
+      "readiness": "high_memory_candidate",
+      "notes": "Use as a frozen reasoning/teacher backend. Legal output still needs verified Indian primary-source retrieval and human review."
+    },
+    "gpt_oss_20b": {
+      "repo_id": "openai/gpt-oss-20b",
+      "origin": "International",
+      "family": "GPT-OSS MoE",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "total_parameters": 21000000000,
+      "active_parameters_per_token": 3600000000,
+      "modalities": [
+        "text"
+      ],
+      "tasks": [
+        "summarization",
+        "self_correction",
+        "citation_checking",
+        "specialized_reasoning"
+      ],
+      "weight_format": "upstream MXFP4",
+      "access": "public",
+      "model_card": "https://huggingface.co/openai/gpt-oss-20b",
+      "license_reference": "https://huggingface.co/openai/gpt-oss-20b",
+      "readiness": "candidate",
+      "notes": "Use the Harmony chat format required by this model family."
+    },
+    "indictrans2_indic_indic": {
+      "repo_id": "ai4bharat/indictrans2-indic-indic-1B",
+      "origin": "India",
+      "family": "AI4Bharat IndicTrans2",
+      "license": "MIT",
+      "license_class": "permissive",
+      "total_parameters": 1100000000,
+      "modalities": [
+        "text"
+      ],
+      "tasks": [
+        "Indic_to_Indic_translation"
+      ],
+      "weight_format": "upstream safetensors",
+      "access": "gated_acceptance_required",
+      "model_card": "https://huggingface.co/ai4bharat/indictrans2-indic-indic-1B",
+      "license_reference": "https://huggingface.co/ai4bharat/indictrans2-indic-indic-1B",
+      "readiness": "candidate_after_huggingface_access_acceptance",
+      "notes": "Hugging Face repository requires access/terms acceptance. Do not bypass its gate."
+    },
+    "indic_parler_tts": {
+      "repo_id": "ai4bharat/indic-parler-tts",
+      "origin": "India",
+      "family": "AI4Bharat Indic Parler-TTS",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "modalities": [
+        "text",
+        "audio"
+      ],
+      "tasks": [
+        "Indic_text_to_speech"
+      ],
+      "weight_format": "upstream model weights plus Parler-TTS runtime",
+      "access": "gated_acceptance_required",
+      "model_card": "https://huggingface.co/ai4bharat/indic-parler-tts",
+      "license_reference": "https://huggingface.co/ai4bharat/indic-parler-tts",
+      "readiness": "candidate_after_huggingface_access_acceptance",
+      "notes": "Special TTS worker; not a causal text LLM. Indic-Speak is newer but has a separate license policy, listed as a conditional upgrade."
+    },
+    "mistral_small_4": {
+      "repo_id": "mistralai/Mistral-Small-4-119B-2603",
+      "origin": "International",
+      "family": "Mistral Small 4 multimodal MoE",
+      "license": "Apache-2.0",
+      "license_class": "permissive",
+      "total_parameters": 119000000000,
+      "active_parameters_per_token": 6500000000,
+      "modalities": [
+        "text",
+        "image"
+      ],
+      "tasks": [
+        "reasoning",
+        "vision",
+        "function_calling",
+        "agentic_workflows"
+      ],
+      "weight_format": "upstream BF16; separate NVFP4 variant exists",
+      "reported_nvfp4_memory_gb": 60,
+      "access": "public",
+      "model_card": "https://huggingface.co/mistralai/Mistral-Small-4-119B-2603",
+      "license_reference": "https://docs.mistral.ai/models/mistral-small-4",
+      "readiness": "optional_high_memory_alternative",
+      "notes": "Powerful but not a sensible default on 15-24 GB runners."
+    }
+  },
+  "conditional_upgrades": [
+    {
+      "model_key": "bodhan_indic_translate",
+      "repo_id": "bodhan-ai/indic-translate",
+      "origin": "India",
+      "total_parameters": 7940000000,
+      "license": "Indic Open Model License v1.0",
+      "status": "conditional",
+      "model_card": "https://huggingface.co/bodhan-ai/indic-translate",
+      "blocker": "Hugging Face access gate; derivative distributions must retain the same license; hosting as a multi-tenant API requires written approval unless its stated open-release exception is met.",
+      "note": "The model card reports stronger document translation than IndicTrans2, including 22 Indian languages; use only after project-side license acceptance."
+    },
+    {
+      "model_key": "bodhan_indic_speak",
+      "repo_id": "bodhan-ai/indic-speak",
+      "origin": "India",
+      "total_parameters": 3780000000,
+      "license": "Indic Open Model License v1.0",
+      "status": "conditional",
+      "model_card": "https://huggingface.co/bodhan-ai/indic-speak",
+      "blocker": "Hugging Face access gate; derivatives inherit this license; multi-tenant hosted API use requires written approval unless its stated open-release exception is met.",
+      "note": "Newer 22-Indian-language speech model; use only after explicit terms/access acceptance."
+    }
+  ],
+  "assignments": [
+    {
+      "expert_id": 0,
+      "expert_name": "doc_editing",
+      "worker_id": 0,
+      "teacher_key": "sarvam_30b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 1,
+      "expert_name": "doc_creation",
+      "worker_id": 1,
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 2,
+      "expert_name": "summarization",
+      "worker_id": 2,
+      "teacher_key": "gpt_oss_20b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 3,
+      "expert_name": "reading_qa",
+      "worker_id": 3,
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 4,
+      "expert_name": "read_aloud",
+      "worker_id": 4,
+      "teacher_key": "indic_parler_tts",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 5,
+      "expert_name": "user_guidance",
+      "worker_id": 5,
+      "teacher_key": "dhir_5b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 6,
+      "expert_name": "legal_contracts",
+      "worker_id": 6,
+      "teacher_key": "gpt_oss_120b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 7,
+      "expert_name": "legal_compliance",
+      "worker_id": 7,
+      "teacher_key": "sarvam_30b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 8,
+      "expert_name": "professional_comms",
+      "worker_id": 8,
+      "teacher_key": "sarvam_30b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 9,
+      "expert_name": "tables_ledgers",
+      "worker_id": 9,
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 10,
+      "expert_name": "ocr_pdf_layout",
+      "worker_id": 10,
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 11,
+      "expert_name": "hindi_indic_docs",
+      "worker_id": 11,
+      "teacher_key": "dhir_5b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 12,
+      "expert_name": "translation",
+      "worker_id": 12,
+      "teacher_key": "indictrans2_indic_indic",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 13,
+      "expert_name": "citations_dola",
+      "worker_id": 13,
+      "teacher_key": "gpt_oss_20b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 14,
+      "expert_name": "technical_academic",
+      "worker_id": 14,
+      "teacher_key": "gpt_oss_120b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 15,
+      "expert_name": "hippocampal_d2l",
+      "worker_id": 15,
+      "teacher_key": "qwen_35b_a3b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 16,
+      "expert_name": "self_correction_mnl",
+      "worker_id": 16,
+      "teacher_key": "gpt_oss_20b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 17,
+      "expert_name": "coconut_planning",
+      "worker_id": 17,
+      "teacher_key": "sarvam_105b_1711",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 18,
+      "expert_name": "bg_gate_early_exit",
+      "worker_id": 18,
+      "teacher_key": "dhir_2b",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    },
+    {
+      "expert_id": 19,
+      "expert_name": "fabric_swarm_tools",
+      "worker_id": 19,
+      "teacher_key": "sarvam_105b_1711",
+      "transfer_mode": "frozen_teacher_to_train_native_neurocore_expert"
+    }
+  ],
+  "evaluation_contract": {
+    "held_out_suite_required_before_default_routing": true,
+    "evaluate_each_expert_separately": true,
+    "metrics": [
+      "task_success",
+      "exact_match_or_task_metric",
+      "factuality",
+      "citation_precision",
+      "latency",
+      "peak_vram",
+      "throughput",
+      "safety_refusal_quality"
+    ],
+    "compare_against_native_neurocore": true,
+    "no_90_percent_accuracy_claim_without_measurement": true,
+    "never_share_raw_user_documents_with_external_model_provider_without_explicit_policy": true
+  },
+  "training_plan": {
+    "teacher_stage": "load teacher in native architecture, freeze all teacher parameters, record source revision and hashes",
+    "student_stage": "train only native NeuroCore expert assigned to runner ID",
+    "frozen_student_components": [
+      "shared_backbone",
+      "router",
+      "other_19_experts",
+      "unassigned_modules"
+    ],
+    "resume_state": [
+      "student_expert_weights",
+      "optimizer",
+      "scheduler",
+      "rng",
+      "teacher_revision",
+      "base_fingerprint",
+      "tokenizer_fingerprint",
+      "dataset_fingerprint",
+      "data_cursor"
+    ],
+    "evaluation": [
+      "held_out_task_quality",
+      "factuality",
+      "citation_precision",
+      "latency",
+      "peak_vram",
+      "safety",
+      "data_contamination"
+    ],
+    "production_status": "not_started_until_canonical_forward_path_and_hardware_are_verified"
+  }
+}
