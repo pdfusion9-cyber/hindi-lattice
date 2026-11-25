@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import torch
 
+from modeling_neurocore_edge import NeuroCoreEdgeConfig, NeuroCoreEdgeForCausalLM
+
 from teacher_weight_assimilation import (
     FrozenTeacher, TeacherSpec, TeacherToStudentExpertDistiller,
     build_native_neurocore_expert_distiller, copy_exact_compatible_tensors,
@@ -123,6 +125,39 @@ class AssimilationTests(unittest.TestCase):
             self.assertEqual(resumed['steps_completed'], 1)
             with self.assertRaises(ValueError):
                 distiller.load_checkpoint(checkpoint, base_fingerprint='base-b', tokenizer_fingerprint='tok-a', dataset_fingerprint='data-a')
+
+    def test_real_neurocore_model_assimilates_teacher_into_one_expert(self):
+        torch.manual_seed(17)
+        cfg = NeuroCoreEdgeConfig(
+            vocab_size=31, hidden_size=8, num_hidden_layers=2,
+            num_experts=20, experts_per_token=2, expert_intermediate_size=8,
+            attention_heads=2, kv_heads=1, sliding_window=8,
+            recurrent_state_size=4,
+        )
+        student = NeuroCoreEdgeForCausalLM(cfg)
+        spec = TeacherSpec(
+            'org/teacher', '0123456789abcdef0123456789abcdef01234567', 6
+        )
+        teacher = FakeTeacher(spec)
+        before = {name: p.detach().clone() for name, p in student.named_parameters()}
+        distiller = build_native_neurocore_expert_distiller(
+            teacher=teacher, student_model=student,
+            student_tokenizer=FakeTokenizer(), expert_id=6,
+        )
+        report = distiller.train(['दस्तावेज़ का सारांश बनाओ'], steps=2)
+        self.assertEqual(report['status'], 'TEACHER_TO_STUDENT_EXPERT_DISTILLATION_PASS')
+        self.assertEqual(report['expert_id'], 6)
+        self.assertTrue(report['teacher_frozen'])
+        after = dict(student.named_parameters())
+        selected_changed = []
+        for name, old in before.items():
+            changed = not torch.equal(old, after[name].detach())
+            if changed:
+                self.assertTrue(name.startswith('experts.6.') or '.experts.6.' in name, name)
+                selected_changed.append(name)
+            else:
+                self.assertFalse(name.startswith('experts.6.') or '.experts.6.' in name if name in after else False)
+        self.assertTrue(selected_changed, 'assigned NeuroCore expert weights did not change')
 
     def test_unpinned_revision_is_rejected(self):
         with self.assertRaises(ValueError):
