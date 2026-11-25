@@ -67,13 +67,7 @@ jobs:
           python -m py_compile tools/build_wikidata_citation_review.py
       - name: Run grouped-answer and micro-agent gate tests
         run: |
-          python -m pytest -q \
-            models/neurocore_edge/test_training_micro_agents.py \
-            models/neurocore_edge/test_grouped_answer_word_prediction.py \
-            tests/test_export_wikidata_structured_corpus.py \
-            tests/test_audit_wikidata_structured_corpus.py \
-            tests/test_enrich_wikidata_statement_references.py \\
-            tests/test_build_wikidata_citation_review.py
+          python -m pytest -q models/neurocore_edge/test_training_micro_agents.py models/neurocore_edge/test_grouped_answer_word_prediction.py tests/test_export_wikidata_structured_corpus.py tests/test_audit_wikidata_structured_corpus.py tests/test_enrich_wikidata_statement_references.py tests/test_build_wikidata_citation_review.py
       - name: Confirm production training remains disabled
         run: |
           python - <<'PY'
