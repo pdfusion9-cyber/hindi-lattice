@@ -60,7 +60,7 @@ class AssimilationTests(unittest.TestCase):
         before = [p.detach().clone() for p in student.parameters()]
         named = [
             (name, p) for name, p in student.named_parameters()
-            if ".experts.3." in name
+            if name.startswith("experts.3.") or ".experts.3." in name
         ]
         distiller = TeacherToStudentExpertDistiller(
             teacher=teacher,
