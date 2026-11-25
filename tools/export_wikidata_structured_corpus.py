@@ -126,11 +126,8 @@ WHERE {{
   BIND(IF(isLiteral(?object), STR(?object), "") AS ?object_lexical)
   BIND(IF(isLiteral(?object), STR(DATATYPE(?object)), "") AS ?object_datatype)
   BIND(IF(isLiteral(?object), LANG(?object), "") AS ?object_language)
-  OPTIONAL {{
-    ?statement prov:wasDerivedFrom ?reference .
-    OPTIONAL {{ ?reference pr:P854 ?reference_url . }}
-    OPTIONAL {{ ?reference pr:P248 ?reference_item . }}
-  }}
+  # Reference nodes are fetched in the dedicated Action API enrichment step.
+  # Avoid a costly provenance join in the bounded SPARQL export.
 }}
 ORDER BY STR(?subject) STR(?statement) STR(?object) STR(?reference_url)
 LIMIT {limit}
@@ -366,7 +363,27 @@ def export(
                 retrieved = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                 last_request_started = time.monotonic()
                 query_hash = sha256_text(query)
-                payload = fetch(query, endpoint=endpoint)
+                try:
+                    payload = fetch(query, endpoint=endpoint)
+                except RuntimeError as exc:
+                    # WDQS can time out on a page that is too broad. Retry the
+                    # same offset with a smaller LIMIT; never skip the page.
+                    if page_limit <= 1 or not any(
+                        marker in str(exc).lower()
+                        for marker in ("http 429", "http 500", "http 502", "http 503", "http 504", "timed out")
+                    ):
+                        raise
+                    reduced = max(1, page_limit // 2)
+                    query_log.append({
+                        "scope": scope["name"], "class_qid": scope["class_qid"],
+                        "property_id": property_id, "offset": offset,
+                        "limit": page_limit, "result_rows": 0,
+                        "retry": "REDUCED_PAGE_SIZE_AFTER_TRANSIENT_ERROR",
+                        "next_limit": reduced,
+                        "error": str(exc)[:300],
+                    })
+                    page_size = min(page_size, reduced)
+                    continue
                 batch = parse_results(
                     payload,
                     property_id=property_id,
