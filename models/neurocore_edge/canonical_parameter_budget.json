@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "architecture_version": "0.3.2-canonical-reference",
-  "source": "Pending executable meta-device count from modeling_neurocore_edge.py; do not treat arithmetic estimate as a trained model.",
+  "source": "Executable PyTorch meta-device count of modeling_neurocore_edge.py, verified in GitHub Actions run 45681664117 (run #128); repeated core blocks counted once and tied embedding/lm_head counted once.",
   "expected_total_parameters": 3074921472,
   "expected_shared_parameters": 225088512,
   "expected_expert_parameters": 2849832960,
@@ -17,12 +17,19 @@
   "unique_parameterized_blocks": 8,
   "effective_depth": 24,
   "meta_token_count": 128,
-  "status": "PROVISIONAL_ARITHMETIC_ESTIMATE_NOT_YET_META_VERIFIED",
+  "status": "META_DEVICE_VERIFIED",
   "previous_budget_correction": {
     "previous_expected_total_parameters": 3074885656,
     "previous_expected_shared_parameters": 872876056,
     "previous_expected_expert_parameters": 2202009600,
     "reason": "The previous expert split implied width 2240 and contradicted the checked-in config width 2899."
   },
-  "note": "The executable counter in count_canonical_parameters.py must pass and its exact output must be reconciled before this budget is marked verified. No weights are trained by this audit."
+  "note": "The executable counter in count_canonical_parameters.py must pass and its exact output must be reconciled before this budget is marked verified. No weights are trained by this audit.",
+  "verification": {
+    "workflow_run_id": 45681664117,
+    "run_number": 128,
+    "run_url": "https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45681664117",
+    "budget_matches": true,
+    "weight_storage_allocated": false
+  }
 }
