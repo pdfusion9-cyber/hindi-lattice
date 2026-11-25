@@ -164,9 +164,44 @@ def entity_statement_map(entity: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if not isinstance(claims_for_property, list):
             continue
         for statement in claims_for_property:
-            if isinstance(statement, dict) and isinstance(statement.get("id"), str):
-                statements[statement["id"]] = statement
+            if isinstance(statement, dict):
+                statement_id = statement.get("id")
+                if isinstance(statement_id, str):
+                    statements[statement_id] = statement
+                guid = statement.get("guid")
+                if isinstance(guid, str):
+                    statements.setdefault(guid, statement)
     return statements
+
+
+def statement_guid_suffix(statement_uri: str) -> str:
+    tail = statement_uri.rsplit("/", 1)[-1]
+    if "$" in tail:
+        tail = tail.split("$", 1)[-1]
+    elif "-" in tail:
+        tail = tail.split("-", 1)[-1]
+    return re.sub(r"[^0-9a-f]", "", tail.lower())
+
+
+def match_statement(entity: dict[str, Any], statement_uri: str) -> tuple[dict[str, Any] | None, str]:
+    statements = entity_statement_map(entity)
+    requested_id = statement_api_id(statement_uri)
+    exact = statements.get(requested_id)
+    if exact is not None:
+        return exact, "EXACT_ID"
+    wanted_suffix = statement_guid_suffix(statement_uri)
+    if not wanted_suffix:
+        return None, "NO_GUID_SUFFIX"
+    candidates = []
+    for candidate_id, statement in statements.items():
+        candidate_suffix = statement_guid_suffix(candidate_id)
+        if candidate_suffix and candidate_suffix == wanted_suffix and statement not in candidates:
+            candidates.append(statement)
+    if len(candidates) == 1:
+        return candidates[0], "UNIQUE_GUID_SUFFIX"
+    if len(candidates) > 1:
+        return None, "AMBIGUOUS_GUID_SUFFIX"
+    return None, "NO_MATCH"
 
 
 def enrich_rows(
@@ -213,6 +248,7 @@ def enrich_rows(
             row["reference_enrichment"] = {
                 "status": "ENTITY_NOT_RETURNED", "api_endpoint": endpoint,
                 "retrieved_at_utc": retrieved,
+                "match_method": match_method,
             }
             row["wikidata_reference_records"] = []
             row["has_external_citation"] = False
@@ -220,8 +256,9 @@ def enrich_rows(
             enriched.append(row)
             continue
         entity_revisions[qid] = entity.get("lastrevid")
-        statement_id = statement_api_id(str(row.get("statement_uri", "")))
-        statement = entity_statement_map(entity).get(statement_id)
+        statement_uri = str(row.get("statement_uri", ""))
+        statement_id = statement_api_id(statement_uri)
+        statement, match_method = match_statement(entity, statement_uri)
         if statement is None:
             row["reference_enrichment"] = {
                 "status": "STATEMENT_NOT_MATCHED", "api_endpoint": endpoint,
@@ -263,6 +300,7 @@ def enrich_rows(
             "status": "MATCHED", "api_endpoint": endpoint,
             "entity_revision_id": entity.get("lastrevid"),
             "retrieved_at_utc": retrieved, "statement_id": statement_id,
+            "match_method": match_method,
         }
         matched += 1
         enriched.append(row)
