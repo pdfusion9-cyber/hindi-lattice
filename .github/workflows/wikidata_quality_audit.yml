@@ -11,6 +11,8 @@ on:
       - 'tests/test_export_wikidata_structured_corpus.py'
       - 'tests/test_audit_wikidata_structured_corpus.py'
       - 'tests/test_enrich_wikidata_statement_references.py'
+      - 'tools/build_wikidata_citation_review.py'
+      - 'tests/test_build_wikidata_citation_review.py'
       - '.github/workflows/wikidata_quality_audit.yml'
 
 permissions:
@@ -68,6 +70,30 @@ jobs:
           python tools/audit_wikidata_structured_corpus.py \
             --input /tmp/wikidata-audit-200-enriched.jsonl \
             --report /tmp/wikidata-audit-200-report.json
+      - name: Build property-wise citation and human review report
+        run: |
+          python tools/build_wikidata_citation_review.py \
+            --input /tmp/wikidata-audit-200-enriched.jsonl \
+            --json-report /tmp/wikidata-citation-review.json \
+            --markdown-report /tmp/wikidata-citation-review.md
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/wikidata-citation-review.json").read_text(encoding="utf-8"))
+          assert report["record_count"] <= 200
+          assert report["training_approved_record_count"] == 0
+          assert report["citation_gap_review_count"] <= report["record_count"]
+          assert report["multi_value_group_count"] >= 0
+          assert report["overall"]["statements_unmatched"] == 0
+          assert Path("/tmp/wikidata-citation-review.md").is_file()
+          print(json.dumps({
+              "status": report["status"],
+              "per_property": report["per_property"],
+              "citation_gap_review_count": report["citation_gap_review_count"],
+              "multi_value_group_count": report["multi_value_group_count"],
+              "training_approved_records": 0
+          }, ensure_ascii=False))
+          PY
       - name: Verify outputs and keep training approval closed
         run: |
           python - <<'PY'
