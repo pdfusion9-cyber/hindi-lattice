@@ -46,7 +46,11 @@ jobs:
         working-directory: models/neurocore_edge
         env:
           PYTHONPATH: .
-        run: python -m unittest -v test_canonical_architecture_audit
+        run: |
+          python -m unittest -v test_canonical_architecture_audit
+          python -m unittest -v test_count_canonical_parameters
+      - name: Verify full canonical parameter count on meta device
+        run: python models/neurocore_edge/count_canonical_parameters.py --repo-root .
       - name: Report current canonical readiness blockers
         run: python models/neurocore_edge/canonical_architecture_audit.py --repo-root .
       - name: Verify default-deny gates
@@ -59,7 +63,7 @@ jobs:
           assert p["training"]["enabled"] is False
           assert p["training"]["quantization_enabled"] is False
           assert p["num_experts"] == 20 and p["experts_per_token"] == 2
-          assert p["expected_total_parameters"] == 3074885656
+          assert p["expected_total_parameters"] == 3074921472
           d=json.loads(Path("models/neurocore_edge/dataset_approval.json").read_text())
           assert d["status"] == "ALL_DATASETS_PENDING_REVIEW"
           assert not d["approved_training_artifacts"] and not d["approved_tokenizers"]
