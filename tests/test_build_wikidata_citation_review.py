@@ -51,7 +51,7 @@ def test_multi_value_review_contains_values_without_marking_them_false():
     group = report["multi_value_groups"][0]
     assert group["decision"] == "PENDING_HUMAN_REVIEW"
     assert {item["object_qid"] for item in group["values"]} == {"Q60", "Q61"}
-    assert "not automatically" in group["note"]
+    assert "no automatic rejection" in group["note"]
 
 
 def test_url_domains_are_normalized_and_source_properties_counted():
