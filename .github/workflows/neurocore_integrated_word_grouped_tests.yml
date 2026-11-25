@@ -1,0 +1,76 @@
+name: NeuroCore Integrated Word and Grouped Answer Tests
+
+on:
+  pull_request:
+    branches: [feat/hybrid-micro-agent-architecture-20261123]
+    paths:
+      - 'tools/neurocore_native_grouped_answer_word_prediction.py'
+      - 'models/neurocore_edge/training_micro_agents.py'
+      - 'models/neurocore_edge/cpu_training_agents.py'
+      - 'models/neurocore_edge/micro_agent_runtime.py'
+      - 'models/neurocore_edge/test_training_micro_agents.py'
+      - 'models/neurocore_edge/test_grouped_answer_word_prediction.py'
+      - 'tools/export_wikidata_structured_corpus.py'
+      - 'tools/audit_wikidata_structured_corpus.py'
+      - 'tests/test_audit_wikidata_structured_corpus.py'
+      - 'tests/test_export_wikidata_structured_corpus.py'
+      - '.github/workflows/neurocore_integrated_word_grouped_tests.yml'
+  push:
+    branches: [feat/integrated-word-grouped-pipeline-20261124]
+    paths:
+      - 'tools/neurocore_native_grouped_answer_word_prediction.py'
+      - 'models/neurocore_edge/training_micro_agents.py'
+      - 'models/neurocore_edge/cpu_training_agents.py'
+      - 'models/neurocore_edge/micro_agent_runtime.py'
+      - 'models/neurocore_edge/test_training_micro_agents.py'
+      - 'models/neurocore_edge/test_grouped_answer_word_prediction.py'
+      - 'tools/export_wikidata_structured_corpus.py'
+      - 'tests/test_export_wikidata_structured_corpus.py'
+      - '.github/workflows/neurocore_integrated_word_grouped_tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integrated-training-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/integrated-word-grouped-pipeline-20261124
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu 'torch>=2.6'
+          python -m pip install pytest
+      - name: Compile integrated training modules
+        run: |
+          python -m py_compile tools/neurocore_native_grouped_answer_word_prediction.py
+          python -m py_compile models/neurocore_edge/training_micro_agents.py
+          python -m py_compile models/neurocore_edge/cpu_training_agents.py
+          python -m py_compile tools/export_wikidata_structured_corpus.py
+          python -m py_compile tools/audit_wikidata_structured_corpus.py
+      - name: Run grouped-answer and micro-agent gate tests
+        run: |
+          python -m pytest -q \
+            models/neurocore_edge/test_training_micro_agents.py \
+            models/neurocore_edge/test_grouped_answer_word_prediction.py \
+            tests/test_export_wikidata_structured_corpus.py \
+            tests/test_audit_wikidata_structured_corpus.py
+      - name: Confirm production training remains disabled
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          config = json.loads(Path("models/neurocore_edge/config.json").read_text(encoding="utf-8"))
+          approvals = json.loads(Path("models/neurocore_edge/dataset_approval.json").read_text(encoding="utf-8"))
+          assert config["training"]["enabled"] is False
+          assert approvals["status"] == "ALL_DATASETS_PENDING_REVIEW"
+          assert not any(row.get("approved") for row in approvals["datasets"])
+          print("Production gate remains CLOSED; test suite uses synthetic fixtures only.")
+          PY
