@@ -113,7 +113,7 @@ WHERE {{
     ?object rdfs:label ?object_label_en .
     FILTER(LANG(?object_label_en) = "en")
   }}
-  BIND(IF(isIRI(?object), REPLACE(STR(?object), "^https?://www\\\\.wikidata\\\\.org/entity/", ""), "") AS ?object_qid)
+  BIND(IF(isIRI(?object), REPLACE(STR(?object), "^https?://www\\.wikidata\\.org/entity/", ""), "") AS ?object_qid)
   BIND(IF(isLiteral(?object), STR(?object), "") AS ?object_lexical)
   BIND(IF(isLiteral(?object), STR(DATATYPE(?object)), "") AS ?object_datatype)
   BIND(IF(isLiteral(?object), LANG(?object), "") AS ?object_language)
