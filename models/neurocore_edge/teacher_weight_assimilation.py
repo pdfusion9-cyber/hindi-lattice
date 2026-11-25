@@ -178,6 +178,7 @@ class TeacherToStudentExpertDistiller:
         self.student_forward = student_forward
         self.optimizer = torch.optim.AdamW(parameters, lr=learning_rate)
         self.steps_completed = 0
+        self.data_cursor = 0
 
     def _student_batch(self, prompt: str, target: str):
         import torch
@@ -239,6 +240,7 @@ class TeacherToStudentExpertDistiller:
             "teacher_repo_id": self.teacher.spec.repo_id,
             "teacher_revision": self.teacher.spec.revision,
             "steps_completed": self.steps_completed,
+            "data_cursor": self.data_cursor,
             "fingerprints": fingerprints,
             "student_expert_state": {
                 name: parameter.detach().cpu().clone()
@@ -246,6 +248,7 @@ class TeacherToStudentExpertDistiller:
             },
             "optimizer_state_dict": self.optimizer.state_dict(),
             "torch_rng_state": torch.get_rng_state(),
+            "cuda_rng_states": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
             "provenance": {
                 "teacher_frozen": True,
                 "student_only_assigned_expert_trainable": True,
@@ -321,7 +324,13 @@ class TeacherToStudentExpertDistiller:
                 parameter.copy_(tensor.to(device=parameter.device))
         self.optimizer.load_state_dict(payload["optimizer_state_dict"])
         self.steps_completed = int(payload["steps_completed"])
+        self.data_cursor = int(payload.get("data_cursor", self.steps_completed))
         torch.set_rng_state(payload["torch_rng_state"].cpu())
+        cuda_states = payload.get("cuda_rng_states")
+        if cuda_states is not None and torch.cuda.is_available():
+            if len(cuda_states) != torch.cuda.device_count():
+                raise ValueError("CUDA RNG device-count mismatch on resume")
+            torch.cuda.set_rng_state_all(cuda_states)
         return {
             "status": "TEACHER_DISTILLATION_CHECKPOINT_RESUMED",
             "expert_id": self.expert_id,
@@ -359,6 +368,7 @@ class TeacherToStudentExpertDistiller:
         )
         self.optimizer.step()
         self.steps_completed += 1
+        self.data_cursor += 1
         # Assert frozen teacher and all non-selected student tensors remain frozen.
         if any(p.requires_grad for p in self.teacher.model.parameters()):
             raise RuntimeError("teacher weights unexpectedly became trainable")
@@ -371,8 +381,8 @@ class TeacherToStudentExpertDistiller:
         if steps < 1:
             raise ValueError("steps must be positive")
         losses = [
-            self.train_step(prompt_list[index % len(prompt_list)], max_new_tokens=max_new_tokens)
-            for index in range(steps)
+            self.train_step(prompt_list[self.data_cursor % len(prompt_list)], max_new_tokens=max_new_tokens)
+            for _ in range(steps)
         ]
         return {
             "status": "TEACHER_TO_STUDENT_EXPERT_DISTILLATION_PASS",
