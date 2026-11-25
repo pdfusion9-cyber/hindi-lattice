@@ -336,6 +336,7 @@ def export(
     page_size: int,
     endpoint: str,
     request_interval: float,
+    max_records: int | None = None,
     sleep=time.sleep,
     fetch=fetch_query,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -345,6 +346,8 @@ def export(
         raise ValueError("page-size must be in 1..min(500, limit-per-property)")
     if request_interval < 1.0:
         raise ValueError("request-interval must be at least 1 second")
+    if max_records is not None and max_records < 1:
+        raise ValueError("max-records must be a positive integer")
 
     records: dict[str, dict[str, Any]] = {}
     query_log = []
@@ -408,9 +411,35 @@ def export(
                 if raw_count < page_limit:
                     break
 
-    return sorted(records.values(), key=lambda row: (
+    ordered = sorted(records.values(), key=lambda row: (
         row["subject_qid"], row["property_id"], row["statement_uri"], row["record_id"]
-    )), query_log
+    ))
+    if max_records is not None and len(ordered) > max_records:
+        # Deterministic, property-stratified cap: take one row from each
+        # property per round until the global limit is reached.
+        by_property: dict[str, list[dict[str, Any]]] = {}
+        for row in ordered:
+            by_property.setdefault(row["property_id"], []).append(row)
+        property_ids = sorted(by_property)
+        cursors = {property_id: 0 for property_id in property_ids}
+        selected = []
+        while len(selected) < max_records:
+            made_progress = False
+            for property_id in property_ids:
+                index = cursors[property_id]
+                rows_for_property = by_property[property_id]
+                if index < len(rows_for_property):
+                    selected.append(rows_for_property[index])
+                    cursors[property_id] += 1
+                    made_progress = True
+                    if len(selected) == max_records:
+                        break
+            if not made_progress:
+                break
+        ordered = sorted(selected, key=lambda row: (
+            row["subject_qid"], row["property_id"], row["statement_uri"], row["record_id"]
+        ))
+    return ordered, query_log
 
 
 def main() -> int:
@@ -419,6 +448,8 @@ def main() -> int:
                         default=["country", "city", "river", "mountain"])
     parser.add_argument("--limit-per-property", type=int, default=200)
     parser.add_argument("--page-size", type=int, default=100)
+    parser.add_argument("--max-records", type=int, default=None,
+                        help="global deterministic property-stratified output cap")
     parser.add_argument("--request-interval", type=float, default=1.25)
     parser.add_argument("--endpoint", default=ENDPOINT)
     parser.add_argument("--jsonl-out", type=Path, default=Path("data/wikidata_structured.jsonl"))
@@ -441,6 +472,7 @@ def main() -> int:
             "planned_query_count": len(planned),
             "limit_per_property": args.limit_per_property,
             "page_size": args.page_size,
+            "max_records": args.max_records,
             "request_interval_seconds": args.request_interval,
             "planned_queries": planned,
         }, ensure_ascii=False, indent=2))
@@ -452,6 +484,7 @@ def main() -> int:
         page_size=args.page_size,
         endpoint=args.endpoint,
         request_interval=args.request_interval,
+        max_records=args.max_records,
     )
     jsonl = "".join(canonical_json(row) + "\n" for row in records)
     triples = set()
@@ -474,6 +507,7 @@ def main() -> int:
         "limits": {
             "limit_per_property": args.limit_per_property,
             "page_size": args.page_size,
+            "max_records": args.max_records,
             "request_interval_seconds": args.request_interval,
         },
         "record_count": len(records),
