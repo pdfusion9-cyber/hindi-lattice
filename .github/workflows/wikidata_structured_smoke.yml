@@ -1,0 +1,87 @@
+name: Wikidata Structured Data Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/integrated-word-grouped-pipeline-20261124]
+    paths:
+      - 'tools/export_wikidata_structured_corpus.py'
+      - 'tests/test_export_wikidata_structured_corpus.py'
+      - '.github/workflows/wikidata_structured_smoke.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-wikidata-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/integrated-word-grouped-pipeline-20261124
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate offline plan
+        run: |
+          python tools/export_wikidata_structured_corpus.py \
+            --dry-run --scopes country > /tmp/wikidata-dry-run.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          plan = json.loads(Path("/tmp/wikidata-dry-run.json").read_text())
+          assert plan["status"] == "DRY_RUN_NO_NETWORK"
+          assert plan["planned_query_count"] == 6
+          assert plan["endpoint"] == "https://query.wikidata.org/sparql"
+          print("Offline plan valid; no query was sent in this step.")
+          PY
+      - name: Run tiny live structured-data export (no artifacts)
+        run: |
+          python tools/export_wikidata_structured_corpus.py \
+            --scopes country \
+            --limit-per-property 5 \
+            --page-size 5 \
+            --request-interval 1.25 \
+            --jsonl-out /tmp/wikidata-smoke.jsonl \
+            --triples-out /tmp/wikidata-smoke-triples.txt \
+            --manifest-out /tmp/wikidata-smoke-manifest.json
+      - name: Verify smoke outputs without printing records
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          jsonl = Path("/tmp/wikidata-smoke.jsonl")
+          triples = Path("/tmp/wikidata-smoke-triples.txt")
+          manifest_path = Path("/tmp/wikidata-smoke-manifest.json")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          rows = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line]
+          triple_lines = [line for line in triples.read_text(encoding="utf-8").splitlines() if line]
+          assert rows, "live Wikidata smoke export returned no records"
+          assert len(rows) <= 30, "smoke export exceeded the 6 x 5 row cap"
+          assert manifest["record_count"] == len(rows)
+          assert manifest["source_license"] == "CC0-1.0"
+          assert manifest["dataset_id"] == "wikidata_structured_hindi_traceable_v1"
+          required = {
+              "record_id", "subject_qid", "property_id", "statement_uri",
+              "statement_rank", "retrieved_at_utc", "source_query_sha256",
+              "source_endpoint", "source_license", "source_references",
+          }
+          assert all(required <= set(row) for row in rows)
+          assert all(row["statement_rank"] and "DeprecatedRank" not in row["statement_rank"] for row in rows)
+          assert all(row["source_endpoint"] == manifest["endpoint"] for row in rows)
+          hashes = manifest["outputs"]
+          assert hashes["jsonl"]["sha256"] == hashlib.sha256(jsonl.read_bytes()).hexdigest()
+          assert hashes["triples"]["sha256"] == hashlib.sha256(triples.read_bytes()).hexdigest()
+          assert manifest["query_count"] == 6
+          print(json.dumps({
+              "status": "LIVE_WIKIDATA_SMOKE_PASS",
+              "records": len(rows),
+              "compatibility_triples": len(triple_lines),
+              "with_statement_references": manifest["records_with_statement_references"],
+              "without_statement_references": manifest["records_without_statement_references"],
+              "queries": manifest["query_count"],
+              "manifest_hashes_verified": True,
+              "artifacts_uploaded": False,
+          }, ensure_ascii=False))
+          PY
