@@ -154,8 +154,11 @@ class TeacherToStudentExpertDistiller:
             raise ValueError("teacher and student expert_id must match the fixed assignment")
         if not trainable_named_parameters:
             raise ValueError("no trainable student-expert parameters supplied")
-        marker = f".experts.{expert_id}."
-        bad_names = [name for name, _ in trainable_named_parameters if marker not in name]
+        marker = f"experts.{expert_id}."
+        bad_names = [
+            name for name, _ in trainable_named_parameters
+            if not (name.startswith(marker) or f".{marker}" in name)
+        ]
         if bad_names:
             raise ValueError(
                 "only parameters belonging to the assigned expert may be trainable: "
@@ -402,11 +405,11 @@ def build_native_neurocore_expert_distiller(
         raise ValueError("student must be the configured native 20-expert NeuroCore model")
     if not callable(getattr(student_model, "forward", None)):
         raise TypeError("student model must expose a forward method")
-    marker = f".experts.{expert_id}."
+    marker = f"experts.{expert_id}."
     trainable = [
         (name, parameter)
         for name, parameter in student_model.named_parameters()
-        if marker in name
+        if name.startswith(marker) or f".{marker}" in name
     ]
     if not trainable:
         raise ValueError(f"native NeuroCore expert {expert_id} has no trainable tensors")
