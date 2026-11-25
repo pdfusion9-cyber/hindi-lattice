@@ -10,6 +10,8 @@ on:
       - 'models/neurocore_edge/micro_agent_runtime.py'
       - 'models/neurocore_edge/test_training_micro_agents.py'
       - 'models/neurocore_edge/test_grouped_answer_word_prediction.py'
+      - 'tools/export_wikidata_structured_corpus.py'
+      - 'tests/test_export_wikidata_structured_corpus.py'
       - '.github/workflows/neurocore_integrated_word_grouped_tests.yml'
   push:
     branches: [feat/integrated-word-grouped-pipeline-20261124]
@@ -20,6 +22,8 @@ on:
       - 'models/neurocore_edge/micro_agent_runtime.py'
       - 'models/neurocore_edge/test_training_micro_agents.py'
       - 'models/neurocore_edge/test_grouped_answer_word_prediction.py'
+      - 'tools/export_wikidata_structured_corpus.py'
+      - 'tests/test_export_wikidata_structured_corpus.py'
       - '.github/workflows/neurocore_integrated_word_grouped_tests.yml'
   workflow_dispatch:
 
@@ -47,11 +51,13 @@ jobs:
           python -m py_compile tools/neurocore_native_grouped_answer_word_prediction.py
           python -m py_compile models/neurocore_edge/training_micro_agents.py
           python -m py_compile models/neurocore_edge/cpu_training_agents.py
+          python -m py_compile tools/export_wikidata_structured_corpus.py
       - name: Run grouped-answer and micro-agent gate tests
         run: |
           python -m pytest -q \
             models/neurocore_edge/test_training_micro_agents.py \
-            models/neurocore_edge/test_grouped_answer_word_prediction.py
+            models/neurocore_edge/test_grouped_answer_word_prediction.py \
+            tests/test_export_wikidata_structured_corpus.py
       - name: Confirm production training remains disabled
         run: |
           python - <<'PY'
