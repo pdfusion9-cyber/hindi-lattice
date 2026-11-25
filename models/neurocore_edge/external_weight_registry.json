@@ -2,7 +2,7 @@
   "schema_version": 1,
   "registry_id": "neurocore_external_foundation_weights_v1",
   "reviewed_on": "2026-11-25",
-  "purpose": "Adopt strong pretrained Indian and international open-weight models as frozen task backends behind the existing 20-expert Fabric Swarm/NeuroCore routing contract.",
+  "purpose": "Assimilate pretrained Indian and international open-weight checkpoints into native NeuroCore expert weights through frozen-teacher sequence distillation and exact-compatible tensor warm-starts.",
   "integration_contract": {
     "worker_assignment": "fixed_one_runner_to_one_expert",
     "worker_id_equals_expert_id": true,
@@ -28,11 +28,15 @@
       18,
       19
     ],
+    "teacher_checkpoints_are_frozen": true,
+    "student_is_native_neurocore": true,
+    "student_expert_weights_are_trainable": true,
     "raw_tensor_transplant_into_neurocore": false,
-    "external_weights_are_frozen": true,
-    "adaptation": "expert-specific input/output schema adapters and routing; optional later distillation into native NeuroCore after evaluation",
-    "model_and_tokenizer_isolation": "each backend keeps its own original architecture, tokenizer, chat template, and runtime",
-    "checkpoint_storage": "outside_git",
+    "direct_tensor_copy_rule": "explicit_key_map_and_exact_shape_and_compatible_semantics_only",
+    "fallback_for_architecture_or_tokenizer_mismatch": "teacher_generated_sequence_distillation_using_student_tokenizer",
+    "logits_distillation": "only_if_vocab_and_tokenizer_fingerprints_match",
+    "modality_adapters_required": true,
+    "checkpoint_storage": "private_artifact_storage_outside_git",
     "immutable_revision_required_before_download": true,
     "never_upload_weight_blobs_to_public_repository": true
   },
@@ -516,5 +520,36 @@
     "compare_against_native_neurocore": true,
     "no_90_percent_accuracy_claim_without_measurement": true,
     "never_share_raw_user_documents_with_external_model_provider_without_explicit_policy": true
+  },
+  "training_plan": {
+    "teacher_stage": "load teacher in native architecture, freeze all teacher parameters, record source revision and hashes",
+    "student_stage": "train only native NeuroCore expert assigned to runner ID",
+    "frozen_student_components": [
+      "shared_backbone",
+      "router",
+      "other_19_experts",
+      "unassigned_modules"
+    ],
+    "resume_state": [
+      "student_expert_weights",
+      "optimizer",
+      "scheduler",
+      "rng",
+      "teacher_revision",
+      "base_fingerprint",
+      "tokenizer_fingerprint",
+      "dataset_fingerprint",
+      "data_cursor"
+    ],
+    "evaluation": [
+      "held_out_task_quality",
+      "factuality",
+      "citation_precision",
+      "latency",
+      "peak_vram",
+      "safety",
+      "data_contamination"
+    ],
+    "production_status": "not_started_until_canonical_forward_path_and_hardware_are_verified"
   }
 }
