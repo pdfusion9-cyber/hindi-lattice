@@ -206,6 +206,126 @@ class TeacherToStudentExpertDistiller:
         labels[:, :min(prompt_ids.shape[1], labels.shape[1])] = -100
         return all_ids, labels
 
+    def _selected_parameter_map(self) -> dict[str, Any]:
+        return {name: parameter for name, parameter in self.trainable_named_parameters}
+
+    def save_checkpoint(
+        self,
+        path: str,
+        *,
+        base_fingerprint: str,
+        tokenizer_fingerprint: str,
+        dataset_fingerprint: str,
+    ) -> dict[str, Any]:
+        """Save the assigned expert, optimizer, RNG and provenance for resume."""
+        import os
+        from pathlib import Path
+        import torch
+
+        fingerprints = {
+            "base_fingerprint": base_fingerprint,
+            "tokenizer_fingerprint": tokenizer_fingerprint,
+            "dataset_fingerprint": dataset_fingerprint,
+        }
+        if any(not isinstance(value, str) or not value for value in fingerprints.values()):
+            raise ValueError("base, tokenizer and dataset fingerprints are required")
+        selected = self._selected_parameter_map()
+        payload = {
+            "schema_version": 1,
+            "expert_id": self.expert_id,
+            "teacher_repo_id": self.teacher.spec.repo_id,
+            "teacher_revision": self.teacher.spec.revision,
+            "steps_completed": self.steps_completed,
+            "fingerprints": fingerprints,
+            "student_expert_state": {
+                name: parameter.detach().cpu().clone()
+                for name, parameter in selected.items()
+            },
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "torch_rng_state": torch.get_rng_state(),
+            "provenance": {
+                "teacher_frozen": True,
+                "student_only_assigned_expert_trainable": True,
+                "external_teacher_weights_used_for_supervision": True,
+                "student_weights_are_native_neurocore": True,
+            },
+        }
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(destination.name + ".tmp")
+        try:
+            torch.save(payload, temporary)
+            with temporary.open("rb") as stream:
+                os.fsync(stream.fileno())
+            temporary.replace(destination)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return {
+            "status": "TEACHER_DISTILLATION_CHECKPOINT_SAVED",
+            "path": str(destination),
+            "expert_id": self.expert_id,
+            "steps_completed": self.steps_completed,
+            "fingerprints": fingerprints,
+        }
+
+    def load_checkpoint(
+        self,
+        path: str,
+        *,
+        base_fingerprint: str,
+        tokenizer_fingerprint: str,
+        dataset_fingerprint: str,
+    ) -> dict[str, Any]:
+        """Resume only if expert, teacher revision and all data/model hashes match."""
+        import torch
+        from pathlib import Path
+
+        source = Path(path)
+        if not source.is_file():
+            raise FileNotFoundError(source)
+        try:
+            payload = torch.load(source, map_location="cpu", weights_only=True)
+        except TypeError:
+            payload = torch.load(source, map_location="cpu")
+        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+            raise ValueError("unsupported teacher-distillation checkpoint")
+        expected = {
+            "base_fingerprint": base_fingerprint,
+            "tokenizer_fingerprint": tokenizer_fingerprint,
+            "dataset_fingerprint": dataset_fingerprint,
+        }
+        if payload.get("expert_id") != self.expert_id:
+            raise ValueError("checkpoint belongs to a different expert")
+        if payload.get("teacher_repo_id") != self.teacher.spec.repo_id:
+            raise ValueError("teacher repository mismatch")
+        if payload.get("teacher_revision") != self.teacher.spec.revision:
+            raise ValueError("teacher revision mismatch")
+        if payload.get("fingerprints") != expected:
+            raise ValueError("base/tokenizer/dataset fingerprint mismatch")
+        selected = self._selected_parameter_map()
+        incoming = payload.get("student_expert_state")
+        if not isinstance(incoming, dict) or set(incoming) != set(selected):
+            raise ValueError("checkpoint expert tensor-key set mismatch")
+        with torch.no_grad():
+            for name, parameter in selected.items():
+                tensor = incoming[name]
+                if not isinstance(tensor, torch.Tensor):
+                    raise TypeError(f"checkpoint tensor is invalid: {name}")
+                if tensor.shape != parameter.shape or tensor.dtype != parameter.dtype:
+                    raise ValueError(f"checkpoint tensor shape/dtype mismatch: {name}")
+                if not bool(torch.isfinite(tensor).all()):
+                    raise ValueError(f"checkpoint tensor is non-finite: {name}")
+                parameter.copy_(tensor.to(device=parameter.device))
+        self.optimizer.load_state_dict(payload["optimizer_state_dict"])
+        self.steps_completed = int(payload["steps_completed"])
+        torch.set_rng_state(payload["torch_rng_state"].cpu())
+        return {
+            "status": "TEACHER_DISTILLATION_CHECKPOINT_RESUMED",
+            "expert_id": self.expert_id,
+            "steps_completed": self.steps_completed,
+            "fingerprints": expected,
+        }
+
     def train_step(self, prompt: str, *, max_new_tokens: int = 256) -> float:
         import torch
         target = self.teacher.generate(prompt, max_new_tokens=max_new_tokens)
@@ -265,3 +385,41 @@ class TeacherToStudentExpertDistiller:
             "student_tokenizer_used_for_loss": True,
             "raw_cross_model_tensor_reshape_used": False,
         }
+
+
+def build_native_neurocore_expert_distiller(
+    *,
+    teacher: FrozenTeacher,
+    student_model: Any,
+    student_tokenizer: Any,
+    expert_id: int,
+    learning_rate: float = 1e-4,
+) -> TeacherToStudentExpertDistiller:
+    """Bind distillation to the repository's NeuroCore force-expert forward API."""
+    model_config = getattr(student_model, "config", None)
+    configured_experts = getattr(model_config, "num_experts", None)
+    if configured_experts != 20:
+        raise ValueError("student must be the configured native 20-expert NeuroCore model")
+    if not callable(getattr(student_model, "forward", None)):
+        raise TypeError("student model must expose a forward method")
+    marker = f".experts.{expert_id}."
+    trainable = [
+        (name, parameter)
+        for name, parameter in student_model.named_parameters()
+        if marker in name
+    ]
+    if not trainable:
+        raise ValueError(f"native NeuroCore expert {expert_id} has no trainable tensors")
+
+    def native_forward(model: Any, input_ids: Any, assigned_expert_id: int) -> Any:
+        return model(input_ids, force_expert_id=assigned_expert_id)
+
+    return TeacherToStudentExpertDistiller(
+        teacher=teacher,
+        student_model=student_model,
+        student_tokenizer=student_tokenizer,
+        expert_id=expert_id,
+        trainable_named_parameters=trainable,
+        student_forward=native_forward,
+        learning_rate=learning_rate,
+    )
