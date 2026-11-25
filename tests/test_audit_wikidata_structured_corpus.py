@@ -59,3 +59,42 @@ def test_audit_does_not_call_multi_value_facts_false():
     group = report["multi_value_subject_property_groups"][0]
     assert group["note"].startswith("Potential multi-valued property")
     assert report["factual_accuracy"] == "NOT_ASSESSED"
+
+def test_enriched_audit_separates_reference_records_from_external_citations():
+    imported_only = row("imported")
+    imported_only["wikidata_reference_records"] = [
+        {"imported_from_items": [{"property_id": "P143", "qid": "Q206855"}]}
+    ]
+    imported_only["has_external_citation"] = False
+    imported_only["reference_enrichment"] = {"status": "MATCHED"}
+
+    cited = row("cited")
+    cited["wikidata_reference_records"] = [
+        {"imported_from_items": [], "source_urls": [{"url": "https://example.org"}]}
+    ]
+    cited["has_external_citation"] = True
+    cited["reference_enrichment"] = {"status": "MATCHED"}
+
+    missing = row("missing", subject="Q31", refs=[])
+    missing["wikidata_reference_records"] = []
+    missing["has_external_citation"] = False
+    missing["reference_enrichment"] = {"status": "MATCHED"}
+
+    unmatched = row("unmatched", subject="Q32", refs=[])
+    unmatched["wikidata_reference_records"] = []
+    unmatched["has_external_citation"] = False
+    unmatched["reference_enrichment"] = {"status": "STATEMENT_NOT_MATCHED"}
+
+    report = AUDIT.audit_rows([imported_only, cited, missing, unmatched])
+    assert report["records_with_any_reference_records"] == 2
+    assert report["records_without_any_reference_records"] == 2
+    assert report["records_with_external_citations"] == 1
+    assert report["records_without_external_citations"] == 3
+    assert report["records_with_imported_from_markers"] == 1
+    assert report["records_with_import_marker_only"] == 1
+    assert report["statements_enrichment_matched"] == 3
+    assert report["statements_enrichment_unmatched"] == 1
+    assert report["issue_counts"]["import_marker_without_external_citation"] == 1
+    assert report["issue_counts"]["missing_external_citation"] == 3
+    assert report["training_approved_record_count"] == 0
+
