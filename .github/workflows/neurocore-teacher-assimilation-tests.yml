@@ -7,6 +7,7 @@ on:
       - "models/neurocore_edge/test_teacher_weight_assimilation.py"
       - "models/neurocore_edge/modeling_neurocore_edge.py"
       - "models/neurocore_edge/train_teacher_assimilated_expert.py"
+      - "models/neurocore_edge/TEACHER_PILOT_READINESS_2026-11-25.md"
       - ".github/workflows/neurocore-teacher-assimilation-tests.yml"
   push:
     branches:
