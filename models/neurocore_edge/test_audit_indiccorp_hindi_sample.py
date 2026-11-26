@@ -14,9 +14,9 @@ class IndicCorpHindiAuditTests(unittest.TestCase):
             {"text":"PAN ABCDE1234F"},
             {"text":"https://example.org"},
         ]
-        report=audit_rows(rows,8,20)
+        report=audit_rows(rows,7,20)
         self.assertEqual(report["rows_seen"],9)
-        self.assertEqual(report["nonempty_text"],8)
+        self.assertEqual(report["nonempty_text"],7)
         self.assertEqual(report["empty_text"],1)
         self.assertEqual(report["duplicate_text_rows"],1)
         self.assertEqual(report["phone_like_rows"],1)
