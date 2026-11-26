@@ -40,6 +40,13 @@ jobs:
         env:
           PYTHONPATH: .
         run: python -m unittest -v test_neurocore_tokenizer test_benchmark_neurocore_tokenizer
+      - name: Compile and test unified NeuroCore inference runner
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m py_compile neurocore_inference.py test_neurocore_inference.py
+          python -m unittest -v test_neurocore_inference
       - name: Run Dhīr NeuroCore CPU adapter tests
         working-directory: models/neurocore_edge
         env:
