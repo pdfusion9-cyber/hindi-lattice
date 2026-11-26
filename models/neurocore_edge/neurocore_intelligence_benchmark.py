@@ -317,6 +317,7 @@ def run_benchmark(
                 "mode": mode,
                 "task": case["task"],
                 "language_tag": case["language_tag"],
+                "chat_template_applied": result.get("chat_template_applied", False),
                 "suggested_expert_id": result.get("suggested_expert_id"),
                 "suggested_expert_name": result.get("suggested_expert_name"),
                 "selected_expert_id": result.get("selected_expert_id"),
@@ -345,7 +346,7 @@ def run_benchmark(
 
     return {
         "status": "COMPLETED_UNTRAINED_PAIRED_BASELINE",
-        "benchmark_version": 3,
+        "benchmark_version": 4,
         "base_model_id": MODEL_ID,
         "base_model_revision": MODEL_REVISION,
         "device": "cpu",
@@ -356,6 +357,10 @@ def run_benchmark(
         "experts": model.num_experts,
         "experts_per_token": model.adapter_layers[0].top_k,
         "router_status": "UNTRAINED_NOT_QUALITY_VALIDATED",
+        "prompt_serialization": (
+            "native Dhīr chat template when available; "
+            "explicit raw-text fallback otherwise"
+        ),
         "training_performed": False,
         "weights_persisted": False,
         "max_new_tokens": max_new_tokens,
