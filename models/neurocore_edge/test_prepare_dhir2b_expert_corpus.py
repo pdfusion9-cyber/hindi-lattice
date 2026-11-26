@@ -124,14 +124,44 @@ class PrepareDhīrExpertCorpusTests(unittest.TestCase):
             path = Path(tmp) / "approval.json"
             path.write_text(json.dumps({
                 "status": "ALL_DATASETS_PENDING_REVIEW",
-                "datasets": [],
+                "datasets": [{
+                    "expert_id": 11,
+                    "dataset_id": DATASET_ID,
+                    "revision": DATASET_REVISION,
+                    "license_id": "CC0-1.0",
+                    "license_terms_url": "https://example.org/license",
+                    "approved": False,
+                    "commercial_training_allowed": False,
+                    "pii_reviewed": False,
+                    "consent_reviewed": False,
+                    "schema_reviewed": True,
+                    "split_reviewed": True,
+                }],
                 "approved_tokenizers": [],
             }), encoding="utf-8")
-            with self.assertRaisesRegex(PermissionError, "global dataset review"):
+            with self.assertRaisesRegex(PermissionError, "dataset review incomplete"):
                 require_human_approvals(
                     path, expert_id=11, dataset_id=DATASET_ID,
                     dataset_revision=DATASET_REVISION, tokenizer_sha256="a" * 64,
                 )
+
+    def test_unrelated_experts_pending_do_not_block_fully_approved_expert11(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            document = approval_doc("a" * 64)
+            document["status"] = "ALL_DATASETS_PENDING_REVIEW"
+            document["datasets"].append({
+                "expert_id": 1,
+                "dataset_id": "unrelated/other-dataset",
+                "revision": "f" * 40,
+                "approved": False,
+            })
+            self.write_doc(path, document)
+            result = require_human_approvals(
+                path, expert_id=11, dataset_id=DATASET_ID,
+                dataset_revision=DATASET_REVISION, tokenizer_sha256="a" * 64,
+            )
+            self.assertEqual(result["status"], "ALL_DATASETS_PENDING_REVIEW")
 
     def test_missing_tokenizer_hash_approval_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
