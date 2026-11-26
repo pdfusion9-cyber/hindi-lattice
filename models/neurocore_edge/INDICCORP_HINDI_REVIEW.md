@@ -29,3 +29,26 @@ The initial 500-nonempty review found one phone-like record. Expanded audit chec
 
 ## Status
 PENDING_REVIEW. This is not training approval. No training corpus is authorized until a human reviewer accepts rights/privacy risks and explicitly approves exact SHA-256 values for the private cleaned corpus and local tokenizer directory.
+
+
+## Expanded bounded audit result (2026-11-26)
+Workflow run: https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45815102550
+
+| Measure | Result |
+|---|---:|
+| Target non-empty records | 5,000 |
+| Raw rows seen | 9,999 |
+| Non-empty text records | 5,000 |
+| Empty separator rows | 4,999 |
+| Duplicate text rows | 1 |
+| Contains Devanagari | 5,000 |
+| Contains Latin script | 424 |
+| Phone-like rows | 3 |
+| Email-like rows | 1 |
+| Aadhaar-like rows | 0 |
+| PAN-like rows | 0 |
+| Unique rows with any PII-pattern flag | 4 |
+
+No sample text was persisted. The report is a pattern-based screen, not a complete privacy review. All four candidate rows must be excluded or reviewed before any training-corpus construction. The dataset remains PENDING_REVIEW; this audit did not perform training.
+
+Aggregate-only artifact: ID 15116065188, SHA-256 `909b2760e7b303ed6382c0622efb98e76a68ce54a1156ecd68b2b17e6544b783`.
