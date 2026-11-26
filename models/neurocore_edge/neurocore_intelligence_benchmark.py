@@ -156,7 +156,7 @@ def run_benchmark(
     model: Any,
     tokenizer: Any,
     *,
-    max_new_tokens: int = 80,
+    max_new_tokens: int = 128,
     do_sample: bool = False,
 ) -> dict[str, Any]:
     if not 1 <= max_new_tokens <= 128:
@@ -204,6 +204,7 @@ def run_benchmark(
                 "router_status": result.get("router_status"),
                 "prompt_tokens": result["prompt_tokens"],
                 "generated_tokens": result["generated_tokens"],
+                "generation_limit_reached": result["generated_tokens"] >= max_new_tokens,
                 "elapsed_seconds": result["elapsed_seconds"],
                 "tokens_per_second": result["tokens_per_second"],
                 "answer": result["answer"],
@@ -219,7 +220,7 @@ def run_benchmark(
 
     return {
         "status": "COMPLETED_UNTRAINED_PAIRED_BASELINE",
-        "benchmark_version": 1,
+        "benchmark_version": 2,
         "base_model_id": MODEL_ID,
         "base_model_revision": MODEL_REVISION,
         "device": "cpu",
@@ -255,7 +256,7 @@ def run_benchmark(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--max-new-tokens", type=int, default=80)
+    parser.add_argument("--max-new-tokens", type=int, default=128)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
