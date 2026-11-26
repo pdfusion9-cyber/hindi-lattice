@@ -157,7 +157,7 @@ class TrainingApprovalGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sft.jsonl"
             path.write_text(
-                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\\n",
+                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
             rows = read_rows(path, ChatTokenizer(), max_length=8, max_rows=5)
@@ -175,7 +175,7 @@ class TrainingApprovalGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sft.jsonl"
             path.write_text(
-                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\\n",
+                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "native assistant-generation prefix"):
@@ -185,7 +185,7 @@ class TrainingApprovalGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "sft.jsonl"
             path.write_text(
-                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\\n",
+                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
             with self.assertRaisesRegex(ValueError, "native chat template"):
