@@ -59,7 +59,7 @@ def batch_rows(rows,indices,pad_id):
     labels[mask==0]=-100
     return ids,labels,mask
 
-def save_checkpoint(path,model,expert_id,optimizer,step,data_sha,tokenizer_sha):
+def save_checkpoint(path,model,expert_id,optimizer,step,data_cursor,data_sha,tokenizer_sha):
     target=Path(path); target.parent.mkdir(parents=True,exist_ok=True)
     payload={"schema_version":1,"status":"EXPERT_ADAPTER_TRAINED_UNVALIDATED",
       "architecture_version":"0.4.0-dhir2b-adapters","expert_id":expert_id,
@@ -85,6 +85,7 @@ def main():
     p.add_argument("--expert-id",type=int,required=True); p.add_argument("--steps",type=int,default=100)
     p.add_argument("--batch-size",type=int,default=1); p.add_argument("--max-length",type=int,default=256)
     p.add_argument("--lr",type=float,default=2e-4); p.add_argument("--output",required=True)
+    p.add_argument("--resume-from",default=None,help="resume a matching provisional expert checkpoint")
     p.add_argument("--threads",type=int,default=2); a=p.parse_args()
     if not 0<=a.expert_id<20: p.error("--expert-id must be 0..19")
     if min(a.steps,a.batch_size,a.max_length,a.threads)<1 or a.lr<=0: p.error("invalid training arguments")
@@ -95,9 +96,25 @@ def main():
     rows=read_rows(a.data,tokenizer,a.max_length)
     trainable=model.prepare_expert_training(a.expert_id); model.train()
     opt=torch.optim.AdamW(trainable,lr=a.lr)
+    start_step=0
+    if a.resume_from:
+        checkpoint=torch.load(a.resume_from,map_location="cpu",weights_only=True)
+        expected={"schema_version":1,"status":"EXPERT_ADAPTER_TRAINED_UNVALIDATED",
+          "architecture_version":"0.4.0-dhir2b-adapters","expert_id":a.expert_id,
+          "base_model_id":model.base_model_id,"base_revision":model.base_revision,
+          "vocab_size":model.vocab_size,"num_hidden_layers":28,"adapter_rank":model.rank,
+          "data_sha256":data_sha,"tokenizer_sha256":tok_sha}
+        for key,value in expected.items():
+            if checkpoint.get(key)!=value:
+                raise ValueError("resume checkpoint provenance mismatch: "+key)
+        model.load_expert_state_dict(a.expert_id,checkpoint["expert_state_dict"])
+        opt.load_state_dict(checkpoint["optimizer_state_dict"])
+        torch.set_rng_state(checkpoint["torch_rng_state"].cpu())
+        start_step=int(checkpoint["steps_completed"])
+        if start_step<0: raise ValueError("invalid resume step")
     pad=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     if pad is None: raise ValueError("tokenizer must define pad or EOS token")
-    for step in range(1,a.steps+1):
+    for step in range(start_step+1,start_step+a.steps+1):
         start=((step-1)*a.batch_size)%len(rows)
         indices=[(start+j)%len(rows) for j in range(a.batch_size)]
         ids,labels,mask=batch_rows(rows,indices,int(pad))
@@ -108,12 +125,12 @@ def main():
           labels[:,1:].reshape(-1),ignore_index=-100)
         if not torch.isfinite(loss): raise FloatingPointError(f"non-finite loss at step {step}")
         loss.backward(); torch.nn.utils.clip_grad_norm_(trainable,1.0); opt.step()
-        save_checkpoint(a.output,model,a.expert_id,opt,step,data_sha,tok_sha)
+        save_checkpoint(a.output,model,a.expert_id,opt,step,step*a.batch_size,data_sha,tok_sha)
         if step==1 or step%10==0 or step==a.steps:
             print(json.dumps({"step":step,"loss":float(loss.detach()),"expert_id":a.expert_id,
               "device":"cpu","status":"EXPERT_ADAPTER_TRAINING"},ensure_ascii=False))
     print(json.dumps({"status":"EXPERT_ADAPTER_TRAINED_UNVALIDATED","expert_id":a.expert_id,
-      "steps_completed":a.steps,"checkpoint":a.output,"base_revision":manifest["base_revision"],
+      "steps_completed":start_step+a.steps,"checkpoint":a.output,"base_revision":manifest["base_revision"],
       "gpu_used":False},ensure_ascii=False,indent=2))
 
 if __name__=="__main__": main()
