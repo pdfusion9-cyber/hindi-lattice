@@ -61,6 +61,25 @@ jobs:
         run: |
           python -m py_compile test_neurocore_synthetic_sft_datasets.py
           python -m unittest -v test_neurocore_synthetic_sft_datasets
+      - name: Compile and test actual Dhīr tokenizer SFT dry-run
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          HF_HUB_DISABLE_TELEMETRY: '1'
+          HF_HOME: \${{ runner.temp }}/hf-cache
+        run: |
+          python -m py_compile dryrun_synthetic_dhir2b_sft.py test_dryrun_synthetic_dhir2b_sft.py
+          python -m unittest -v test_dryrun_synthetic_dhir2b_sft
+          python dryrun_synthetic_dhir2b_sft.py \
+            --tokenizer-dir "\${{ runner.temp }}/dhir-neurocore-tokenizer" \
+            --output "\${{ runner.temp }}/neurocore-synthetic-sft-dryrun/report.json"
+      - name: Upload aggregate dry-run report only
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-synthetic-sft-tokenizer-dryrun
+          path: \${{ runner.temp }}/neurocore-synthetic-sft-dryrun/report.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Compile and test Dhīr Expert 11 training gates
         working-directory: models/neurocore_edge
         env:
