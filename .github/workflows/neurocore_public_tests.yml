@@ -33,6 +33,15 @@ jobs:
         run: python -m py_compile models/neurocore_edge/*.py
       - name: Compile canonical teacher assimilation entrypoints
         run: python -m py_compile models/neurocore_edge/teacher_weight_assimilation.py models/neurocore_edge/train_teacher_assimilated_expert.py models/neurocore_edge/test_teacher_weight_assimilation.py
+      - name: Compile full base distillation entrypoints
+        run: python -m py_compile models/neurocore_edge/teacher_base_distillation.py models/neurocore_edge/test_teacher_base_distillation.py
+      - name: Run full base distillation tests
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: python -m unittest -v test_teacher_base_distillation
       - name: Run canonical teacher assimilation tests
         working-directory: models/neurocore_edge
         env:
