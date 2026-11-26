@@ -313,8 +313,8 @@
       "expert_name": "hindi_indic_docs",
       "dataset_id": "ai4bharat/IndicCorpV2",
       "revision": null,
-      "config_name": null,
-      "train_split": null,
+      "config_name": "indiccorp_v2 (raw text shard streamed with datasets text builder)",
+      "train_split": "data/hi-1.txt",
       "validation_split": null,
       "license_id": null,
       "license_terms_url": null,
@@ -322,10 +322,10 @@
       "public_redistribution_allowed": false,
       "pii_reviewed": false,
       "consent_reviewed": false,
-      "schema_reviewed": false,
-      "split_reviewed": false,
+      "schema_reviewed": true,
+      "split_reviewed": true,
       "approved": false,
-      "review_note": "Default deny. Pin HF revision/config/splits and verify license, commercial training, public redistribution, PII, consent and schema before approval."
+      "review_note": "Pinned HF revision 2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f; raw Hindi shard data/hi-1.txt streamed via datasets text builder. Official dataset card declares CC0-1.0. Exact shard SHA-256: 9c9dfed015247004176c12b831bc7a4720bd79ebd8ac424e46c13997b57f8a73 (26.7 GB). Two additional Hindi shards exist, but first review samples only hi-1. Source-level provenance and privacy remain subject to human review. Training remains denied."
     },
     {
       "expert_id": 12,
@@ -610,9 +610,9 @@
     {
       "dataset_id": "ai4bharat/IndicCorpV2",
       "revision": null,
-      "config_name": null,
+      "config_name": "indiccorp_v2",
       "proposed_splits": [
-        "train"
+        "data/hi-1.txt"
       ],
       "text_columns": [
         "text"
