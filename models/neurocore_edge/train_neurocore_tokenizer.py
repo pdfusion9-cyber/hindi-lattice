@@ -67,11 +67,13 @@ def load_approved_sources(manifest_path: Path) -> list[dict[str,Any]]:
         raise RuntimeError("tokenizer training blocked: no explicitly approved tokenizer sources")
     seen=set()
     for row in sources:
-        required=("dataset_id","revision","config_name","split","license_id",
+        required=("dataset_id","revision","split","license_id",
                   "license_terms_url","approval_id","reviewer","reviewed_at","text_columns","source_provenance_reviewed","public_redistribution_allowed","derived_artifact_distribution_allowed")
         missing=[key for key in required if not row.get(key)]
         if missing:
             raise RuntimeError(f"incomplete tokenizer source approval: {row.get('dataset_id')}: {missing}")
+        if not row.get("data_dir") and not row.get("config_name"):
+            raise RuntimeError(f"source must specify data_dir or config_name: {row.get('dataset_id')}")
         revision=row.get("revision","")
         if len(revision)!=40 or any(ch not in "0123456789abcdefABCDEF" for ch in revision):
             raise RuntimeError(f"tokenizer source revision must be an immutable 40-char commit SHA: {row.get('dataset_id')}")
@@ -96,13 +98,19 @@ def iter_approved_text(sources: list[dict[str,Any]]):
     except ImportError as exc:
         raise RuntimeError("install datasets before tokenizer training") from exc
     for source in sources:
-        ds=load_dataset(
-            source["dataset_id"],
-            name=source["config_name"],
-            split=source["split"],
-            revision=source["revision"],
-            streaming=True,
-        )
+        dataset_kwargs={
+            "path":source["dataset_id"],
+            "split":source["split"],
+            "revision":source["revision"],
+            "streaming":True,
+        }
+        if source.get("data_dir"):
+            dataset_kwargs["data_dir"]=source["data_dir"]
+        elif source.get("config_name"):
+            dataset_kwargs["name"]=source["config_name"]
+        else:
+            raise RuntimeError(f"source must specify data_dir or config_name: {source['dataset_id']}")
+        ds=load_dataset(**dataset_kwargs)
         columns=source["text_columns"]
         for row in ds:
             pieces=[]
