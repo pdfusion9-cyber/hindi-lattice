@@ -40,7 +40,7 @@ jobs:
           torch.set_num_threads(4)
           model_id = "zenteiq-ai/Dhir-2B"
           revision = "7cbe444cd1e45e25197cfa0f683b2cb575858169"
-          model, tokenizer = Dhir2BNeuroCore.import_pretrained(
+          model, tokenizer, loading_info = Dhir2BNeuroCore.import_pretrained(
               model_id=model_id, revision=revision, rank=8, dtype=torch.bfloat16
           )
           model.eval()
@@ -63,7 +63,7 @@ jobs:
               "experts_per_token": model.adapter_layers[0].top_k,
               "logits_shape": list(output.logits.shape),
               "logits_finite": bool(torch.isfinite(output.logits).all()),
-              "weights_persisted": False,
+              "loading_info_clean": not any(loading_info.get(k) for k in ("missing_keys", "unexpected_keys", "mismatched_keys", "error_msgs")),\n              "weights_persisted": False,
               "training_performed": False
           }
           print(json.dumps(report, indent=2))
