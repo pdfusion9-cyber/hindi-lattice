@@ -15,7 +15,7 @@ permissions:
 jobs:
   checkpoint-roundtrip:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,7 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
           python -m pip install -r models/neurocore_edge/requirements-dhir2b.txt
-      - name: Import, save, reload, and compare real checkpoint
+      - name: Import, save, reload, compare, and persist real checkpoint
         working-directory: models/neurocore_edge
         env:
           OMP_NUM_THREADS: '4'
@@ -35,12 +35,15 @@ jobs:
           HF_HUB_ENABLE_HF_TRANSFER: '0'
         run: |
           python - <<'PY'
-          import hashlib, json, os, tempfile, torch
+          import hashlib, json, shutil, torch
           from pathlib import Path
           from dhir2b_neurocore import Dhir2BNeuroCore
           torch.set_num_threads(4)
           model_id = "zenteiq-ai/Dhir-2B"
           revision = "7cbe444cd1e45e25197cfa0f683b2cb575858169"
+          checkpoint_dir = Path("/tmp/dhir2b-neurocore-checkpoint")
+          if checkpoint_dir.exists():
+              shutil.rmtree(checkpoint_dir)
           model, tokenizer, loading_info = Dhir2BNeuroCore.import_pretrained(
               model_id=model_id, revision=revision, rank=8, dtype=torch.bfloat16
           )
@@ -54,48 +57,53 @@ jobs:
           mask = torch.ones_like(ids)
           with torch.inference_mode():
               before = model(input_ids=ids, attention_mask=mask, use_cache=False, expert_id=0).logits
-          with tempfile.TemporaryDirectory(prefix="dhir2b-neurocore-") as tmp:
-              manifest = model.save_checkpoint(tmp, tokenizer)
-              loaded, loaded_tokenizer, loaded_manifest = Dhir2BNeuroCore.load_checkpoint(tmp)
-              loaded.eval()
-              with torch.inference_mode():
-                  after = loaded(input_ids=ids, attention_mask=mask, use_cache=False, expert_id=0).logits
-              assert torch.equal(before, after), "logits changed after checkpoint reload"
-              assert len(loaded_tokenizer) == 131072
-              assert loaded_manifest["base_revision"] == revision
-              files = sorted(str(p.relative_to(tmp)) for p in Path(tmp).rglob("*") if p.is_file())
-              sizes = {name: (Path(tmp)/name).stat().st_size for name in files}
-              digest = hashlib.sha256()
-              for name in files:
-                  digest.update(name.encode()); digest.update((Path(tmp)/name).read_bytes())
-              report = {
-                  "status": "CHECKPOINT_SAVE_RELOAD_VERIFIED",
-                  "base_model_id": model_id,
-                  "base_revision": revision,
-                  "device": "cpu",
-                  "gpu_used": False,
-                  "loading_info_clean": clean,
-                  "num_hidden_layers": len(loaded.adapter_layers),
-                  "num_experts": loaded.num_experts,
-                  "vocab_size": loaded.vocab_size,
-                  "tokenizer_length": len(loaded_tokenizer),
-                  "logits_shape": list(after.shape),
-                  "logits_finite": bool(torch.isfinite(after).all()),
-                  "logits_identical_after_reload": torch.equal(before, after),
-                  "checkpoint_files": files,
-                  "checkpoint_total_bytes": sum(sizes.values()),
-                  "checkpoint_tree_sha256": digest.hexdigest(),
-                  "expert_training_performed": False
-              }
-              Path("dhir2b_checkpoint_roundtrip_report.json").write_text(json.dumps(report, indent=2))
-              print(json.dumps(report, indent=2))
-              assert report["logits_identical_after_reload"] and report["logits_finite"]
+          manifest = model.save_checkpoint(str(checkpoint_dir), tokenizer)
+          del model
+          del tokenizer
+          loaded, loaded_tokenizer, loaded_manifest = Dhir2BNeuroCore.load_checkpoint(str(checkpoint_dir))
+          loaded.eval()
+          with torch.inference_mode():
+              after = loaded(input_ids=ids, attention_mask=mask, use_cache=False, expert_id=0).logits
+          assert torch.equal(before, after), "logits changed after checkpoint reload"
+          assert len(loaded_tokenizer) == 131072
+          assert loaded_manifest["base_revision"] == revision
+          files = sorted(str(p.relative_to(checkpoint_dir)) for p in checkpoint_dir.rglob("*") if p.is_file())
+          sizes = {name: (checkpoint_dir/name).stat().st_size for name in files}
+          digest = hashlib.sha256()
+          for name in files:
+              digest.update(name.encode()); digest.update((checkpoint_dir/name).read_bytes())
+          report = {
+              "status": "CHECKPOINT_SAVE_RELOAD_VERIFIED_AND_PERSISTED_AS_ACTION_ARTIFACT",
+              "base_model_id": model_id,
+              "base_revision": revision,
+              "device": "cpu",
+              "gpu_used": False,
+              "loading_info_clean": clean,
+              "num_hidden_layers": len(loaded.adapter_layers),
+              "num_experts": loaded.num_experts,
+              "vocab_size": loaded.vocab_size,
+              "tokenizer_length": len(loaded_tokenizer),
+              "logits_shape": list(after.shape),
+              "logits_finite": bool(torch.isfinite(after).all()),
+              "logits_identical_after_reload": torch.equal(before, after),
+              "checkpoint_files": files,
+              "checkpoint_total_bytes": sum(sizes.values()),
+              "checkpoint_tree_sha256": digest.hexdigest(),
+              "checkpoint_path": str(checkpoint_dir),
+              "expert_training_performed": False
+          }
+          Path("dhir2b_checkpoint_roundtrip_report.json").write_text(json.dumps(report, indent=2))
+          print(json.dumps(report, indent=2))
+          assert report["logits_identical_after_reload"] and report["logits_finite"]
           PY
-      - name: Upload roundtrip report
-        if: always() && hashFiles('models/neurocore_edge/dhir2b_checkpoint_roundtrip_report.json') != ''
+      - name: Persist full verified checkpoint and report
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: dhir2b-checkpoint-roundtrip-report
-          path: models/neurocore_edge/dhir2b_checkpoint_roundtrip_report.json
-          retention-days: 90
+          name: dhir2b-neurocore-cpu-checkpoint
+          path: |
+            /tmp/dhir2b-neurocore-checkpoint
+            models/neurocore_edge/dhir2b_checkpoint_roundtrip_report.json
+          retention-days: 30
+          compression-level: 0
           if-no-files-found: error
