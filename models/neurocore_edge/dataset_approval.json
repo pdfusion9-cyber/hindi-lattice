@@ -561,8 +561,8 @@
   "tokenizer_source_candidates": [
     {
       "dataset_id": "ai4bharat/sangraha",
-      "revision": "e6a0e4b5b6c8d9f4a0b1c2d3e4f5a6b7c8d9e0f1",
-      "revision_status": "candidate_pin_requires_api_confirmation",
+      "revision": null,
+      "revision_status": "NOT_PINNED",
       "config_name": "verified",
       "proposed_splits": [
         "train"
@@ -575,7 +575,7 @@
       "role": "primary Indic tokenizer candidate",
       "approval_status": "PENDING_REVIEW",
       "unresolved": [
-        "Confirm commit SHA directly from dataset API before use",
+        "Resolve the exact immutable commit SHA from the official dataset API before any use",
         "Review underlying source rights and attribution obligations",
         "Review commercial training and redistribution rights",
         "Review PII, consent, provenance and text extraction rights",
