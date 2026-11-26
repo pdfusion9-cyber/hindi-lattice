@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "architecture_version": "0.4.0-dhir2b-adapters",
+  "status": "IMPLEMENTED_IMPORT_PATH_AWAITING_PINNED_CHECKPOINT",
+  "base_model_id": "zenteiq-ai/Dhir-2B",
+  "base_revision": null,
+  "base_architecture": {
+    "num_hidden_layers": 28,
+    "hidden_size": 2048,
+    "num_attention_heads": 16,
+    "num_key_value_heads": 8,
+    "head_dim": 128,
+    "max_position_embeddings": 16384,
+    "rope_theta": 1000000,
+    "feed_forward": "SwiGLU",
+    "qk_rms_norm": true,
+    "tie_word_embeddings": true,
+    "intermediate_size": "derived_from_pinned_checkpoint_config",
+    "vocab_size": "derived_from_pinned_checkpoint_and_tokenizer"
+  },
+  "neurocore_extension": {
+    "num_experts": 20,
+    "experts_per_token": 2,
+    "adapter_type": "bottleneck_residual",
+    "adapter_rank_default": 8,
+    "adapter_placement": "after_each_of_28_decoder_blocks",
+    "base_backbone_trainable_during_expert_stage": false,
+    "fixed_expert_training": true,
+    "router_status": "UNTRAINED_REQUIRES_CALIBRATION"
+  },
+  "runtime": {
+    "device": "cpu",
+    "gpu_required": false,
+    "training_status": "BLOCKED_UNTIL_IMPORT_AND_DATA_APPROVAL",
+    "revision_must_be_40_character_commit_sha": true
+  },
+  "legacy_architecture": {
+    "config": "config.json",
+    "status": "PRESERVED_UNTRAINED_V0.3.2_REFERENCE",
+    "note": "The 24-effective-layer/8-unique-block model is not directly Dhīr-weight-compatible."
+  }
+}
