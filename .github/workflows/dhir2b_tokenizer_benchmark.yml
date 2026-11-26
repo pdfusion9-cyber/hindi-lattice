@@ -1,0 +1,73 @@
+name: Dhīr Native NeuroCore Tokenizer Benchmark
+
+on:
+  push:
+    branches: [neurocore-v0.3.2-canonical-20261122]
+    paths:
+      - 'models/neurocore_edge/neurocore_tokenizer.py'
+      - 'models/neurocore_edge/benchmark_neurocore_tokenizer.py'
+      - 'models/neurocore_edge/fixtures/tokenizer_benchmark_multilingual.txt'
+      - '.github/workflows/dhir2b_tokenizer_benchmark.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tokenizer-benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tokenizer-only dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'transformers>=4.57.3,<5' 'huggingface_hub>=0.30'
+      - name: Fetch pinned Dhīr tokenizer and wrap it with NeuroCore metadata
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          HF_HUB_DISABLE_TELEMETRY: '1'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from transformers import PreTrainedTokenizerFast
+          from neurocore_tokenizer import NeuroCoreTokenizer
+          model_id = "zenteiq-ai/Dhir-2B"
+          revision = "7cbe444cd1e45e25197cfa0f683b2cb575858169"
+          raw = PreTrainedTokenizerFast.from_pretrained(
+              model_id, revision=revision, trust_remote_code=False
+          )
+          wrapped = NeuroCoreTokenizer.from_tokenizer(
+              raw, base_model_id=model_id, base_revision=revision,
+              expected_vocab_size=131072
+          )
+          wrapped.save_pretrained("/tmp/neurocore-dhir-tokenizer")
+          print("DHIR_TOKENIZER_PINNED_AND_NEUROCORE_MANIFEST_SAVED")
+          print("VOCAB_SIZE=" + str(len(wrapped)))
+          print("VOCAB_SHA256=" + wrapped.neurocore_manifest["tokenizer_vocab_sha256"])
+          PY
+      - name: Run multilingual measurement-only benchmark
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+        run: |
+          python benchmark_neurocore_tokenizer.py \
+            --tokenizer-dir /tmp/neurocore-dhir-tokenizer \
+            --input fixtures/tokenizer_benchmark_multilingual.txt \
+            --base-model-id zenteiq-ai/Dhir-2B \
+            --base-revision 7cbe444cd1e45e25197cfa0f683b2cb575858169 \
+            --vocab-size 131072 \
+            --max-samples 500 \
+            --output /tmp/neurocore-tokenizer-benchmark.json
+      - name: Persist aggregate benchmark report only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-dhir-tokenizer-benchmark
+          path: /tmp/neurocore-tokenizer-benchmark.json
+          retention-days: 30
+          if-no-files-found: error
