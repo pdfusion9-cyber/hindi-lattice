@@ -63,7 +63,8 @@ jobs:
               "experts_per_token": model.adapter_layers[0].top_k,
               "logits_shape": list(output.logits.shape),
               "logits_finite": bool(torch.isfinite(output.logits).all()),
-              "loading_info_clean": not any(loading_info.get(k) for k in ("missing_keys", "unexpected_keys", "mismatched_keys", "error_msgs")),\n              "weights_persisted": False,
+              "loading_info_clean": not any(loading_info.get(k) for k in ("missing_keys", "unexpected_keys", "mismatched_keys", "error_msgs")),
+              "weights_persisted": False,
               "training_performed": False
           }
           print(json.dumps(report, indent=2))
