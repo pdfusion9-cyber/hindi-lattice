@@ -534,5 +534,28 @@
       "approved",
       "approval_id"
     ]
+  },
+  "tokenizer_source_approval": {
+    "status": "PENDING_REVIEW",
+    "approved_sources": [],
+    "required_review_fields": [
+      "dataset_id",
+      "revision",
+      "config_name",
+      "split",
+      "license_id",
+      "license_terms_url",
+      "approval_id",
+      "reviewer",
+      "reviewed_at",
+      "approved",
+      "commercial_training_allowed",
+      "pii_reviewed",
+      "consent_reviewed",
+      "schema_reviewed",
+      "split_reviewed",
+      "text_columns"
+    ],
+    "policy": "No tokenizer corpus may be streamed until every source has a pinned immutable commit SHA, exact config/split/text columns, legal and privacy review, and an explicit human approval record."
   }
 }
