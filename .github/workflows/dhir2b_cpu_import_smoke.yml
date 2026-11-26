@@ -1,0 +1,83 @@
+name: Dhīr-2B Real CPU Weight Import Smoke Test
+
+on:
+  push:
+    branches: [neurocore-v0.3.2-canonical-20261122]
+    paths:
+      - 'models/neurocore_edge/dhir2b_neurocore.py'
+      - 'models/neurocore_edge/requirements-dhir2b.txt'
+      - '.github/workflows/dhir2b_cpu_import_smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-weight-import:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch and Dhīr dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install -r models/neurocore_edge/requirements-dhir2b.txt
+      - name: Import pinned real Dhīr-2B weights on CPU
+        working-directory: models/neurocore_edge
+        env:
+          OMP_NUM_THREADS: '4'
+          MKL_NUM_THREADS: '4'
+          HF_HUB_DISABLE_TELEMETRY: '1'
+          HF_HUB_ENABLE_HF_TRANSFER: '0'
+        run: |
+          python - <<'PY'
+          import gc, json, torch
+          from dhir2b_neurocore import Dhir2BNeuroCore
+          torch.set_num_threads(4)
+          model_id = "zenteiq-ai/Dhir-2B"
+          revision = "7cbe444cd1e45e25197cfa0f683b2cb575858169"
+          model, tokenizer = Dhir2BNeuroCore.import_pretrained(
+              model_id=model_id, revision=revision, rank=8, dtype=torch.bfloat16
+          )
+          model.eval()
+          token_id = tokenizer.bos_token_id if tokenizer.bos_token_id is not None else 2
+          ids = torch.tensor([[token_id, token_id]], dtype=torch.long)
+          mask = torch.ones_like(ids)
+          with torch.inference_mode():
+              output = model(input_ids=ids, attention_mask=mask, use_cache=False, expert_id=0)
+          report = {
+              "status": "REAL_DHIR_WEIGHTS_IMPORTED_AND_FORWARD_PASSED",
+              "base_model_id": model_id,
+              "base_revision": revision,
+              "device": "cpu",
+              "gpu_used": False,
+              "dtype": str(next(model.backbone.parameters()).dtype),
+              "num_hidden_layers": len(model.adapter_layers),
+              "hidden_size": model.hidden_size,
+              "vocab_size": model.vocab_size,
+              "experts": model.num_experts,
+              "experts_per_token": model.adapter_layers[0].top_k,
+              "logits_shape": list(output.logits.shape),
+              "logits_finite": bool(torch.isfinite(output.logits).all()),
+              "weights_persisted": False,
+              "training_performed": False
+          }
+          print(json.dumps(report, indent=2))
+          assert report["num_hidden_layers"] == 28
+          assert report["vocab_size"] == 131072
+          assert report["logits_shape"] == [1, 2, 131072]
+          assert report["logits_finite"]
+          with open("dhir2b_real_import_smoke.json", "w") as f:
+              json.dump(report, f, indent=2)
+          PY
+      - name: Upload import smoke report only
+        if: always() && hashFiles('models/neurocore_edge/dhir2b_real_import_smoke.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhir2b-real-import-smoke-report
+          path: models/neurocore_edge/dhir2b_real_import_smoke.json
+          if-no-files-found: error
