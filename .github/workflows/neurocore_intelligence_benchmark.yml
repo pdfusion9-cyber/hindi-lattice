@@ -1,0 +1,50 @@
+name: NeuroCore paired intelligence baseline benchmark
+
+on:
+  push:
+    branches: [neurocore-v0.3.2-canonical-20261122]
+    paths:
+      - 'models/neurocore_edge/neurocore_intelligence_benchmark.py'
+      - 'models/neurocore_edge/neurocore_inference.py'
+      - '.github/workflows/neurocore_intelligence_benchmark.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired-baseline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install CPU-only PyTorch and Dhīr dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install -r models/neurocore_edge/requirements-dhir2b.txt
+      - name: Run paired Base Dhīr and NeuroCore benchmark
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: '4'
+          MKL_NUM_THREADS: '4'
+          HF_HUB_DISABLE_TELEMETRY: '1'
+          HF_HUB_ENABLE_HF_TRANSFER: '0'
+        run: |
+          python -m py_compile neurocore_intelligence_benchmark.py neurocore_inference.py
+          python neurocore_intelligence_benchmark.py \
+            --max-new-tokens 80 \
+            --threads 4 \
+            --output /tmp/neurocore-intelligence-baseline.json
+      - name: Upload benchmark report only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurocore-intelligence-baseline
+          path: /tmp/neurocore-intelligence-baseline.json
+          if-no-files-found: error
+          retention-days: 30
