@@ -105,7 +105,7 @@ jobs:
           probe = tokenizer("भारत की भाषा और विज्ञान", return_tensors="pt")
           expert_reports = []
           with torch.inference_mode():
-              raw = model.backbone.generate(**probe, max_new_tokens=4, do_sample=False)
+              raw = model.generate_base(**probe, max_new_tokens=4, do_sample=False)
               for expert_id in range(20):
                   generated = model.generate(**probe, max_new_tokens=4, do_sample=False,
                                              expert_id=expert_id)
