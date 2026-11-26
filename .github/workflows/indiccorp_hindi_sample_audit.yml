@@ -31,15 +31,15 @@ jobs:
         env:
           PYTHONPATH: .
         run: python -m unittest -v test_audit_indiccorp_hindi_sample
-      - name: Stream up to 500 non-empty Hindi records without saving text
+      - name: Stream up to 5000 non-empty Hindi records without saving text
         working-directory: models/neurocore_edge
         env:
           HF_HUB_DISABLE_TELEMETRY: '1'
         run: |
           python audit_indiccorp_hindi_sample.py \
             --revision 2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f \
-            --max-rows 500 \
-            --max-scan-rows 10000 \
+            --max-rows 5000 \
+            --max-scan-rows 100000 \
             --require-target \
             --confirm-review-only > indiccorp_hindi_review_report.json
           cat indiccorp_hindi_review_report.json
