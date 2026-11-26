@@ -223,7 +223,7 @@ def heuristic_diagnostics(
         conclusion = normalized.rsplit("निष्कर्ष:", 1)[-1]
         if "नहीं निकलता" in conclusion or "नहीं निकलता कि" in conclusion:
             status = "fail"
-        elif "रवि अशिक्षित नहीं" in conclusion or conclusion.startswith("हाँ"):
+        elif "अशिक्षित नहीं" in conclusion and not conclusion.lstrip().startswith("नहीं") or conclusion.startswith("हाँ"):
             status = "pass"
         else:
             status = incomplete
