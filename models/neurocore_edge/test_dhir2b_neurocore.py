@@ -57,6 +57,26 @@ class Tests(unittest.TestCase):
         self.assertTrue(all(not p.requires_grad for l in model.adapter_layers for i,e in enumerate(l.experts) if i!=5 for p in e.parameters()))
         ids=torch.randint(0,32,(1,4)); loss=model(input_ids=ids,expert_id=5).logits.float().square().mean()
         loss.backward(); self.assertTrue(any(p.grad is not None for p in params))
+    def test_expert_state_roundtrip_and_mismatch_guard(self):
+        model=self.make()
+        state={f"layer_{i}.{k}":v.detach().clone()+0.01
+          for i,layer in enumerate(model.adapter_layers)
+          for k,v in layer.experts[2].state_dict().items()}
+        model.load_expert_state_dict(2,state)
+        loaded=model.adapter_layers[2].experts[2].state_dict()
+        self.assertTrue(torch.equal(loaded["down.weight"],state["layer_2.down.weight"]))
+        with self.assertRaisesRegex(ValueError,"key set mismatch"):
+            model.load_expert_state_dict(2,{})
+    def test_tokenizer_id_gap_is_rejected(self):
+        class Gapped(Tok):
+            def get_vocab(self): return {str(i):i+1 for i in range(32)}
+        class RealCfg:
+            vocab_size=32; hidden_size=2048; intermediate_size=4096
+            num_hidden_layers=28; num_attention_heads=16; num_key_value_heads=8
+            max_position_embeddings=16384; rope_theta=1_000_000.
+            tie_word_embeddings=True; hidden_act="silu"
+        with self.assertRaisesRegex(ValueError,"contiguous"):
+            validate_dhir_config(RealCfg(),Gapped())
     def test_bad_expert_id(self):
         with self.assertRaises(ValueError): self.make().prepare_expert_training(20)
 if __name__=="__main__": unittest.main()
