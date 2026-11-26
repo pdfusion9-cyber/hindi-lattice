@@ -2,7 +2,7 @@
   "schema_version": 1,
   "architecture_version": "0.4.0-dhir2b-adapters",
   "status": "IMPLEMENTED_IMPORT_PATH_AWAITING_PINNED_CHECKPOINT",
-  "base_model_id": "zenteiq-ai/Dhir-2B",
+  "base_model_id": "zenteiq/Dhir-2B",
   "base_revision": null,
   "base_architecture": {
     "num_hidden_layers": 28,
