@@ -54,6 +54,13 @@ jobs:
           OMP_NUM_THREADS: '2'
           MKL_NUM_THREADS: '2'
         run: python -m unittest -v test_dhir2b_neurocore
+      - name: Validate synthetic Hindi SFT pilot datasets
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m py_compile test_neurocore_synthetic_sft_datasets.py
+          python -m unittest -v test_neurocore_synthetic_sft_datasets
       - name: Compile and test Dhīr Expert 11 training gates
         working-directory: models/neurocore_edge
         env:
