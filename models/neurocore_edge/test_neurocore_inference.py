@@ -28,13 +28,23 @@ class FakeModel:
         self.calls = []
         self.backbone = self
 
-    def generate(self, input_ids, max_new_tokens, do_sample, expert_id=None):
-        self.calls.append({"expert_id": expert_id, "max_new_tokens": max_new_tokens, "method": "neurocore"})
+    def generate(self, input_ids, max_new_tokens, do_sample, expert_id=None, **kwargs):
+        self.calls.append({
+            "expert_id": expert_id,
+            "max_new_tokens": max_new_tokens,
+            "method": "neurocore",
+            "forwarded_kwargs": sorted(kwargs),
+        })
         extra = torch.tensor([[4, 5]])
         return torch.cat([input_ids, extra], dim=1)
 
-    def generate_base(self, input_ids, max_new_tokens, do_sample):
-        self.calls.append({"expert_id": None, "max_new_tokens": max_new_tokens, "method": "base_dhir"})
+    def generate_base(self, input_ids, max_new_tokens, do_sample, **kwargs):
+        self.calls.append({
+            "expert_id": None,
+            "max_new_tokens": max_new_tokens,
+            "method": "base_dhir",
+            "forwarded_kwargs": sorted(kwargs),
+        })
         extra = torch.tensor([[4, 5]])
         return torch.cat([input_ids, extra], dim=1)
 
