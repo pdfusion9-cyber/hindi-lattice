@@ -14,7 +14,7 @@
 ## Review boundary
 The official card identifies this as pretraining data and cites the ACL 2023 paper, which describes IndicCorp as 20.9B tokens across 24 languages. The CC0 declaration is relevant licensing evidence, but it does not provide a row-level source manifest for each Hindi text item. Human review must still decide whether the stated license and upstream sourcing are sufficient for the intended commercial training and redistribution.
 
-The audit streams at most 500 lines from the pinned Hindi shard. It computes aggregate language, length, duplicate and PII-pattern indicators; it never prints or persists sample text. It is review-only, not training approval.
+The audit now collects up to 500 non-empty text records while imposing a separate hard ceiling of 10,000 raw lines, including empty separators. It computes aggregate language, length, duplicate and PII-pattern indicators; it never prints or persists sample text. If 500 non-empty records cannot be reached within the raw-line bound, the workflow fails closed and leaves approval pending. This is review-only, not training approval.
 
 ## Status
 PENDING_REVIEW. No tokenized training corpus has been created and no training is permitted until a human reviewer accepts source rights and privacy/consent concerns, then approves exact SHA-256 hashes for both the bounded tokenized corpus and the local tokenizer directory.
