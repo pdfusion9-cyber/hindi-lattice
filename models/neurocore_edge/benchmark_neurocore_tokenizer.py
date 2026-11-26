@@ -13,6 +13,22 @@ AADHAAR_RE = re.compile(r"(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)")
 def contains_pii_pattern(text: str) -> bool:
     return bool(EMAIL_RE.search(text) or PHONE_RE.search(text) or AADHAAR_RE.search(text))
 
+def iter_safe_records(path: Path, limit: int):
+    """Yield at most limit non-empty records that pass basic PII-pattern filters."""
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    accepted = 0
+    with Path(path).open("r", encoding="utf-8") as stream:
+        for line in stream:
+            text = line.strip()
+            if not text or contains_pii_pattern(text):
+                continue
+            yield text
+            accepted += 1
+            if accepted >= limit:
+                break
+
+
 def run_benchmark(tokenizer_dir: Path, input_path: Path, *, base_model_id: str,
                   base_revision: str, expected_vocab_size: int, max_samples: int) -> dict:
     wrapped = NeuroCoreTokenizer.from_pretrained(
