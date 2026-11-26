@@ -85,9 +85,9 @@ def require_human_approvals(
     tokenizer_sha256: str,
 ) -> dict[str, Any]:
     doc = json.loads(Path(approval_path).read_text(encoding="utf-8"))
-    if doc.get("status") != "ALL_DATASETS_REVIEWED":
-        raise PermissionError("training corpus preparation blocked: global dataset review is not complete")
-
+    # Approve per expert/dataset, not globally across unrelated specialists.
+    # Other experts' pending reviews must not block Expert 11 once its exact
+    # dataset, source revision, license, privacy and tokenizer approvals exist.
     dataset = next((
         row for row in doc.get("datasets", [])
         if row.get("expert_id") == expert_id
