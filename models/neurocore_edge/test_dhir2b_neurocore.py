@@ -52,6 +52,32 @@ class Tests(unittest.TestCase):
         a=model.backbone(input_ids=ids).logits
         b=model(input_ids=ids,expert_id=3).logits
         self.assertEqual(len(model.adapter_layers),28); self.assertTrue(torch.allclose(a,b))
+    def test_forward_base_and_generate_base_bypass_nonzero_adapters(self):
+        torch.manual_seed(9)
+        model=self.make()
+        reference=Backbone()
+        reference.load_state_dict(model.backbone.state_dict())
+        reference.eval()
+        # Make adapter 0 observably non-zero so this cannot pass only because
+        # the adapter bank starts at zero initialization.
+        with torch.no_grad():
+            for bank in model.adapter_layers:
+                for expert in bank.experts:
+                    expert.down.weight.zero_()
+                    expert.up.weight.zero_()
+                    expert.down.weight[0,0]=1.0
+                    expert.up.weight[0,0]=0.1
+        ids=torch.tensor([[1,2,3,4]])
+        with torch.inference_mode():
+            expected_logits=reference(input_ids=ids).logits
+            base_logits=model.forward_base(input_ids=ids).logits
+            active_logits=model(input_ids=ids,expert_id=0).logits
+            expected_generation=reference.generate(input_ids=ids,max_new_tokens=1)
+            base_generation=model.generate_base(input_ids=ids,max_new_tokens=1)
+        self.assertTrue(torch.equal(expected_logits,base_logits))
+        self.assertFalse(torch.equal(expected_logits,active_logits))
+        self.assertTrue(torch.equal(expected_generation,base_generation))
+        self.assertTrue(model._adapters_enabled)
     def test_only_fixed_expert_is_trainable(self):
         model=self.make(); params=model.prepare_expert_training(5)
         self.assertEqual(len(params),28*2)
