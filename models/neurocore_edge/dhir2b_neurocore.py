@@ -199,11 +199,19 @@ class Dhir2BNeuroCore(nn.Module):
         if manifest.get("architecture_version")!=ARCHITECTURE_VERSION or manifest.get("schema_version")!=1:
             raise ValueError("unsupported Dhīr NeuroCore checkpoint")
         try:
-            from transformers import AutoModelForCausalLM,AutoTokenizer
+            from transformers import PreTrainedTokenizerFast
+            from .dhir_vendor.configuration_dhir import DhirConfig
+            from .dhir_vendor.modeling_dhir import DhirForCausalLM
         except ImportError as exc:
             raise RuntimeError("install requirements-dhir2b.txt") from exc
-        backbone=AutoModelForCausalLM.from_pretrained(str(root/"backbone"),local_files_only=True)
-        tokenizer=AutoTokenizer.from_pretrained(str(root/"tokenizer"),local_files_only=True)
+        local_backbone=root/"backbone"
+        config=DhirConfig.from_pretrained(str(local_backbone),local_files_only=True)
+        backbone=DhirForCausalLM.from_pretrained(
+            str(local_backbone),config=config,local_files_only=True
+        )
+        tokenizer=PreTrainedTokenizerFast.from_pretrained(
+            str(root/"tokenizer"),local_files_only=True
+        )
         facts=validate_dhir_config(backbone.config,tokenizer)
         for key,value in manifest["config"].items():
             if facts.get(key)!=value:
@@ -220,12 +228,14 @@ class Dhir2BNeuroCore(nn.Module):
         if not revision or not COMMIT_RE.fullmatch(revision):
             raise ValueError("pin model revision to a 40-character commit SHA")
         try:
-            from transformers import AutoConfig,AutoModelForCausalLM,AutoTokenizer
+            from transformers import PreTrainedTokenizerFast
+            from .dhir_vendor.configuration_dhir import DhirConfig
+            from .dhir_vendor.modeling_dhir import DhirForCausalLM
         except ImportError as exc: raise RuntimeError("install requirements-dhir2b.txt") from exc
-        config=AutoConfig.from_pretrained(model_id,revision=revision)
-        tokenizer=AutoTokenizer.from_pretrained(model_id,revision=revision)
+        config=DhirConfig.from_pretrained(model_id,revision=revision)
+        tokenizer=PreTrainedTokenizerFast.from_pretrained(model_id,revision=revision)
         facts=validate_dhir_config(config,tokenizer)
-        backbone=AutoModelForCausalLM.from_pretrained(
-            model_id,revision=revision,torch_dtype=dtype,low_cpu_mem_usage=True
+        backbone=DhirForCausalLM.from_pretrained(
+            model_id,revision=revision,config=config,torch_dtype=dtype,low_cpu_mem_usage=True
         )
         return cls(backbone,model_id,revision,rank=rank,source_facts=facts),tokenizer
