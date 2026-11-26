@@ -26,6 +26,10 @@ class SyntheticHindiSFTTests(unittest.TestCase):
                 self.assertEqual(set(row), {"prompt", "response"})
                 self.assertGreater(len(row["prompt"]), 20)
                 self.assertGreater(len(row["response"]), 60)
+        self.assertGreaterEqual(len(load_rows(FILES[0])), 14)
+        self.assertGreaterEqual(len(load_rows(FILES[1])), 4)
+        self.assertGreaterEqual(len(load_rows(FILES[2])), 15)
+        self.assertGreaterEqual(len(load_rows(FILES[3])), 4)
 
     def test_hindi_and_common_pii_patterns(self):
         for name in FILES:
@@ -47,6 +51,21 @@ class SyntheticHindiSFTTests(unittest.TestCase):
             self.assertTrue(train)
             self.assertTrue(validation)
             self.assertFalse(train & validation)
+
+    def test_expert16_contains_explicit_prior_answer_revision(self):
+        rows = load_rows("expert16_self_correction_train.jsonl")
+        prior_answer_rows = [r for r in rows if "पिछले उत्तर" in r["prompt"]]
+        revised_rows = [r for r in prior_answer_rows if "पिछला उत्तर सुधारना चाहिए" in r["response"]]
+        self.assertGreaterEqual(len(prior_answer_rows), 6)
+        self.assertGreaterEqual(len(revised_rows), 6)
+
+    def test_expert17_advanced_plans_cover_rubric_fields(self):
+        rows = [r for r in load_rows("expert17_planning_train.jsonl") if "उन्नत योजना अभ्यास" in r["prompt"]]
+        self.assertGreaterEqual(len(rows), 6)
+        required = ("जिम्मेदार भूमिका:", "संसाधन/निर्भरता:", "सूचक:", "जोखिम:", "वैकल्पिक कदम:")
+        for row in rows:
+            for field in required:
+                self.assertIn(field, row["response"])
 
 if __name__ == "__main__":
     unittest.main()
