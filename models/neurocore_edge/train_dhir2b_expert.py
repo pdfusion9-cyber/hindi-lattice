@@ -122,8 +122,27 @@ def contains_pii_pattern(text: str) -> bool:
     )
 
 
+def _as_token_ids(encoded) -> list[int]:
+    """Normalize tokenizer outputs without changing native Dhīr token IDs."""
+    if hasattr(encoded, "tolist"):
+        encoded = encoded.tolist()
+    if isinstance(encoded, dict):
+        encoded = encoded["input_ids"]
+    if encoded and isinstance(encoded[0], (list, tuple)):
+        if len(encoded) != 1:
+            raise ValueError("tokenizer unexpectedly returned multiple sequences")
+        encoded = encoded[0]
+    return [int(value) for value in encoded]
+
+
 def read_rows(path: str | Path, tokenizer, max_length: int, max_rows: int = 5000):
-    """Read a bounded number of rows; skip blank and common PII-pattern text rows."""
+    """Read legacy LM rows or native-chat prompt/response SFT rows.
+
+    Structured rows use {"prompt": ..., "response": ...}. Their loss is masked
+    over the prompt and applies only to the assistant completion. The prompt
+    and full conversation must share an exact native chat-template prefix.
+    Legacy {"text": ...} and {"input_ids": ...} rows retain full-token LM loss.
+    """
     rows = []
     if max_length < 2 or max_rows < 1:
         raise ValueError("max_length must be >= 2 and max_rows must be positive")
@@ -132,27 +151,73 @@ def read_rows(path: str | Path, tokenizer, max_length: int, max_rows: int = 5000
             if not line.strip():
                 continue
             item = json.loads(line)
-            if "input_ids" in item:
-                ids = [int(value) for value in item["input_ids"]]
+            if "prompt" in item or "response" in item:
+                prompt, response = item.get("prompt"), item.get("response")
+                if not isinstance(prompt, str) or not prompt.strip():
+                    raise ValueError(f"row {line_number} requires a non-empty prompt")
+                if not isinstance(response, str) or not response.strip():
+                    raise ValueError(f"row {line_number} requires a non-empty response")
+                if contains_pii_pattern(prompt) or contains_pii_pattern(response):
+                    continue
+                apply_chat_template = getattr(tokenizer, "apply_chat_template", None)
+                if (not callable(apply_chat_template)
+                        or getattr(tokenizer, "chat_template", None) is None):
+                    raise ValueError(
+                        "structured prompt/response rows require Dhīr's native chat template"
+                    )
+                prompt_ids = _as_token_ids(apply_chat_template(
+                    [{"role": "user", "content": prompt}],
+                    tokenize=True,
+                    add_generation_prompt=True,
+                ))
+                full_ids = _as_token_ids(apply_chat_template(
+                    [
+                        {"role": "user", "content": prompt},
+                        {"role": "assistant", "content": response},
+                    ],
+                    tokenize=True,
+                    add_generation_prompt=False,
+                ))
+                if not prompt_ids or full_ids[:len(prompt_ids)] != prompt_ids:
+                    raise ValueError(
+                        f"row {line_number} does not preserve the native assistant-generation prefix"
+                    )
+                if len(prompt_ids) >= max_length:
+                    continue
+                ids = full_ids[:max_length]
+                labels = ([-100] * len(prompt_ids)) + ids[len(prompt_ids):]
+                supervision = "assistant_completion_only"
+            elif "input_ids" in item:
+                ids = [int(value) for value in item["input_ids"]][:max_length]
+                labels = list(ids)
+                supervision = "all_tokens"
             elif isinstance(item.get("text"), str):
                 text = item["text"]
                 if contains_pii_pattern(text):
                     continue
-                ids = tokenizer(
+                encoded = tokenizer(
                     text,
                     add_special_tokens=True,
                     truncation=True,
                     max_length=max_length,
-                )["input_ids"]
+                )
+                ids = _as_token_ids(encoded)[:max_length]
+                labels = list(ids)
+                supervision = "all_tokens"
             else:
-                raise ValueError(f"row {line_number} requires text or input_ids")
+                raise ValueError(
+                    f"row {line_number} requires prompt/response, text or input_ids"
+                )
 
-            ids = ids[:max_length]
-            if len(ids) < 2:
+            if len(ids) < 2 or not any(value != -100 for value in labels[1:]):
                 continue
             if min(ids) < 0 or max(ids) >= len(tokenizer):
                 raise ValueError(f"token ID outside vocabulary at row {line_number}")
-            rows.append(ids)
+            rows.append({
+                "input_ids": ids,
+                "labels": labels,
+                "supervision": supervision,
+            })
             if len(rows) >= max_rows:
                 break
 
@@ -162,17 +227,23 @@ def read_rows(path: str | Path, tokenizer, max_length: int, max_rows: int = 5000
 
 
 def batch_rows(rows, indices, pad_id):
-    length = max(len(rows[index]) for index in indices)
+    length = max(len(rows[index]["input_ids"]) for index in indices)
     input_ids = torch.full((len(indices), length), pad_id, dtype=torch.long)
     labels = torch.full_like(input_ids, -100)
     attention_mask = torch.zeros_like(input_ids)
     for batch_index, row_index in enumerate(indices):
-        sequence = rows[row_index]
+        row = rows[row_index]
+        sequence = row["input_ids"]
+        targets = row["labels"]
+        if len(sequence) != len(targets):
+            raise ValueError("training input_ids and labels must have equal lengths")
         count = len(sequence)
         input_ids[batch_index, :count] = torch.tensor(sequence)
-        labels[batch_index, :count] = torch.tensor(sequence)
+        labels[batch_index, :count] = torch.tensor(targets)
         attention_mask[batch_index, :count] = 1
     labels[attention_mask == 0] = -100
+    if not bool((labels[:, 1:] != -100).any()):
+        raise ValueError("batch contains no supervised next-token targets")
     return input_ids, labels, attention_mask
 
 
@@ -197,11 +268,13 @@ def save_checkpoint(
     batch_size,
     max_length,
     learning_rate,
+    training_objective,
 ):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
+        "training_objective": training_objective,
         "status": "EXPERT_ADAPTER_TRAINED_UNVALIDATED",
         "architecture_version": "0.4.0-dhir2b-adapters",
         "expert_id": expert_id,
@@ -274,6 +347,8 @@ def main():
     )
 
     rows = read_rows(args.data, tokenizer, args.max_length, args.max_rows)
+    supervision_modes = sorted({row["supervision"] for row in rows})
+    training_objective = "+".join(supervision_modes)
     trainable = model.prepare_expert_training(args.expert_id)
     model.train()
     optimizer = torch.optim.AdamW(trainable, lr=args.lr)
@@ -282,7 +357,8 @@ def main():
     if args.resume_from:
         checkpoint = torch.load(args.resume_from, map_location="cpu", weights_only=True)
         expected = {
-            "schema_version": 2,
+            "schema_version": 3,
+            "training_objective": training_objective,
             "status": "EXPERT_ADAPTER_TRAINED_UNVALIDATED",
             "architecture_version": "0.4.0-dhir2b-adapters",
             "expert_id": args.expert_id,
@@ -353,12 +429,14 @@ def main():
             batch_size=args.batch_size,
             max_length=args.max_length,
             learning_rate=args.lr,
+            training_objective=training_objective,
         )
         if step == 1 or step % 10 == 0 or step == final_step:
             print(json.dumps({
                 "step": step,
                 "loss": float(loss.detach()),
                 "expert_id": args.expert_id,
+                "training_objective": training_objective,
                 "device": "cpu",
                 "status": "EXPERT_ADAPTER_TRAINING",
             }, ensure_ascii=False))
@@ -366,6 +444,7 @@ def main():
     print(json.dumps({
         "status": "EXPERT_ADAPTER_TRAINED_UNVALIDATED",
         "expert_id": args.expert_id,
+        "training_objective": training_objective,
         "steps_completed": final_step,
         "checkpoint": args.output,
         "base_revision": manifest["base_revision"],

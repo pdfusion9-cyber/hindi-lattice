@@ -138,7 +138,69 @@ class TrainingApprovalGateTests(unittest.TestCase):
                 encoding="utf-8",
             )
             result = read_rows(path, FakeTokenizer(), max_length=8, max_rows=2)
-            self.assertEqual(result, [[1, 5, 2], [1, 5, 2]])
+            self.assertEqual(
+                [row["input_ids"] for row in result],
+                [[1, 5, 2], [1, 5, 2]],
+            )
+            self.assertTrue(all(row["labels"] == row["input_ids"] for row in result))
+            self.assertTrue(all(row["supervision"] == "all_tokens" for row in result))
+
+    def test_prompt_response_uses_native_template_and_masks_prompt_loss(self):
+        class ChatTokenizer(FakeTokenizer):
+            chat_template = "test-native-dhir-template"
+
+            def apply_chat_template(self, messages, *, tokenize, add_generation_prompt):
+                if add_generation_prompt:
+                    return [1, 4, 5]
+                return [1, 4, 5, 8, 9, 2]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sft.jsonl"
+            path.write_text(
+                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\\n",
+                encoding="utf-8",
+            )
+            rows = read_rows(path, ChatTokenizer(), max_length=8, max_rows=5)
+            self.assertEqual(rows[0]["input_ids"], [1, 4, 5, 8, 9, 2])
+            self.assertEqual(rows[0]["labels"], [-100, -100, -100, 8, 9, 2])
+            self.assertEqual(rows[0]["supervision"], "assistant_completion_only")
+
+    def test_prompt_response_rejects_non_prefix_chat_template(self):
+        class BrokenChatTokenizer(FakeTokenizer):
+            chat_template = "test-native-dhir-template"
+
+            def apply_chat_template(self, messages, *, tokenize, add_generation_prompt):
+                return [1, 4, 6] if add_generation_prompt else [1, 4, 5, 8, 2]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sft.jsonl"
+            path.write_text(
+                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "native assistant-generation prefix"):
+                read_rows(path, BrokenChatTokenizer(), max_length=8, max_rows=5)
+
+    def test_prompt_response_requires_native_chat_template(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sft.jsonl"
+            path.write_text(
+                json.dumps({"prompt": "प्रश्न", "response": "उत्तर"}, ensure_ascii=False) + "\\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "native chat template"):
+                read_rows(path, FakeTokenizer(), max_length=8, max_rows=5)
+
+    def test_batch_rows_preserves_completion_only_loss_mask(self):
+        from train_dhir2b_expert import batch_rows
+        rows = [
+            {"input_ids": [1, 4, 5, 8, 2], "labels": [-100, -100, -100, 8, 2]},
+            {"input_ids": [1, 6, 7, 9, 2], "labels": [-100, -100, -100, 9, 2]},
+        ]
+        input_ids, labels, attention_mask = batch_rows(rows, [0, 1], pad_id=0)
+        self.assertEqual(input_ids.tolist(), [[1, 4, 5, 8, 2], [1, 6, 7, 9, 2]])
+        self.assertEqual(labels.tolist(), [[-100, -100, -100, 8, 2], [-100, -100, -100, 9, 2]])
+        self.assertEqual(attention_mask.tolist(), [[1, 1, 1, 1, 1], [1, 1, 1, 1, 1]])
 
     def test_invalid_row_limit_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
