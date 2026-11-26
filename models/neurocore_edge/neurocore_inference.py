@@ -61,10 +61,10 @@ def run_neurocore_inference(
         )
         selected_expert = None
     else:
-        backbone = getattr(model, "backbone", None)
-        if backbone is None:
-            raise ValueError("base_dhir mode requires model.backbone")
-        generate_fn = lambda: backbone.generate(
+        generate_base = getattr(model, "generate_base", None)
+        if not callable(generate_base):
+            raise ValueError("base_dhir mode requires model.generate_base to bypass adapter hooks")
+        generate_fn = lambda: generate_base(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=do_sample,
