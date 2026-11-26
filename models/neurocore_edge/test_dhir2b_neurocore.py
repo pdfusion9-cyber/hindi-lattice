@@ -57,6 +57,13 @@ class Tests(unittest.TestCase):
         self.assertTrue(all(not p.requires_grad for l in model.adapter_layers for i,e in enumerate(l.experts) if i!=5 for p in e.parameters()))
         ids=torch.randint(0,32,(1,4)); loss=model(input_ids=ids,expert_id=5).logits.float().square().mean()
         loss.backward(); self.assertTrue(any(p.grad is not None for p in params))
+    def test_bfloat16_hidden_states_keep_fp32_adapter_weights(self):
+        model=self.make()
+        hidden=torch.randn(2,3,16,dtype=torch.bfloat16)
+        result=model.adapter_layers[0](hidden,expert_id=0)
+        self.assertEqual(result.dtype,torch.bfloat16)
+        self.assertEqual(result.shape,hidden.shape)
+        self.assertTrue(torch.isfinite(result).all())
     def test_expert_state_roundtrip_and_mismatch_guard(self):
         model=self.make()
         state={f"layer_{i}.{k}":v.detach().clone()+0.01
