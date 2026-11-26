@@ -2,6 +2,7 @@ import unittest
 import torch
 
 from neurocore_inference import run_neurocore_inference
+from neurocore_tokenizer import NeuroCoreTokenizer
 
 
 class FakeTokenizer:
@@ -92,6 +93,38 @@ class NeuroCoreInferenceRunnerTests(unittest.TestCase):
                 task="hindi_indic_docs", language_tag="hi",
                 mode="base_dhir", max_new_tokens=257,
             )
+
+
+    def test_native_chat_template_is_applied_before_generation(self):
+        class ChatBase:
+            chat_template = "test-template"
+
+            def apply_chat_template(self, messages, **kwargs):
+                self.messages = messages
+                self.template_kwargs = kwargs
+                return {
+                    "input_ids": torch.tensor([[1, 2, 3, 4]]),
+                    "attention_mask": torch.tensor([[1, 1, 1, 1]]),
+                }
+
+            def __call__(self, text, **kwargs):
+                raise AssertionError("raw encoding should not be used when a chat template exists")
+
+            def decode(self, ids, **kwargs):
+                return "उत्तर"
+
+        base = ChatBase()
+        wrapped = NeuroCoreTokenizer(base, {"tokenizer_vocab_sha256": "a" * 64})
+        model = FakeModel()
+        result = run_neurocore_inference(
+            model, wrapped, "नमस्ते",
+            task="hindi_indic_docs", language_tag="hi",
+            mode="base_dhir", max_new_tokens=8,
+        )
+        self.assertEqual(base.messages, [{"role": "user", "content": "नमस्ते"}])
+        self.assertTrue(base.template_kwargs["add_generation_prompt"])
+        self.assertTrue(result["chat_template_applied"])
+        self.assertEqual(model.calls[-1]["method"], "base_dhir")
 
     def test_unknown_mode_rejected(self):
         with self.assertRaises(ValueError):

@@ -504,6 +504,65 @@ class NeuroCoreTokenizer:
             role=role, task=task, expert_id=expert_id, script_code=script_code
         )
 
+    def encode_chat_with_metadata(
+        self,
+        text: str,
+        *,
+        language_tag: str | None = None,
+        role: str = "user",
+        task: str | None = None,
+        expert_id: int | None = None,
+        add_generation_prompt: bool = True,
+        **tokenizer_kwargs,
+    ) -> dict[str, Any]:
+        """Encode a single native chat message with Dhīr's preserved template.
+
+        If the upstream tokenizer has no chat template, retain the explicit raw
+        text path and report that no template was applied. Never invent a format.
+        """
+        if not isinstance(text, str):
+            raise TypeError("text must be a string")
+
+        chat_template = _chat_template_value(self._tokenizer)
+        apply_chat_template = getattr(self._tokenizer, "apply_chat_template", None)
+        if chat_template is None or not callable(apply_chat_template):
+            encoded = self.encode_with_metadata(
+                text,
+                language_tag=language_tag,
+                role=role,
+                task=task,
+                expert_id=expert_id,
+                **tokenizer_kwargs,
+            )
+            encoded["chat_template_applied"] = False
+            return encoded
+
+        return_tensors = tokenizer_kwargs.pop("return_tensors", None)
+        encoding = apply_chat_template(
+            [{"role": role, "content": text}],
+            tokenize=True,
+            add_generation_prompt=add_generation_prompt,
+            return_tensors=return_tensors,
+            return_dict=True,
+            **tokenizer_kwargs,
+        )
+        text_metadata = analyze_text(text, language_tag=language_tag)
+        controls = build_control_metadata(
+            role=role,
+            task=task,
+            expert_id=expert_id,
+            script_code=text_metadata["dominant_script"],
+        )
+        return {
+            "encoding": encoding,
+            "text_metadata": text_metadata,
+            "control_metadata": controls,
+            "tokenizer_name": TOKENIZER_NAME,
+            "tokenizer_vocab_sha256": self._manifest["tokenizer_vocab_sha256"],
+            "token_ids_unchanged": True,
+            "chat_template_applied": True,
+        }
+
     def encode_with_metadata(
         self,
         text: str,

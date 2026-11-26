@@ -31,13 +31,25 @@ def run_neurocore_inference(
     if not 1 <= int(max_new_tokens) <= 256:
         raise ValueError("max_new_tokens must be between 1 and 256")
 
-    encoded = tokenizer.encode_with_metadata(
-        prompt,
-        role="user",
-        task=task,
-        language_tag=language_tag,
-        return_tensors="pt",
-    )
+    encode_chat = getattr(tokenizer, "encode_chat_with_metadata", None)
+    if callable(encode_chat):
+        encoded = encode_chat(
+            prompt,
+            role="user",
+            task=task,
+            language_tag=language_tag,
+            return_tensors="pt",
+        )
+    else:
+        # Compatibility path for lightweight test doubles and older tokenizers.
+        encoded = tokenizer.encode_with_metadata(
+            prompt,
+            role="user",
+            task=task,
+            language_tag=language_tag,
+            return_tensors="pt",
+        )
+        encoded["chat_template_applied"] = False
     inputs = encoded["encoding"]
     control = encoded["control_metadata"]
     text_meta = encoded["text_metadata"]
@@ -99,6 +111,7 @@ def run_neurocore_inference(
         "tokenizer": encoded.get("tokenizer_name"),
         "tokenizer_vocab_sha256": encoded.get("tokenizer_vocab_sha256"),
         "token_ids_unchanged": bool(encoded.get("token_ids_unchanged")),
+        "chat_template_applied": bool(encoded.get("chat_template_applied", False)),
         "suggested_expert_id": suggested_expert,
         "suggested_expert_name": control.get("suggested_expert_name"),
         "selected_expert_id": selected_expert,
