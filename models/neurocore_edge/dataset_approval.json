@@ -312,12 +312,12 @@
       "expert_id": 11,
       "expert_name": "hindi_indic_docs",
       "dataset_id": "ai4bharat/IndicCorpV2",
-      "revision": null,
+      "revision": "2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f",
       "config_name": "indiccorp_v2 (raw text shard streamed with datasets text builder)",
       "train_split": "data/hi-1.txt",
       "validation_split": null,
-      "license_id": null,
-      "license_terms_url": null,
+      "license_id": "CC0-1.0 (declared by official dataset card; source-level rights still require human review)",
+      "license_terms_url": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
       "commercial_training_allowed": false,
       "public_redistribution_allowed": false,
       "pii_reviewed": false,
@@ -325,7 +325,7 @@
       "schema_reviewed": true,
       "split_reviewed": true,
       "approved": false,
-      "review_note": "Pinned HF revision 2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f; raw Hindi shard data/hi-1.txt streamed via datasets text builder. Official dataset card declares CC0-1.0. Exact shard SHA-256: 9c9dfed015247004176c12b831bc7a4720bd79ebd8ac424e46c13997b57f8a73 (26.7 GB). Two additional Hindi shards exist, but first review samples only hi-1. Source-level provenance and privacy remain subject to human review. Training remains denied."
+      "review_note": "SELECTED PRIMARY HINDI CANDIDATE, NOT APPROVED: pinned revision 2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f; shard data/hi-1.txt; source SHA-256 9c9dfed015247004176c12b831bc7a4720bd79ebd8ac424e46c13997b57f8a73; official card declares CC0-1.0. Bounded 500-nonempty review found 1 phone-like row; privacy filtering and human source-provenance review are required before approval."
     },
     {
       "expert_id": 12,
@@ -681,5 +681,28 @@
         "Audit underlying source datasets, redistribution terms, PII and consent"
       ]
     }
-  ]
+  ],
+  "training_candidate_selection": {
+    "expert_id": 11,
+    "expert_name": "hindi_indic_docs",
+    "dataset_id": "ai4bharat/IndicCorpV2",
+    "revision": "2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f",
+    "config_name": "indiccorp_v2",
+    "source_file": "data/hi-1.txt",
+    "license_id": "CC0-1.0 (as declared by official dataset card)",
+    "source_sha256": "9c9dfed015247004176c12b831bc7a4720bd79ebd8ac424e46c13997b57f8a73",
+    "selection_status": "SELECTED_PENDING_PRIVACY_AND_SOURCE_PROVENANCE_REVIEW",
+    "reasons": [
+      "Official dataset card declares CC0-1.0",
+      "Immutable revision and exact Hindi shard are pinned",
+      "Bounded review collected 500 non-empty Hindi records without persisting sample text"
+    ],
+    "blockers": [
+      "One phone-like record detected in the bounded sample; exclude or redact matching records during corpus construction",
+      "CC0 dataset declaration does not substitute for source-level provenance review",
+      "No tokenized training corpus SHA-256 approval exists",
+      "No tokenizer SHA-256 approval exists"
+    ],
+    "training_approved": false
+  }
 }
