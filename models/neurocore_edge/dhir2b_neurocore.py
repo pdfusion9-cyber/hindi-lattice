@@ -204,9 +204,14 @@ class Dhir2BNeuroCore(nn.Module):
         upstream_hashes=verify_upstream_code(self.base_model_id,self.base_revision,root/"backbone")
         tokenizer.save_pretrained(str(root/"tokenizer"))
         torch.save(self.adapter_layers.state_dict(),root/"adapters.pt")
+        backbone_dtype=str(next(self.backbone.parameters()).dtype)
+        adapter_path=root/"adapters.pt"
+        torch.save(self.adapter_layers.state_dict(),adapter_path)
+        adapter_sha256=hashlib.sha256(adapter_path.read_bytes()).hexdigest()
         manifest={"schema_version":1,"architecture_version":ARCHITECTURE_VERSION,
           "status":"IMPORTED_BASE_UNTRAINED_EXPERTS","base_model_id":self.base_model_id,
           "base_revision":self.base_revision,"config":self.facts,"vocab_size":self.vocab_size,
+          "backbone_dtype":backbone_dtype,"adapter_state_sha256":adapter_sha256,
           "num_hidden_layers":28,"num_experts":self.num_experts,"adapter_rank":self.rank,
           "experts_per_token":self.adapter_layers[0].top_k,
           "upstream_code_sha256":upstream_hashes,
@@ -235,8 +240,14 @@ class Dhir2BNeuroCore(nn.Module):
             if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest()!=digest:
                 raise ValueError("local Dhīr source file hash mismatch: "+filename)
         config=DhirConfig.from_pretrained(str(local_backbone),local_files_only=True)
+        dtype_name=manifest.get("backbone_dtype")
+        dtype_map={"torch.bfloat16":torch.bfloat16,"torch.float16":torch.float16,
+                   "torch.float32":torch.float32}
+        if dtype_name not in dtype_map:
+            raise ValueError("checkpoint manifest has unsupported backbone dtype")
         backbone=DhirForCausalLM.from_pretrained(
-            str(local_backbone),config=config,local_files_only=True
+            str(local_backbone),config=config,local_files_only=True,
+            torch_dtype=dtype_map[dtype_name]
         )
         tokenizer=PreTrainedTokenizerFast.from_pretrained(
             str(root/"tokenizer"),local_files_only=True
@@ -249,7 +260,11 @@ class Dhir2BNeuroCore(nn.Module):
                   num_experts=int(manifest["num_experts"]),
                   top_k=int(manifest["experts_per_token"]),
                   rank=int(manifest["adapter_rank"]),source_facts=facts)
-        state=torch.load(root/"adapters.pt",map_location="cpu",weights_only=True)
+        adapter_path=root/"adapters.pt"
+        observed_adapter_sha=hashlib.sha256(adapter_path.read_bytes()).hexdigest()
+        if observed_adapter_sha != manifest.get("adapter_state_sha256"):
+            raise ValueError("adapter checkpoint SHA-256 mismatch")
+        state=torch.load(adapter_path,map_location="cpu",weights_only=True)
         model.adapter_layers.load_state_dict(state,strict=True)
         return model,tokenizer,manifest
     @classmethod
