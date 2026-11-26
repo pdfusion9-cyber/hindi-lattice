@@ -24,6 +24,9 @@ class Backbone(nn.Module):
         x=self.embed(input_ids)
         for layer in self.model.layers: x=layer(x)[0]
         return types.SimpleNamespace(logits=self.lm_head(x))
+    def generate(self,input_ids,max_new_tokens=1,**kwargs):
+        result=self(input_ids).logits[:,-1,:].argmax(-1,keepdim=True)
+        return torch.cat((input_ids,result),dim=1)
 class Tests(unittest.TestCase):
     def make(self):
         facts={"hidden_size":16,"vocab_size":32,"num_hidden_layers":28}
@@ -84,6 +87,17 @@ class Tests(unittest.TestCase):
             tie_word_embeddings=True; hidden_act="silu"
         with self.assertRaisesRegex(ValueError,"contiguous"):
             validate_dhir_config(RealCfg(),Gapped())
+    def test_generate_proxy_forces_expert_and_restores_state(self):
+        model=self.make()
+        ids=torch.randint(0,32,(1,4))
+        generated=model.generate(input_ids=ids,max_new_tokens=1,expert_id=11)
+        self.assertEqual(generated.shape,(1,5))
+        self.assertIsNone(model._forced_expert_id)
+    def test_invalid_generate_expert_is_rejected(self):
+        model=self.make()
+        ids=torch.randint(0,32,(1,4))
+        with self.assertRaisesRegex(ValueError,"invalid expert_id"):
+            model.generate(input_ids=ids,max_new_tokens=1,expert_id=20)
     def test_bad_expert_id(self):
         with self.assertRaises(ValueError): self.make().prepare_expert_training(20)
 if __name__=="__main__": unittest.main()
