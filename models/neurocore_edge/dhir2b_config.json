@@ -35,7 +35,15 @@
       "data_sha256_approval": "PENDING",
       "local_tokenizer_directory_sha256_approval": "PENDING",
       "training_steps_initial_pilot": 100,
-      "status": "PREPARATION_ONLY_NOT_STARTED"
+      "status": "PREPARATION_ONLY_NOT_STARTED",
+      "last_review_run_id": 45815102550,
+      "last_review_summary": {
+        "nonempty_records": 5000,
+        "pii_flagged_unique_rows": 4,
+        "sample_text_persisted": false,
+        "training_performed": false,
+        "dataset_approval": "PENDING_REVIEW"
+      }
     }
   },
   "runtime": {
