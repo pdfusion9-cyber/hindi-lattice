@@ -14,6 +14,9 @@ def valid_source(**overrides):
 def write_manifest(path, approval):
     path.write_text(json.dumps({"tokenizer_source_approval":approval}))
 
+def write_full_manifest(path, approval):
+    path.write_text(json.dumps({"tokenizer_source_approval":approval}))
+
 
 class FakeEncoding:
     def __init__(self, ids):
@@ -35,6 +38,12 @@ class FakeTokenizer:
         return ROUND_TRIP_SAMPLES[ids[0]-1000]
 
 class TokenizerApprovalTests(unittest.TestCase):
+    def test_repository_default_tokenizer_approval_blocks(self):
+        manifest=Path(__file__).with_name("dataset_approval.json")
+        if manifest.exists():
+            with self.assertRaisesRegex(RuntimeError,"no explicitly approved"):
+                load_approved_sources(manifest)
+
     def test_default_deny_manifest_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/"approval.json"
