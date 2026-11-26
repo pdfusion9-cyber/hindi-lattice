@@ -32,3 +32,31 @@ The CI checks schema, minimum text lengths, inventory minima, Devanagari presenc
 - The dataset approval policy remains default-deny.
 - No model training or optimizer step was performed.
 - Keep validation rows out of training.
+## Row-level review findings — 2026-11-27
+
+This section records a further model-assisted review of the four checked-in JSONL files. It is a review aid, not a human sign-off.
+
+### Expert 16 — task identity and validation coverage
+- Of 14 training prompts, 6 explicitly describe a prior assistant answer and ask for its correction. The other 8 are useful error-spotting or factual-correction tasks, but do not clearly establish that the model itself previously produced the answer.
+- Of 4 validation prompts, 2 explicitly ask the assistant to correct its own prior answer; 2 are general correction/checking questions.
+- Recommendation: retain the distinction in reporting. Do not claim all 18 examples are direct self-revision demonstrations. Expand the held-out set with multi-turn examples, including cases where the prior answer is already correct and should be retained, cases with insufficient information, and corrections across varied task families.
+- Concept families overlap despite exact prompt disjointness: percentages occur in both train and validation; mass conversion in training and volume conversion in validation share a general unit-conversion skill. The present validation split checks changed prompts and values, not broad unseen-skill generalization.
+
+### Expert 17 — planning rubric and timeline
+- Training rows 10–15 are the advanced structured examples and include accountable roles, resources/dependencies, indicators, risks, and fallback actions. Rows 1–9 are shorter foundational plans and do not consistently contain all those fields. The two advanced validation rows cover the full rubric; the two shorter validation rows do not.
+- Training row 4 (local-species planting) is internally inconsistent: planting is scheduled for days 31–45, while survival is to be measured at 30/60/90 days. A 90-day post-planting measurement cannot fit within the stated 90-day plan. Revise the schedule or define the measurement dates relative to the project start before this row is used for training.
+- Training row 5 (school-roof rainwater collection) calls for a flow test but does not define an explicit pass/fail or measurable outcome indicator. Add a qualified technical acceptance measure only after the relevant site/design requirements are known.
+- Training row 8 (pond cleaning) includes sensible expert/permit/safety boundaries but no explicit outcome indicator. Add a measurable, environmentally appropriate completion measure.
+- The basic planning rows are uneven in ownership, dependencies, risks and fallback detail. Decide whether these are deliberately foundational tasks or whether every example should meet the complete planning rubric; apply the same decision to validation.
+- Validation contains only four examples. The reading-festival and public-tank-maintenance scenarios are relatively brief and do not probe the full structured rubric. They are suitable only for an initial smoke check, not a reliable estimate of planning quality.
+
+### Cross-dataset limitations
+- Exact-string train/validation prompt separation passed, but this does not prove semantic independence. Planning validation overlaps some broad themes with training (reading, water services, public safety/accessibility).
+- The PII checks are pattern-based filters for common phone/email/identity-number shapes. They are not comprehensive privacy review or proof that a synthetic prompt contains no personal or sensitive information.
+- The advanced public-safety, health-camp, emergency-planning and water-quality examples appropriately defer clinical, emergency, engineering, sampling and approval decisions to qualified or authorized personnel. A human reviewer should still verify local role boundaries and feasibility.
+- The repository root has no LICENSE, LICENSE.md or COPYING file on this branch, and the two synthetic registry rows have no license ID or license terms URL. Their authored synthetic origin is recorded, but it does not itself establish commercial-training or public-redistribution permission. Keep both permissions false until the rights holder makes and records an explicit decision.
+
+### Training-readiness decision
+- The tokenizer dry-run passed against the pinned Dhīr-2B tokenizer and the production trainer's parser. It verified native chat-template prefixes, assistant-completion-only labels, row retention, and SHA-256 values. It did not load model weights, run a forward pass, assess model loss/quality, or train.
+- The 29 training examples are a small pilot seed. Repeated optimization on this quantity is likely to overfit; do not treat the dry-run as evidence that a useful expert can be trained or that validation is statistically meaningful.
+- No dataset, commercial-use, privacy, consent, corpus-hash or tokenizer-hash approval was granted by this audit. The registry remains default-deny and training remains unauthorized.
