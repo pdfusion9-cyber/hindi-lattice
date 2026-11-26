@@ -325,7 +325,19 @@
       "schema_reviewed": true,
       "split_reviewed": true,
       "approved": false,
-      "review_note": "SELECTED PRIMARY HINDI CANDIDATE, NOT APPROVED: pinned revision 2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f; shard data/hi-1.txt; source SHA-256 9c9dfed015247004176c12b831bc7a4720bd79ebd8ac424e46c13997b57f8a73; official card declares CC0-1.0. Bounded 500-nonempty review found 1 phone-like row; privacy filtering and human source-provenance review are required before approval."
+      "review_note": "SELECTED PRIMARY HINDI CANDIDATE, NOT APPROVED. Official card declares CC0-1.0; ACL 2023 paper and AI4Bharat/IndicBERT repository support its use as pretraining corpus. No per-record source manifest/rights ledger was found in checked documentation; machine-readable Hub license tag is absent. Initial 500-row review found one phone-like record. Expanded 5,000-record aggregate PII review required. Human reviewer must approve intended use and exact private corpus/tokenizer hashes.",
+      "license_evidence": {
+        "official_dataset_card": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
+        "pinned_readme": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2/blob/2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f/README.md",
+        "stated_license": "CC0-1.0 in dataset card text",
+        "machine_readable_hub_license_tag": false,
+        "acl_paper": "https://aclanthology.org/2023.acl-long.693/",
+        "publisher_repository": "https://github.com/AI4Bharat/IndicBERT",
+        "official_paper_claim": "20.9B tokens across 24 languages",
+        "source_level_manifest_found": false,
+        "review_checked_at": "2026-11-26",
+        "conclusion": "PUBLISHER_LICENSE_DECLARATION_FOUND_SOURCE_LEVEL_RIGHTS_AND_PRIVACY_NOT_CERTIFIED"
+      }
     },
     {
       "expert_id": 12,
