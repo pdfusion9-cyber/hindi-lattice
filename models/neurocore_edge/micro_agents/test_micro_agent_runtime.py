@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from micro_agent_runtime import NeuroCoreMicroAgent, safe_calculate
+from micro_agent_runtime import NeuroCoreMicroAgent, NeuroCoreWithMicroAgent, safe_calculate
 
 class MicroAgentTests(unittest.TestCase):
     def test_calculator_basic_arithmetic(self):
@@ -26,6 +26,18 @@ class MicroAgentTests(unittest.TestCase):
     def test_bad_arguments_rejected(self):
         agent=NeuroCoreMicroAgent()
         self.assertEqual(agent.handle({"tool":"calculator","arguments":{"expression":"1+1","extra":1}})["status"],"rejected")
+
+    def test_neurocore_bridge_delegates_generation_and_guards_tool_calls(self):
+        class Model:
+            def generate(self, prompt):
+                return "model-output:" + prompt
+        bridge=NeuroCoreWithMicroAgent(Model())
+        self.assertEqual(bridge.generate("hello"),"model-output:hello")
+        result=bridge.execute_tool_proposal({"tool":"calculator","arguments":{"expression":"6*7"}})
+        self.assertEqual(result["status"],"ok")
+        self.assertEqual(result["result"],42)
+        blocked=bridge.execute_tool_proposal({"tool":"shell","arguments":{"command":"id"}})
+        self.assertEqual(blocked["status"],"rejected")
     def test_security_audit_is_written(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/"audit.jsonl"
