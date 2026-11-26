@@ -35,7 +35,25 @@ Output checkpoints remain provisional: EXPERT_ADAPTER_TRAINED_UNVALIDATED. They 
 
 ## Scope of CI
 
-CI uses a tiny synthetic 28-layer backbone. It checks layer attachment, exact vocabulary validation, initial output preservation and fixed-expert gradient isolation. It does not download, import or train the real 2B checkpoint. The v0.3.2 reference files and parameter audit remain unchanged.
+The generic NeuroCore reference tests use a tiny synthetic 28-layer backbone to check layer attachment, exact vocabulary validation, initial output preservation and fixed-expert gradient isolation. Dedicated CPU workflows separately import the real pinned Dhīr-2B checkpoint and verify checkpoint save/reload. Neither kind of CI run performs expert training.
+
+## Verified real Dhīr-2B import and checkpoint
+
+On 2026-11-26, the dedicated CPU import workflow completed successfully:
+- Model: `zenteiq-ai/Dhir-2B`
+- Immutable revision: `7cbe444cd1e45e25197cfa0f683b2cb575858169`
+- Device: CPU, BF16, GPU not used
+- Exact tensor load audit: clean; no missing, unexpected, mismatched or error tensors
+- Native Dhīr backbone: 28 decoder blocks, hidden width 2,048, vocabulary 131,072
+- NeuroCore overlay: 20 experts, top-2 routing, rank-8 bottleneck adapters after every decoder block
+
+The follow-up checkpoint roundtrip also passed: logits were finite and exactly identical before and after save/reload. The saved checkpoint tree SHA-256 is `90c3b46d38f52f03a41ed6d5b07a530dd864f107176d3c98e64c808452710148`, total size 4,150,375,510 bytes. It was persisted as Actions artifact `dhir2b-neurocore-cpu-checkpoint` from [run 45780741273](https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45780741273), artifact ID `15098526765`, expiring 2026-12-26.
+
+This is the Dhīr-compatible NeuroCore path to use for the first specialist run. The separate 0.3.2-canonical 3.075B sandwich architecture is not the weight-compatible target and must not be substituted. The artifact is attached to a public repository's Actions run; it is not private storage.
+
+## First specialist training state
+
+Expert 11 (`hindi_indic_docs`) is the proposed first fixed specialist, using the pinned IndicCorpV2 Hindi shard. The Dhīr tokenizer is already bundled in the verified checkpoint; no new 65,536-token tokenizer should be built for this path. The trainer still requires exact SHA-256 approval for the cleaned JSONL corpus and the local tokenizer directory. Those approvals are pending, and no expert optimizer step has been run.
 
 
 ## Resuming a CPU expert run
