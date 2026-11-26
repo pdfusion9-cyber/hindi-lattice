@@ -84,7 +84,7 @@ class NeuroCoreTokenizerTests(unittest.TestCase):
         self.assertEqual(controls["expert_control_offset"], EXPERT_CONTROL_OFFSET)
 
     def test_unicode_script_profile_for_hindi_and_english_mixture(self):
-        report = analyze_text("नमस्ते NeuroCore")
+        report = analyze_text("नमस्ते दुनिया भारत")
         self.assertEqual(report["dominant_script"], "deva")
         self.assertEqual(report["script_mix"], "mixed")
         self.assertEqual(report["language_tag"], None)
