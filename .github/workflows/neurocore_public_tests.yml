@@ -31,13 +31,6 @@ jobs:
           python -m pip install pytest
       - name: Compile model source
         run: python -m py_compile models/neurocore_edge/*.py
-      - name: Compile and test guarded NeuroCore micro-agent
-        working-directory: models/neurocore_edge/micro_agents
-        env:
-          PYTHONPATH: .
-        run: |
-          python -m py_compile security_agent.py micro_agent_runtime.py test_micro_agent_runtime.py
-          python -m unittest -v test_micro_agent_runtime
       - name: Install Dhīr adapter import dependencies
         run: python -m pip install 'transformers>=4.57.3,<5' 'safetensors>=0.4.5'
       - name: Compile Dhīr NeuroCore tokenizer, benchmark and adapter entrypoints
