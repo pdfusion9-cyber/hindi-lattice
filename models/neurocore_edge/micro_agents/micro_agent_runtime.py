@@ -79,3 +79,19 @@ class NeuroCoreMicroAgent:
             return {"status": "rejected", "reason": str(exc)}
         return {"status": "ok", "tool": name, "result": value,
                 "security_action": decision.action}
+
+class NeuroCoreWithMicroAgent:
+    """Thin bridge between a NeuroCore inference object and guarded tools.
+
+    The model proposes a structured tool call; this bridge never executes
+    arbitrary generated text and delegates only to NeuroCoreMicroAgent.
+    """
+    def __init__(self, model, micro_agent: NeuroCoreMicroAgent | None = None):
+        self.model = model
+        self.micro_agent = micro_agent or NeuroCoreMicroAgent()
+
+    def generate(self, *args, **kwargs):
+        return self.model.generate(*args, **kwargs)
+
+    def execute_tool_proposal(self, proposal: dict[str, Any]) -> dict[str, Any]:
+        return self.micro_agent.handle(proposal)
