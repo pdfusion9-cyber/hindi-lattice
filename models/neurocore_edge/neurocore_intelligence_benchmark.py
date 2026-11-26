@@ -278,8 +278,8 @@ def run_benchmark(
     max_new_tokens: int = 256,
     do_sample: bool = False,
 ) -> dict[str, Any]:
-    if not 1 <= max_new_tokens <= 256:
-        raise ValueError("max_new_tokens must be between 1 and 256")
+    if not 1 <= max_new_tokens <= 384:
+        raise ValueError("max_new_tokens must be between 1 and 384")
 
     rows: list[dict[str, Any]] = []
     mode_totals: dict[str, list[float]] = {}
@@ -346,7 +346,7 @@ def run_benchmark(
 
     return {
         "status": "COMPLETED_UNTRAINED_PAIRED_BASELINE",
-        "benchmark_version": 4,
+        "benchmark_version": 5,
         "base_model_id": MODEL_ID,
         "base_model_revision": MODEL_REVISION,
         "device": "cpu",

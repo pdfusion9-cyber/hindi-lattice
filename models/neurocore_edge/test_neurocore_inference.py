@@ -87,21 +87,21 @@ class NeuroCoreInferenceRunnerTests(unittest.TestCase):
         self.assertEqual(result["mode"], "base_dhir")
 
 
-    def test_256_new_tokens_are_forwarded(self):
+    def test_384_new_tokens_are_forwarded(self):
         model = FakeModel()
         run_neurocore_inference(
             model, FakeTokenizer(), "नमस्ते",
             task="hindi_indic_docs", language_tag="hi",
-            mode="base_dhir", max_new_tokens=256,
+            mode="base_dhir", max_new_tokens=384,
         )
-        self.assertEqual(model.calls[-1]["max_new_tokens"], 256)
+        self.assertEqual(model.calls[-1]["max_new_tokens"], 384)
 
-    def test_more_than_256_new_tokens_rejected(self):
-        with self.assertRaisesRegex(ValueError, "1 and 256"):
+    def test_more_than_384_new_tokens_rejected(self):
+        with self.assertRaisesRegex(ValueError, "1 and 384"):
             run_neurocore_inference(
                 FakeModel(), FakeTokenizer(), "नमस्ते",
                 task="hindi_indic_docs", language_tag="hi",
-                mode="base_dhir", max_new_tokens=257,
+                mode="base_dhir", max_new_tokens=385,
             )
 
 

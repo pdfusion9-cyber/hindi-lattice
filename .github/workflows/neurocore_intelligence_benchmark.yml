@@ -38,7 +38,7 @@ jobs:
           python -m py_compile neurocore_intelligence_benchmark.py neurocore_inference.py
           python -m unittest -v test_neurocore_inference.py test_neurocore_intelligence_benchmark.py
           python neurocore_intelligence_benchmark.py \
-            --max-new-tokens 256 \
+            --max-new-tokens 384 \
             --threads 4 \
             --output /tmp/neurocore-intelligence-baseline.json
       - name: Upload benchmark report only

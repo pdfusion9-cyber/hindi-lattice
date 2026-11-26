@@ -28,8 +28,8 @@ def run_neurocore_inference(
         raise ValueError("prompt must be a non-empty string")
     if mode not in VALID_MODES:
         raise ValueError(f"mode must be one of {sorted(VALID_MODES)}")
-    if not 1 <= int(max_new_tokens) <= 256:
-        raise ValueError("max_new_tokens must be between 1 and 256")
+    if not 1 <= int(max_new_tokens) <= 384:
+        raise ValueError("max_new_tokens must be between 1 and 384")
 
     encode_chat = getattr(tokenizer, "encode_chat_with_metadata", None)
     if callable(encode_chat):
