@@ -1,0 +1,188 @@
+"""Dhīr-2B native backbone plus 20 NeuroCore residual adapter experts."""
+from __future__ import annotations
+import json, os, re
+from pathlib import Path
+from typing import Any, Optional
+import torch
+from torch import nn
+
+ARCHITECTURE_VERSION = "0.4.0-dhir2b-adapters"
+DEFAULT_MODEL_ID = "zenteiq-ai/Dhir-2B"
+COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+
+def cfg_value(config: Any, key: str, default=None):
+    return config.get(key, default) if isinstance(config, dict) else getattr(config, key, default)
+
+def config_facts(config: Any) -> dict:
+    keys=("model_type","architectures","vocab_size","hidden_size","intermediate_size",
+          "num_hidden_layers","num_attention_heads","num_key_value_heads","head_dim",
+          "max_position_embeddings","rope_theta","rms_norm_eps","hidden_act",
+          "tie_word_embeddings")
+    return {key:cfg_value(config,key) for key in keys if cfg_value(config,key) is not None}
+
+def validate_dhir_config(config: Any, tokenizer: Any) -> dict:
+    facts=config_facts(config)
+    required=("vocab_size","hidden_size","intermediate_size","num_hidden_layers",
+              "num_attention_heads","num_key_value_heads","max_position_embeddings")
+    missing=[key for key in required if key not in facts]
+    if missing: raise ValueError(f"Dhīr config missing fields: {missing}")
+    expected={"hidden_size":2048,"num_hidden_layers":28,
+              "num_attention_heads":16,"num_key_value_heads":8}
+    for key,value in expected.items():
+        if int(facts[key]) != value:
+            raise ValueError(f"incompatible Dhīr config: {key}={facts[key]}, expected {value}")
+    if int(facts["max_position_embeddings"]) < 16384:
+        raise ValueError("checkpoint context is shorter than 16384")
+    if "rope_theta" in facts and abs(float(facts["rope_theta"])-1_000_000.0)>1e-3:
+        raise ValueError("checkpoint RoPE theta mismatch")
+    if facts.get("tie_word_embeddings") is not True:
+        raise ValueError("checkpoint must use tied embeddings")
+    if facts.get("hidden_act") not in (None,"silu"):
+        raise ValueError("checkpoint activation is not SiLU/SwiGLU-compatible")
+    size=len(tokenizer)
+    if size != int(facts["vocab_size"]):
+        raise ValueError(f"tokenizer/config vocabulary mismatch: {size} vs {facts['vocab_size']}")
+    vocab=tokenizer.get_vocab()
+    if not vocab or max(map(int,vocab.values())) >= size:
+        raise ValueError("tokenizer token ID outside embedding vocabulary")
+    facts["tokenizer_length"]=size
+    return facts
+
+def find_decoder_layers(backbone: nn.Module):
+    for path in ("model.layers","transformer.h","gpt_neox.layers","decoder.layers","layers"):
+        obj=backbone
+        try:
+            for part in path.split("."): obj=getattr(obj,part)
+        except AttributeError: continue
+        if isinstance(obj,(nn.ModuleList,list,tuple)) and len(obj) and all(isinstance(x,nn.Module) for x in obj):
+            return obj
+    raise ValueError("decoder block list not found in supported Transformers layouts")
+
+class BottleneckExpert(nn.Module):
+    def __init__(self,width:int,rank:int):
+        super().__init__()
+        if width<1 or rank<1: raise ValueError("width and rank must be positive")
+        self.down=nn.Linear(width,rank,bias=False)
+        self.up=nn.Linear(rank,width,bias=False)
+        nn.init.kaiming_uniform_(self.down.weight,a=5**0.5)
+        nn.init.zeros_(self.up.weight)
+    def forward(self,x):
+        return self.up(torch.nn.functional.silu(self.down(x)))
+
+class NeuroCoreExpertBank(nn.Module):
+    def __init__(self,width:int,num_experts=20,top_k=2,rank=8):
+        super().__init__()
+        if not 1<=top_k<=num_experts: raise ValueError("invalid top_k")
+        self.width=width
+        self.num_experts=num_experts
+        self.top_k=top_k
+        self.router=nn.Linear(width,num_experts,bias=False)
+        nn.init.zeros_(self.router.weight)
+        self.experts=nn.ModuleList([BottleneckExpert(width,rank) for _ in range(num_experts)])
+    def forward(self,x,expert_id:Optional[int]=None):
+        if expert_id is not None:
+            if isinstance(expert_id,bool) or not isinstance(expert_id,int) or not 0<=expert_id<self.num_experts:
+                raise ValueError("expert_id outside configured range")
+            return x+self.experts[expert_id](x)
+        weights,indices=torch.topk(self.router(x.float()),self.top_k,dim=-1)
+        weights=torch.softmax(weights,dim=-1).to(x.dtype)
+        flat=x.reshape(-1,self.width)
+        idx=indices.reshape(-1,self.top_k)
+        w=weights.reshape(-1,self.top_k)
+        delta=torch.zeros_like(flat)
+        for expert_id,expert in enumerate(self.experts):
+            positions,slots=torch.where(idx==expert_id)
+            if positions.numel():
+                values=expert(flat.index_select(0,positions))
+                delta.index_add_(0,positions,values*w[positions,slots].unsqueeze(-1))
+        return x+delta.reshape_as(x)
+
+def replace_hidden(output,replacement):
+    if isinstance(output,tuple): return (replacement,*output[1:])
+    if isinstance(output,list): return [replacement,*output[1:]]
+    if isinstance(output,torch.Tensor): return replacement
+    raise TypeError("decoder layer output must be Tensor, tuple or list")
+
+class Dhir2BNeuroCore(nn.Module):
+    def __init__(self,backbone:nn.Module,model_id:str,revision:str,
+                 num_experts=20,top_k=2,rank=8,source_facts=None):
+        super().__init__()
+        if not COMMIT_RE.fullmatch(revision): raise ValueError("revision must be immutable 40-char commit SHA")
+        self.backbone=backbone
+        self.base_model_id=model_id
+        self.base_revision=revision
+        self.facts=source_facts or config_facts(backbone.config)
+        self.hidden_size=int(self.facts["hidden_size"])
+        self.vocab_size=int(self.facts["vocab_size"])
+        layers=find_decoder_layers(backbone)
+        if len(layers)!=28 or int(self.facts["num_hidden_layers"])!=28:
+            raise ValueError("Dhīr adapter path requires 28 independent decoder blocks")
+        self.num_experts=num_experts
+        self.rank=rank
+        self.adapter_layers=nn.ModuleList([
+            NeuroCoreExpertBank(self.hidden_size,num_experts,top_k,rank) for _ in range(28)
+        ])
+        self._forced_expert_id=None
+        self._handles=[]
+        for i,layer in enumerate(layers):
+            self._handles.append(layer.register_forward_hook(self._hook(i)))
+        self.freeze_backbone()
+    def _hook(self,index):
+        def apply(_module,_inputs,output):
+            hidden=output[0] if isinstance(output,(tuple,list)) else output
+            return replace_hidden(output,self.adapter_layers[index](hidden,self._forced_expert_id))
+        return apply
+    def freeze_backbone(self):
+        self.backbone.eval()
+        for p in self.backbone.parameters(): p.requires_grad_(False)
+    def prepare_expert_training(self,expert_id:int):
+        if isinstance(expert_id,bool) or not isinstance(expert_id,int) or not 0<=expert_id<self.num_experts:
+            raise ValueError("invalid expert_id")
+        self.freeze_backbone()
+        selected=[]
+        for layer in self.adapter_layers:
+            layer.router.requires_grad_(False)
+            for idx,expert in enumerate(layer.experts):
+                for p in expert.parameters():
+                    p.requires_grad_(idx==expert_id)
+                    if idx==expert_id: selected.append(p)
+        return selected
+    def forward(self,*args,expert_id=None,**kwargs):
+        if expert_id is not None and (isinstance(expert_id,bool) or not isinstance(expert_id,int) or not 0<=expert_id<self.num_experts):
+            raise ValueError("invalid expert_id")
+        previous=self._forced_expert_id
+        self._forced_expert_id=expert_id
+        try: return self.backbone(*args,**kwargs)
+        finally: self._forced_expert_id=previous
+    def train(self,mode=True):
+        super().train(mode)
+        self.backbone.eval()
+        self.adapter_layers.train(mode)
+        return self
+    def save_checkpoint(self,directory:str,tokenizer):
+        root=Path(directory); root.mkdir(parents=True,exist_ok=True)
+        self.backbone.save_pretrained(str(root/"backbone"),safe_serialization=True,max_shard_size="2GB")
+        tokenizer.save_pretrained(str(root/"tokenizer"))
+        torch.save(self.adapter_layers.state_dict(),root/"adapters.pt")
+        manifest={"schema_version":1,"architecture_version":ARCHITECTURE_VERSION,
+          "status":"IMPORTED_BASE_UNTRAINED_EXPERTS","base_model_id":self.base_model_id,
+          "base_revision":self.base_revision,"config":self.facts,"vocab_size":self.vocab_size,
+          "num_hidden_layers":28,"num_experts":self.num_experts,"adapter_rank":self.rank,
+          "base_trainable_during_expert_training":False,
+          "router_status":"UNTRAINED_REQUIRES_CALIBRATION"}
+        (root/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n")
+        return manifest
+    @classmethod
+    def import_pretrained(cls,model_id=DEFAULT_MODEL_ID,revision=None,rank=8,dtype=torch.bfloat16):
+        if not revision or not COMMIT_RE.fullmatch(revision):
+            raise ValueError("pin model revision to a 40-character commit SHA")
+        try:
+            from transformers import AutoConfig,AutoModelForCausalLM,AutoTokenizer
+        except ImportError as exc: raise RuntimeError("install requirements-dhir2b.txt") from exc
+        config=AutoConfig.from_pretrained(model_id,revision=revision)
+        tokenizer=AutoTokenizer.from_pretrained(model_id,revision=revision)
+        facts=validate_dhir_config(config,tokenizer)
+        backbone=AutoModelForCausalLM.from_pretrained(
+            model_id,revision=revision,torch_dtype=dtype,low_cpu_mem_usage=True
+        )
+        return cls(backbone,model_id,revision,rank=rank,source_facts=facts),tokenizer
