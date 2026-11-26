@@ -267,8 +267,18 @@ class Dhir2BNeuroCore(nn.Module):
             model_id,revision=revision,trust_remote_code=False
         )
         facts=validate_dhir_config(config,tokenizer)
-        backbone=DhirForCausalLM.from_pretrained(
+        loaded=DhirForCausalLM.from_pretrained(
             model_id,revision=revision,config=config,
-            torch_dtype=dtype,low_cpu_mem_usage=True
+            torch_dtype=dtype,low_cpu_mem_usage=True,
+            output_loading_info=True
         )
-        return cls(backbone,model_id,revision,rank=rank,source_facts=facts),tokenizer
+        backbone,loading_info=loaded
+        problems={
+            key:loading_info.get(key,[])
+            for key in ("missing_keys","unexpected_keys","mismatched_keys","error_msgs")
+            if loading_info.get(key)
+        }
+        if problems:
+            raise RuntimeError("Dhīr checkpoint tensor loading audit failed: "+json.dumps(problems))
+        model=cls(backbone,model_id,revision,rank=rank,source_facts=facts)
+        return model,tokenizer,loading_info
