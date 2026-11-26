@@ -156,7 +156,7 @@ class PrepareDhīrExpertCorpusTests(unittest.TestCase):
                 "revision": "f" * 40,
                 "approved": False,
             })
-            self.write_doc(path, document)
+            path.write_text(json.dumps(document), encoding="utf-8")
             result = require_human_approvals(
                 path, expert_id=11, dataset_id=DATASET_ID,
                 dataset_revision=DATASET_REVISION, tokenizer_sha256="a" * 64,
