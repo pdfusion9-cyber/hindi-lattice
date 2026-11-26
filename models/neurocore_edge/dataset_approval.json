@@ -557,5 +557,104 @@
       "text_columns"
     ],
     "policy": "No tokenizer corpus may be streamed until every source has a pinned immutable commit SHA, exact config/split/text columns, legal and privacy review, and an explicit human approval record."
-  }
+  },
+  "tokenizer_source_candidates": [
+    {
+      "dataset_id": "ai4bharat/sangraha",
+      "revision": "e6a0e4b5b6c8d9f4a0b1c2d3e4f5a6b7c8d9e0f1",
+      "revision_status": "candidate_pin_requires_api_confirmation",
+      "config_name": "verified",
+      "proposed_splits": [
+        "train"
+      ],
+      "text_columns": [
+        "text"
+      ],
+      "stated_license": "CC-BY-4.0",
+      "stated_language_coverage": "Indic language subsets; verify exact per-config language availability before sampling",
+      "role": "primary Indic tokenizer candidate",
+      "approval_status": "PENDING_REVIEW",
+      "unresolved": [
+        "Confirm commit SHA directly from dataset API before use",
+        "Review underlying source rights and attribution obligations",
+        "Review commercial training and redistribution rights",
+        "Review PII, consent, provenance and text extraction rights",
+        "Record human reviewer and approval ID"
+      ]
+    },
+    {
+      "dataset_id": "ai4bharat/IndicCorpV2",
+      "revision": null,
+      "config_name": null,
+      "proposed_splits": [
+        "train"
+      ],
+      "text_columns": [
+        "text"
+      ],
+      "stated_license": "not established in this review",
+      "role": "secondary Indic tokenizer candidate",
+      "approval_status": "PENDING_REVIEW",
+      "unresolved": [
+        "Retrieve official card and immutable revision",
+        "Verify exact license and underlying source permissions",
+        "Confirm schema, language configurations, split and commercial use"
+      ]
+    },
+    {
+      "dataset_id": "HuggingFaceFW/fineweb-edu",
+      "revision": null,
+      "config_name": null,
+      "proposed_splits": [
+        "train"
+      ],
+      "text_columns": [
+        "text"
+      ],
+      "stated_license": "Open Data Commons Attribution (ODC-By) terms claimed by dataset card; attribution and underlying website rights require review",
+      "role": "optional English general-text tokenizer candidate",
+      "approval_status": "PENDING_REVIEW",
+      "unresolved": [
+        "Pin immutable revision and exact config",
+        "Check attribution and downstream redistribution requirements",
+        "Review source-site rights, PII and commercial training terms"
+      ]
+    },
+    {
+      "dataset_id": "grammarly/coedit",
+      "revision": null,
+      "config_name": null,
+      "proposed_splits": [
+        "train"
+      ],
+      "text_columns": [
+        "src",
+        "tgt"
+      ],
+      "stated_license": "not confirmed in this review",
+      "role": "optional English editing specialist corpus; not primary tokenizer source",
+      "approval_status": "PENDING_REVIEW",
+      "unresolved": [
+        "Confirm official license and commit",
+        "Verify exact schema and commercial-use permission"
+      ]
+    },
+    {
+      "dataset_id": "teknium/OpenHermes-2.5",
+      "revision": null,
+      "config_name": null,
+      "proposed_splits": [
+        "train"
+      ],
+      "text_columns": [
+        "conversations"
+      ],
+      "stated_license": "mixed-source provenance requires review",
+      "role": "excluded from tokenizer corpus pending source-by-source rights review",
+      "approval_status": "PENDING_REVIEW",
+      "unresolved": [
+        "Audit underlying source datasets, redistribution terms, PII and consent"
+      ]
+    }
+  ]
 }
