@@ -23,7 +23,6 @@ def audit_rows(rows, max_nonempty_rows: int, max_scan_rows: int = 10000) -> dict
     seen_hashes=set()
     duplicate_rows=0
     pii_pattern_rows=0
-    pii_pattern_rows=0
     for row in rows:
         if counts["rows_seen"] >= max_scan_rows:
             break
@@ -100,7 +99,6 @@ def audit_rows(rows, max_nonempty_rows: int, max_scan_rows: int = 10000) -> dict
         "email_like_rows":counts["email_like_rows"],
         "aadhaar_like_rows":counts["aadhaar_like_rows"],
         "pan_like_rows":counts["pan_like_rows"],
-        "potential_pii_pattern_rows_unique":pii_pattern_rows,
         "potential_pii_pattern_rows_unique":pii_pattern_rows,
         "url_like_rows":counts["url_like_rows"],
         "average_chars_nonempty":round(counts["chars_total"]/n,2) if n else 0,
