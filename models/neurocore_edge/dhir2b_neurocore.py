@@ -87,7 +87,9 @@ class BottleneckExpert(nn.Module):
         nn.init.kaiming_uniform_(self.down.weight,a=5**0.5)
         nn.init.zeros_(self.up.weight)
     def forward(self,x):
-        return self.up(torch.nn.functional.silu(self.down(x)))
+        # Keep small adapters in FP32 even when the frozen Dhīr backbone uses BF16.
+        delta=self.up(torch.nn.functional.silu(self.down(x.float())))
+        return delta.to(dtype=x.dtype)
 
 class NeuroCoreExpertBank(nn.Module):
     def __init__(self,width:int,num_experts=20,top_k=2,rank=8):
