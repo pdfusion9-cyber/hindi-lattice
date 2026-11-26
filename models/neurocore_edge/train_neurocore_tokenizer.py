@@ -68,7 +68,7 @@ def load_approved_sources(manifest_path: Path) -> list[dict[str,Any]]:
     seen=set()
     for row in sources:
         required=("dataset_id","revision","config_name","split","license_id",
-                  "license_terms_url","approval_id","reviewer","reviewed_at","text_columns")
+                  "license_terms_url","approval_id","reviewer","reviewed_at","text_columns","source_provenance_reviewed","public_redistribution_allowed","derived_artifact_distribution_allowed")
         missing=[key for key in required if not row.get(key)]
         if missing:
             raise RuntimeError(f"incomplete tokenizer source approval: {row.get('dataset_id')}: {missing}")
@@ -81,7 +81,7 @@ def load_approved_sources(manifest_path: Path) -> list[dict[str,Any]]:
             raise RuntimeError(f"approved source must specify exact text_columns: {row.get('dataset_id')}")
         if row.get("approved") is not True:
             raise RuntimeError(f"tokenizer source not approved: {row.get('dataset_id')}")
-        for flag in ("commercial_training_allowed","pii_reviewed","consent_reviewed","schema_reviewed","split_reviewed"):
+        for flag in ("commercial_training_allowed","public_redistribution_allowed","derived_artifact_distribution_allowed","source_provenance_reviewed","pii_reviewed","consent_reviewed","schema_reviewed","split_reviewed"):
             if row.get(flag) is not True:
                 raise RuntimeError(f"{row.get('dataset_id')} missing positive approval: {flag}")
         key=(row["dataset_id"],row["revision"],row["config_name"],row["split"])
