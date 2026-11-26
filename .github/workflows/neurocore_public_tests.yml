@@ -33,8 +33,13 @@ jobs:
         run: python -m py_compile models/neurocore_edge/*.py
       - name: Install Dhīr adapter import dependencies
         run: python -m pip install 'transformers>=4.57.3,<5' 'safetensors>=0.4.5'
-      - name: Compile Dhīr NeuroCore adapter entrypoints
-        run: python -m py_compile models/neurocore_edge/dhir2b_neurocore.py models/neurocore_edge/import_dhir2b_weights.py models/neurocore_edge/train_dhir2b_expert.py models/neurocore_edge/test_dhir2b_neurocore.py
+      - name: Compile Dhīr NeuroCore tokenizer and adapter entrypoints
+        run: python -m py_compile models/neurocore_edge/neurocore_tokenizer.py models/neurocore_edge/test_neurocore_tokenizer.py models/neurocore_edge/dhir2b_neurocore.py models/neurocore_edge/import_dhir2b_weights.py models/neurocore_edge/train_dhir2b_expert.py models/neurocore_edge/test_dhir2b_neurocore.py
+      - name: Run NeuroCore tokenizer compatibility tests
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+        run: python -m unittest -v test_neurocore_tokenizer
       - name: Run Dhīr NeuroCore CPU adapter tests
         working-directory: models/neurocore_edge
         env:
