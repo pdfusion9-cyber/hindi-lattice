@@ -1,6 +1,6 @@
 """Dhīr-2B native backbone plus 20 NeuroCore residual adapter experts."""
 from __future__ import annotations
-import json, os, re
+import hashlib, json, os, re, shutil
 from pathlib import Path
 from typing import Any, Optional
 import torch
@@ -9,6 +9,24 @@ from torch import nn
 ARCHITECTURE_VERSION = "0.4.0-dhir2b-adapters"
 DEFAULT_MODEL_ID = "zenteiq-ai/Dhir-2B"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+REVIEWED_UPSTREAM_SHA256 = {
+    "configuration_dhir.py": "9ddceca88e4d7780ccab5d194d93bb1bf557238e4f71b5b7abe4d2b540ba5cee",
+    "modeling_dhir.py": "9836ca6d3996428bbcd7dc768e885268707dbb7d3dc04ca21df494db893bfc45",
+}
+
+def verify_upstream_code(model_id, revision, destination=None):
+    from huggingface_hub import hf_hub_download
+    observed={}
+    for filename,expected in REVIEWED_UPSTREAM_SHA256.items():
+        source=Path(hf_hub_download(model_id,filename=filename,revision=revision))
+        digest=hashlib.sha256(source.read_bytes()).hexdigest()
+        if digest != expected:
+            raise RuntimeError("upstream Dhīr source hash is not the reviewed version: "+filename)
+        observed[filename]=digest
+        if destination is not None:
+            destination.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(source,destination/filename)
+    return observed
 
 def cfg_value(config: Any, key: str, default=None):
     return config.get(key, default) if isinstance(config, dict) else getattr(config, key, default)
@@ -181,6 +199,7 @@ class Dhir2BNeuroCore(nn.Module):
     def save_checkpoint(self,directory:str,tokenizer):
         root=Path(directory); root.mkdir(parents=True,exist_ok=True)
         self.backbone.save_pretrained(str(root/"backbone"),safe_serialization=True,max_shard_size="2GB")
+        upstream_hashes=verify_upstream_code(self.base_model_id,self.base_revision,root/"backbone")
         tokenizer.save_pretrained(str(root/"tokenizer"))
         torch.save(self.adapter_layers.state_dict(),root/"adapters.pt")
         manifest={"schema_version":1,"architecture_version":ARCHITECTURE_VERSION,
@@ -188,6 +207,7 @@ class Dhir2BNeuroCore(nn.Module):
           "base_revision":self.base_revision,"config":self.facts,"vocab_size":self.vocab_size,
           "num_hidden_layers":28,"num_experts":self.num_experts,"adapter_rank":self.rank,
           "experts_per_token":self.adapter_layers[0].top_k,
+          "upstream_code_sha256":upstream_hashes,
           "base_trainable_during_expert_training":False,
           "router_status":"UNTRAINED_REQUIRES_CALIBRATION"}
         (root/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n")
@@ -199,18 +219,22 @@ class Dhir2BNeuroCore(nn.Module):
         if manifest.get("architecture_version")!=ARCHITECTURE_VERSION or manifest.get("schema_version")!=1:
             raise ValueError("unsupported Dhīr NeuroCore checkpoint")
         try:
-            from transformers import PreTrainedTokenizerFast
-            from .dhir_vendor.configuration_dhir import DhirConfig
-            from .dhir_vendor.modeling_dhir import DhirForCausalLM
+            from transformers import AutoModelForCausalLM,AutoTokenizer
         except ImportError as exc:
             raise RuntimeError("install requirements-dhir2b.txt") from exc
         local_backbone=root/"backbone"
-        config=DhirConfig.from_pretrained(str(local_backbone),local_files_only=True)
-        backbone=DhirForCausalLM.from_pretrained(
-            str(local_backbone),config=config,local_files_only=True
+        expected_code=manifest.get("upstream_code_sha256",{})
+        if expected_code != REVIEWED_UPSTREAM_SHA256:
+            raise ValueError("checkpoint does not contain the reviewed Dhīr source hashes")
+        for filename,digest in expected_code.items():
+            source=local_backbone/filename
+            if not source.is_file() or hashlib.sha256(source.read_bytes()).hexdigest()!=digest:
+                raise ValueError("local Dhīr source file hash mismatch: "+filename)
+        backbone=AutoModelForCausalLM.from_pretrained(
+            str(local_backbone),local_files_only=True,trust_remote_code=True
         )
-        tokenizer=PreTrainedTokenizerFast.from_pretrained(
-            str(root/"tokenizer"),local_files_only=True
+        tokenizer=AutoTokenizer.from_pretrained(
+            str(root/"tokenizer"),local_files_only=True,trust_remote_code=False
         )
         facts=validate_dhir_config(backbone.config,tokenizer)
         for key,value in manifest["config"].items():
@@ -228,14 +252,16 @@ class Dhir2BNeuroCore(nn.Module):
         if not revision or not COMMIT_RE.fullmatch(revision):
             raise ValueError("pin model revision to a 40-character commit SHA")
         try:
-            from transformers import PreTrainedTokenizerFast
-            from .dhir_vendor.configuration_dhir import DhirConfig
-            from .dhir_vendor.modeling_dhir import DhirForCausalLM
+            from transformers import AutoConfig,AutoModelForCausalLM,AutoTokenizer
         except ImportError as exc: raise RuntimeError("install requirements-dhir2b.txt") from exc
-        config=DhirConfig.from_pretrained(model_id,revision=revision)
-        tokenizer=PreTrainedTokenizerFast.from_pretrained(model_id,revision=revision)
+        code_hashes=verify_upstream_code(model_id,revision)
+        config=AutoConfig.from_pretrained(model_id,revision=revision,trust_remote_code=True)
+        tokenizer=AutoTokenizer.from_pretrained(
+            model_id,revision=revision,trust_remote_code=False
+        )
         facts=validate_dhir_config(config,tokenizer)
-        backbone=DhirForCausalLM.from_pretrained(
-            model_id,revision=revision,config=config,torch_dtype=dtype,low_cpu_mem_usage=True
+        backbone=AutoModelForCausalLM.from_pretrained(
+            model_id,revision=revision,trust_remote_code=True,
+            torch_dtype=dtype,low_cpu_mem_usage=True
         )
         return cls(backbone,model_id,revision,rank=rank,source_facts=facts),tokenizer
