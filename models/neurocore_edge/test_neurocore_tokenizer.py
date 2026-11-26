@@ -141,7 +141,6 @@ class NeuroCoreTokenizerTests(unittest.TestCase):
             language_tag="hi",
             role="user",
             task="hindi_indic_docs",
-            tokenizer_kwargs=None,
         )
         self.assertEqual(result["encoding"]["input_ids"], [1, 7, 2])
         self.assertEqual(result["text_metadata"]["language_tag"], "hi")
