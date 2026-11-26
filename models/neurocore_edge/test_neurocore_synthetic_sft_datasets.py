@@ -11,9 +11,9 @@ FILES = (
     "expert17_planning_validation.jsonl",
 )
 PII = (
-    re.compile(r"(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"),
-    re.compile(r"(?<!\\d)(?:\\+?91[\\s-]?)?[6-9]\\d{9}(?!\\d)"),
-    re.compile(r"(?<!\\d)\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}(?!\\d)"),
+    re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"),
+    re.compile(r"(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}(?!\d)"),
+    re.compile(r"(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)"),
 )
 
 def load_rows(name):
@@ -31,9 +31,14 @@ class SyntheticHindiSFTTests(unittest.TestCase):
         for name in FILES:
             for row in load_rows(name):
                 joined = row["prompt"] + " " + row["response"]
-                self.assertRegex(joined, r"[\\u0900-\\u097F]")
+                self.assertRegex(joined, r"[\u0900-\u097F]")
                 for pattern in PII:
                     self.assertIsNone(pattern.search(joined))
+
+    def test_pii_detectors_match_representative_values(self):
+        samples = ("contact@example.com", "9876543210", "+91 9876543210", "1234 5678 9012")
+        for sample in samples:
+            self.assertTrue(any(pattern.search(sample) for pattern in PII), sample)
 
     def test_train_and_validation_prompts_are_disjoint(self):
         for prefix in ("expert16_self_correction", "expert17_planning"):
