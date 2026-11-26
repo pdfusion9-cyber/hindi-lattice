@@ -557,39 +557,17 @@
       "text_columns"
     ],
     "policy": "No tokenizer corpus may be streamed until every source has a pinned immutable commit SHA, exact config/split/text columns, legal and privacy review, and an explicit human approval record.",
-    "candidate_decision": "SANGRAHA_VERIFIED_PINNED_BUT_NOT_APPROVED",
-    "review_note": "The official card declares CC-BY-4.0 and the verified config exposes text with language-specific splits. The official curation description includes website, PDF OCR and audiovisual sources; source-level rights remain unresolved. No training or tokenizer streaming is permitted."
+    "candidate_decision": "SANGRAHA_VERIFIED_HIN_CANDIDATE_PINNED_NOT_APPROVED",
+    "review_note": "The official README documents loading the verified subset with data_dir and language-specific directories. The candidate uses verified/hin as a proposed first Hindi slice; its source-level rights and the immutable revision still require human/API confirmation. No training is authorized."
   },
   "tokenizer_source_candidates": [
     {
       "dataset_id": "ai4bharat/sangraha",
-      "revision": "8b813c3f62d37b2fa174d68c31e8b35ae2fe85e8",
-      "revision_status": "PINNED_TO_OFFICIAL_HUGGING_FACE_ROOT_COMMIT",
-      "config_name": "verified",
+      "revision": "d77237060ee203f746bac925d7acd4efc7a8b46b",
+      "revision_status": "OFFICIAL_HUGGING_FACE_DATASET_TREE_COMMIT_PINNED",
+      "config_name": null,
       "proposed_splits": [
-        "asm",
-        "ben",
-        "brx",
-        "doi",
-        "eng",
-        "gom",
-        "guj",
-        "hin",
-        "kan",
-        "kas",
-        "mai",
-        "mal",
-        "mar",
-        "mni",
-        "nep",
-        "ori",
-        "pan",
-        "san",
-        "sat",
-        "snd",
-        "tam",
-        "tel",
-        "urd"
+        "train"
       ],
       "text_columns": [
         "text"
@@ -599,14 +577,25 @@
       "role": "primary Indic tokenizer candidate; verified subset only",
       "approval_status": "PENDING_REVIEW",
       "unresolved": [
-        "Human rights reviewer must validate source-level permissions for website-scraped text, OCR-extracted PDFs, and audiovisual transcripts",
-        "Confirm all original source terms and attribution obligations; dataset-level CC-BY declaration alone is not sufficient for this review",
-        "Confirm permission for commercial model training and public distribution of derived tokenizer artifacts",
-        "Perform PII, consent and sensitive-data review on sampled rows and dataset provenance",
-        "Approve exact language splits and text column after schema/sample inspection",
-        "Create approval_id, reviewer, reviewed_at and explicit approval booleans only after the preceding reviews"
+        "Confirm this repository commit SHA against the Hugging Face dataset API before execution",
+        "Review source-level permissions for scraped websites, OCR-extracted PDFs, and audiovisual transcripts",
+        "Confirm CC-BY-4.0 attribution compliance and commercial training/derived-artifact distribution rights",
+        "Perform PII, consent, provenance and schema review on sampled rows",
+        "Approve exact language data_dir values and train split with a human reviewer"
       ],
-      "license_review_status": "DECLARED_LICENSE_FOUND_SOURCE_RIGHTS_NOT_CLEARED"
+      "license_review_status": "DECLARED_LICENSE_FOUND_SOURCE_RIGHTS_NOT_CLEARED",
+      "data_dir": "verified/hin",
+      "proposed_language_configs": [
+        "verified/hin",
+        "verified/ben",
+        "verified/guj",
+        "verified/kan",
+        "verified/mal",
+        "verified/mar",
+        "verified/nep",
+        "verified/ori",
+        "verified/eng"
+      ]
     },
     {
       "dataset_id": "ai4bharat/IndicCorpV2",
