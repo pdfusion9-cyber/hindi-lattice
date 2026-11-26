@@ -44,6 +44,63 @@ jobs:
               model_id=model_id, revision=revision, rank=8, dtype=torch.bfloat16
           )
           model.eval()
+          import time
+          # End-to-end NeuroCore inference: native Dhīr tokenizer, out-of-band
+          # language/task metadata, mapped fixed expert adapter, learned Top-2
+          # router path, and native autoregressive generation.
+          inference_cases = [
+              {"name": "hindi_indic_docs", "prompt": "भारत की भाषाओं और साहित्य का महत्व समझाइए।", "task": "hindi_indic_docs", "lang": "hi"},
+              {"name": "technical_academic", "prompt": "Explain how photosynthesis converts light energy into chemical energy.", "task": "technical_academic", "lang": "en"},
+              {"name": "self_correction", "prompt": "इस उत्तर की जाँच करें और यदि कोई गलती हो तो उसे सुधारें।", "task": "self_correction_mnl", "lang": "hi"},
+              {"name": "planning", "prompt": "जल संरक्षण के लिए तीन चरणों की योजना बनाइए।", "task": "coconut_planning", "lang": "hi"},
+          ]
+          inference_reports = []
+          for case in inference_cases:
+              encoded_meta = tokenizer.encode_with_metadata(
+                  case["prompt"], role="user", task=case["task"],
+                  language_tag=case["lang"], return_tensors="pt"
+              )
+              inputs = encoded_meta["encoding"]
+              metadata = encoded_meta["control_metadata"]
+              selected_expert = metadata["suggested_expert_id"]
+              assert selected_expert is not None
+              start = time.perf_counter()
+              with torch.inference_mode():
+                  fixed = model.generate(**inputs, max_new_tokens=12, do_sample=False,
+                                          expert_id=selected_expert)
+              fixed_seconds = time.perf_counter() - start
+              prompt_len = int(inputs["input_ids"].shape[-1])
+              fixed_ids = fixed[0, prompt_len:]
+              fixed_text = tokenizer.decode(fixed_ids, skip_special_tokens=True)
+              # Exercise the native Top-2 routing path as a separate generation.
+              start = time.perf_counter()
+              with torch.inference_mode():
+                  automatic = model.generate(**inputs, max_new_tokens=12, do_sample=False)
+              top2_seconds = time.perf_counter() - start
+              automatic_text = tokenizer.decode(automatic[0, prompt_len:], skip_special_tokens=True)
+              inference_reports.append({
+                  "case": case["name"], "task": case["task"],
+                  "language_tag": case["lang"],
+                  "script": encoded_meta["text_metadata"]["dominant_script"],
+                  "tokenizer_vocab_unchanged": encoded_meta["token_ids_unchanged"],
+                  "metadata_suggested_expert": selected_expert,
+                  "metadata_expert_name": metadata["suggested_expert_name"],
+                  "metadata_dispatch_policy": metadata["expert_selection_policy"],
+                  "fixed_expert_generated_tokens": int(fixed_ids.numel()),
+                  "fixed_expert_seconds": round(fixed_seconds, 4),
+                  "fixed_expert_tokens_per_second": round(float(fixed_ids.numel()) / max(fixed_seconds, 1e-9), 3),
+                  "fixed_expert_text": fixed_text,
+                  "top2_generated_tokens": int(automatic.shape[-1] - prompt_len),
+                  "top2_seconds": round(top2_seconds, 4),
+                  "top2_text": automatic_text,
+                  "finite_logits": bool(torch.isfinite(model(input_ids=inputs["input_ids"],
+                      attention_mask=inputs.get("attention_mask"), use_cache=False,
+                      expert_id=selected_expert).logits).all())
+              })
+          assert len(inference_reports) == len(inference_cases)
+          assert all(x["tokenizer_vocab_unchanged"] and x["finite_logits"]
+                     and x["fixed_expert_generated_tokens"] > 0
+                     and x["top2_generated_tokens"] > 0 for x in inference_reports)
           # Exercise raw Dhīr and all 20 fixed expert paths independently.
           probe = tokenizer("भारत की भाषा और विज्ञान", return_tensors="pt")
           expert_reports = []
@@ -91,6 +148,11 @@ jobs:
               "loading_info_clean": not any(loading_info.get(k) for k in ("missing_keys", "unexpected_keys", "mismatched_keys", "error_msgs")),
               "weights_persisted": False,
               "training_performed": False,
+              "end_to_end_neurocore_inference": {
+                  "cases": len(inference_reports),
+                  "tokenizer_metadata_fixed_expert_and_top2_generation_passed": True,
+                  "results": inference_reports
+              },
               "fixed_expert_generation_smoke": {
                   "experts_tested": len(expert_reports),
                   "all_20_generated_four_tokens": all(x["generated_tokens"] == 4 for x in expert_reports),
