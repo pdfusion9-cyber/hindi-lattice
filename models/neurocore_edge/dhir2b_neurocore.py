@@ -198,6 +198,23 @@ class Dhir2BNeuroCore(nn.Module):
             prefix=f"layer_{i}."
             state={key[len(prefix):]:incoming[key] for key in incoming if key.startswith(prefix)}
             layer.experts[expert_id].load_state_dict(state,strict=True)
+    def generate(self,*args,expert_id=None,**kwargs):
+        """Run native Dhīr generation while applying one fixed NeuroCore expert.
+
+        Inference only: this does not train the selected adapter or calibrate
+        the top-2 router.
+        """
+        if expert_id is not None and (
+            isinstance(expert_id,bool) or not isinstance(expert_id,int)
+            or not 0<=expert_id<self.num_experts
+        ):
+            raise ValueError("invalid expert_id")
+        previous=self._forced_expert_id
+        self._forced_expert_id=expert_id
+        try:
+            return self.backbone.generate(*args,**kwargs)
+        finally:
+            self._forced_expert_id=previous
     def save_checkpoint(self,directory:str,tokenizer):
         root=Path(directory); root.mkdir(parents=True,exist_ok=True)
         self.backbone.save_pretrained(str(root/"backbone"),safe_serialization=True,max_shard_size="2GB")
