@@ -86,7 +86,7 @@ def load_approved_sources(manifest_path: Path) -> list[dict[str,Any]]:
         for flag in ("commercial_training_allowed","public_redistribution_allowed","derived_artifact_distribution_allowed","source_provenance_reviewed","pii_reviewed","consent_reviewed","schema_reviewed","split_reviewed"):
             if row.get(flag) is not True:
                 raise RuntimeError(f"{row.get('dataset_id')} missing positive approval: {flag}")
-        key=(row["dataset_id"],row["revision"],row["config_name"],row["split"])
+        key=(row["dataset_id"],row["revision"],row.get("config_name"),row.get("data_dir"),row["split"])
         if key in seen:
             raise RuntimeError(f"duplicate tokenizer source approval: {key}")
         seen.add(key)
