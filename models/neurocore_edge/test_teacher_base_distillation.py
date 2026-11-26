@@ -1,4 +1,7 @@
+import tempfile
 import unittest
+from pathlib import Path
+
 import torch
 
 from modeling_neurocore_edge import NeuroCoreEdgeConfig, NeuroCoreEdgeForCausalLM
@@ -38,29 +41,52 @@ def tiny_config():
     )
 
 
+def make_trainer():
+    model=NeuroCoreEdgeForCausalLM(tiny_config())
+    trainer=TeacherToStudentBaseDistiller(
+        teacher=Teacher(),student_model=model,student_tokenizer=TinyTokenizer(),
+        optimizer_name="adamw"
+    )
+    return model,trainer
+
+
 class BaseDistillationTests(unittest.TestCase):
     def test_base_stage_updates_student_and_freezes_teacher(self):
         torch.manual_seed(5)
-        model=NeuroCoreEdgeForCausalLM(tiny_config())
+        model,trainer=make_trainer()
         before={n:p.detach().clone() for n,p in model.named_parameters()}
-        teacher=Teacher()
-        trainer=TeacherToStudentBaseDistiller(
-            teacher=teacher,student_model=model,student_tokenizer=TinyTokenizer()
-        )
         report=trainer.train(["हिंदी दस्तावेज़"],steps=2)
         self.assertEqual(report["status"],"BASE_DISTILLATION_STEP_COMPLETED")
         self.assertTrue(report["teacher_frozen"])
         self.assertTrue(report["all_student_parameters_trainable"])
         self.assertTrue(any(not torch.equal(before[n],p.detach()) for n,p in model.named_parameters()))
-        self.assertTrue(all(not p.requires_grad for p in teacher.model.parameters()))
+        self.assertTrue(all(not p.requires_grad for p in trainer.teacher.model.parameters()))
 
     def test_empty_prompt_set_rejected(self):
-        model=NeuroCoreEdgeForCausalLM(tiny_config())
-        trainer=TeacherToStudentBaseDistiller(
-            teacher=Teacher(),student_model=model,student_tokenizer=TinyTokenizer()
-        )
+        _,trainer=make_trainer()
         with self.assertRaises(ValueError):
             trainer.train([],steps=1)
+
+    def test_checkpoint_roundtrip_and_provenance_guard(self):
+        torch.manual_seed(7)
+        model,trainer=make_trainer()
+        trainer.train(["पहला"],steps=1)
+        with tempfile.TemporaryDirectory() as tmp:
+            path=str(Path(tmp)/"base.pt")
+            kwargs=dict(tokenizer_fingerprint="tok-sha",prompt_fingerprint="prompt-sha",
+                        teacher_revision=trainer.teacher.spec.revision)
+            trainer.save_checkpoint(path,**kwargs)
+            restored_model,restored=make_trainer()
+            result=restored.load_checkpoint(path,**kwargs)
+            self.assertEqual(result["status"],"BASE_DISTILLATION_RESUMED")
+            self.assertEqual(restored.steps_completed,1)
+            for key,value in model.state_dict().items():
+                self.assertTrue(torch.equal(value,restored_model.state_dict()[key]))
+            with self.assertRaisesRegex(ValueError,"prompt_fingerprint"):
+                make_trainer()[1].load_checkpoint(
+                    path,tokenizer_fingerprint="tok-sha",prompt_fingerprint="wrong",
+                    teacher_revision=trainer.teacher.spec.revision
+                )
 
 
 if __name__=="__main__":
