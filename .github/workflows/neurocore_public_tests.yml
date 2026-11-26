@@ -31,6 +31,15 @@ jobs:
           python -m pip install pytest
       - name: Compile model source
         run: python -m py_compile models/neurocore_edge/*.py
+      - name: Compile canonical teacher assimilation entrypoints
+        run: python -m py_compile models/neurocore_edge/teacher_weight_assimilation.py models/neurocore_edge/train_teacher_assimilated_expert.py models/neurocore_edge/test_teacher_weight_assimilation.py
+      - name: Run canonical teacher assimilation tests
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: python -m unittest -v test_teacher_weight_assimilation
       - name: Run reference-model tests
         env:
           PYTHONPATH: models/neurocore_edge
