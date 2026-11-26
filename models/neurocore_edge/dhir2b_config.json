@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "architecture_version": "0.4.0-dhir2b-adapters",
-  "status": "IMPLEMENTED_IMPORT_PATH_AWAITING_PINNED_CHECKPOINT",
+  "status": "SOURCE_METADATA_VERIFIED_IMPORT_PENDING",
   "base_model_id": "zenteiq-ai/Dhir-2B",
-  "base_revision": null,
+  "base_revision": "7cbe444cd1e45e25197cfa0f683b2cb575858169",
   "base_architecture": {
     "num_hidden_layers": 28,
     "hidden_size": 2048,
@@ -15,8 +15,8 @@
     "feed_forward": "SwiGLU",
     "qk_rms_norm": true,
     "tie_word_embeddings": true,
-    "intermediate_size": "derived_from_pinned_checkpoint_config",
-    "vocab_size": "derived_from_pinned_checkpoint_and_tokenizer"
+    "intermediate_size": 8192,
+    "vocab_size": 131072
   },
   "neurocore_extension": {
     "num_experts": 20,
