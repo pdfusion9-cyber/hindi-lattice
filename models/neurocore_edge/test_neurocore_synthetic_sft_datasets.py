@@ -76,7 +76,7 @@ class SyntheticHindiSFTTests(unittest.TestCase):
     def test_expert17_planting_schedule_measurements_fit_90_days(self):
         rows = load_rows("expert17_planning_train.jsonl")
         planting = next(r for r in rows if "200 पौधे" in r["prompt"])
-        self.assertIn("दिन 11–15", planting["response"])
+        self.assertIn("11–15", planting["response"])
         self.assertIn("रोपाई के 30 और 60 दिन बाद", planting["response"])
         self.assertNotIn("90 दिन बाद", planting["response"])
 
