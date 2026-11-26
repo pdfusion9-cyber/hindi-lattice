@@ -43,8 +43,10 @@ def validate_dhir_config(config: Any, tokenizer: Any) -> dict:
     if size != int(facts["vocab_size"]):
         raise ValueError(f"tokenizer/config vocabulary mismatch: {size} vs {facts['vocab_size']}")
     vocab=tokenizer.get_vocab()
-    if not vocab or max(map(int,vocab.values())) >= size:
-        raise ValueError("tokenizer token ID outside embedding vocabulary")
+    token_ids = [int(token_id) for token_id in vocab.values()]
+    if (not token_ids or len(token_ids) != size
+            or set(token_ids) != set(range(size))):
+        raise ValueError("tokenizer IDs must cover the full contiguous model vocabulary")
     facts["tokenizer_length"]=size
     return facts
 
@@ -159,6 +161,23 @@ class Dhir2BNeuroCore(nn.Module):
         self.backbone.eval()
         self.adapter_layers.train(mode)
         return self
+    def load_expert_state_dict(self,expert_id:int,incoming:dict):
+        if isinstance(expert_id,bool) or not isinstance(expert_id,int) or not 0<=expert_id<self.num_experts:
+            raise ValueError("invalid expert_id")
+        expected={f"layer_{i}.{key}":value for i,layer in enumerate(self.adapter_layers)
+                  for key,value in layer.experts[expert_id].state_dict().items()}
+        if set(incoming)!=set(expected):
+            raise ValueError("expert checkpoint tensor key set mismatch")
+        for key,target in expected.items():
+            value=incoming[key]
+            if not isinstance(value,torch.Tensor) or value.shape!=target.shape:
+                raise ValueError("expert checkpoint tensor shape mismatch: "+key)
+            if not bool(torch.isfinite(value).all()):
+                raise ValueError("expert checkpoint contains non-finite tensor: "+key)
+        for i,layer in enumerate(self.adapter_layers):
+            prefix=f"layer_{i}."
+            state={key[len(prefix):]:incoming[key] for key in incoming if key.startswith(prefix)}
+            layer.experts[expert_id].load_state_dict(state,strict=True)
     def save_checkpoint(self,directory:str,tokenizer):
         root=Path(directory); root.mkdir(parents=True,exist_ok=True)
         self.backbone.save_pretrained(str(root/"backbone"),safe_serialization=True,max_shard_size="2GB")
