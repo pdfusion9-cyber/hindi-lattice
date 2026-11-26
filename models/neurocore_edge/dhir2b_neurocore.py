@@ -145,12 +145,15 @@ class Dhir2BNeuroCore(nn.Module):
             NeuroCoreExpertBank(self.hidden_size,num_experts,top_k,rank) for _ in range(28)
         ])
         self._forced_expert_id=None
+        self._adapters_enabled=True
         self._handles=[]
         for i,layer in enumerate(layers):
             self._handles.append(layer.register_forward_hook(self._hook(i)))
         self.freeze_backbone()
     def _hook(self,index):
         def apply(_module,_inputs,output):
+            if not self._adapters_enabled:
+                return output
             hidden=output[0] if isinstance(output,(tuple,list)) else output
             return replace_hidden(output,self.adapter_layers[index](hidden,self._forced_expert_id))
         return apply
@@ -215,6 +218,18 @@ class Dhir2BNeuroCore(nn.Module):
             return self.backbone.generate(*args,**kwargs)
         finally:
             self._forced_expert_id=previous
+    def forward_base(self,*args,**kwargs):
+        """Pure Dhīr forward pass with all NeuroCore adapter hooks bypassed."""
+        previous=self._adapters_enabled
+        self._adapters_enabled=False
+        try: return self.backbone(*args,**kwargs)
+        finally: self._adapters_enabled=previous
+    def generate_base(self,*args,**kwargs):
+        """Pure Dhīr generation with all NeuroCore adapter hooks bypassed."""
+        previous=self._adapters_enabled
+        self._adapters_enabled=False
+        try: return self.backbone.generate(*args,**kwargs)
+        finally: self._adapters_enabled=previous
     def save_checkpoint(self,directory:str,tokenizer):
         root=Path(directory); root.mkdir(parents=True,exist_ok=True)
         self.backbone.save_pretrained(str(root/"backbone"),safe_serialization=True,max_shard_size="2GB")
