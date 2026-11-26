@@ -325,7 +325,7 @@
       "schema_reviewed": true,
       "split_reviewed": true,
       "approved": false,
-      "review_note": "SELECTED PRIMARY HINDI CANDIDATE, NOT APPROVED. Official card declares CC0-1.0; ACL 2023 paper and AI4Bharat/IndicBERT repository support its use as pretraining corpus. No per-record source manifest/rights ledger was found in checked documentation; machine-readable Hub license tag is absent. Initial 500-row review found one phone-like record. Expanded 5,000-record aggregate PII review required. Human reviewer must approve intended use and exact private corpus/tokenizer hashes.",
+      "review_note": "5,000-nonempty bounded aggregate review completed. Found 3 phone-like rows and 1 email-like row (4 unique candidate PII rows); 0 Aadhaar-like and 0 PAN-like rows; sample text not persisted. These pattern matches require human review and removal/exclusion. CC0-1.0 remains the publisher's stated license, but no per-record provenance ledger was found. Dataset not approved; source-level rights/privacy clearance and exact private corpus/tokenizer SHA approvals remain outstanding.",
       "license_evidence": {
         "official_dataset_card": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2",
         "pinned_readme": "https://huggingface.co/datasets/ai4bharat/IndicCorpV2/blob/2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f/README.md",
@@ -337,6 +337,29 @@
         "source_level_manifest_found": false,
         "review_checked_at": "2026-11-26",
         "conclusion": "PUBLISHER_LICENSE_DECLARATION_FOUND_SOURCE_LEVEL_RIGHTS_AND_PRIVACY_NOT_CERTIFIED"
+      },
+      "last_bounded_review": {
+        "workflow_run_id": 45815102550,
+        "workflow_run_url": "https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45815102550",
+        "source_revision": "2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f",
+        "target_nonempty_rows": 5000,
+        "raw_rows_seen": 9999,
+        "nonempty_text": 5000,
+        "empty_text": 4999,
+        "duplicate_text_rows": 1,
+        "contains_devanagari": 5000,
+        "contains_latin": 424,
+        "phone_like_rows": 3,
+        "email_like_rows": 1,
+        "aadhaar_like_rows": 0,
+        "pan_like_rows": 0,
+        "unique_rows_with_any_pii_pattern": 4,
+        "sample_text_persisted": false,
+        "training_performed": false,
+        "review_only": true,
+        "artifact_id": 15116065188,
+        "artifact_sha256": "909b2760e7b303ed6382c0622efb98e76a68ce54a1156ecd68b2b17e6544b783",
+        "reviewed_at": "2026-11-26T11:57:19Z"
       }
     },
     {
