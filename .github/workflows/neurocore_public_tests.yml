@@ -47,6 +47,13 @@ jobs:
           OMP_NUM_THREADS: '2'
           MKL_NUM_THREADS: '2'
         run: python -m unittest -v test_dhir2b_neurocore
+      - name: Compile and test Dhīr Expert 11 training gates
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m py_compile train_dhir2b_expert.py test_train_dhir2b_expert.py
+          python -m unittest -v test_train_dhir2b_expert
       - name: Compile canonical teacher assimilation entrypoints
         run: python -m py_compile models/neurocore_edge/teacher_weight_assimilation.py models/neurocore_edge/train_teacher_assimilated_expert.py models/neurocore_edge/test_teacher_weight_assimilation.py
       - name: Run base distillation resume and provenance tests
