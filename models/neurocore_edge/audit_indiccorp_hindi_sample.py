@@ -64,7 +64,7 @@ def audit_rows(rows, max_rows: int) -> dict[str, Any]:
         "audit_type":"BOUNDED_REVIEW_ONLY_NO_TRAINING",
         "dataset_id":"ai4bharat/IndicCorpV2",
         "config_name":"indiccorp_v2",
-        "split":"hin_Deva",
+        "source_file":"data/hi-1.txt",
         "rows_seen":counts["rows_seen"],
         "nonempty_text":n,
         "empty_text":counts["empty_text"],
@@ -99,13 +99,8 @@ def main():
     if not 1<=args.max_rows<=1000:
         raise SystemExit("--max-rows must be between 1 and 1000")
     from datasets import load_dataset
-    ds=load_dataset(
-        "ai4bharat/IndicCorpV2",
-        "indiccorp_v2",
-        split="hin_Deva",
-        revision=args.revision,
-        streaming=True
-    )
+    url=f"https://huggingface.co/datasets/ai4bharat/IndicCorpV2/resolve/{args.revision}/data/hi-1.txt"
+    ds=load_dataset("text",data_files={"train":url},split="train",streaming=True)
     report=audit_rows(ds,args.max_rows)
     report["revision"]=args.revision
     report["training_performed"]=False
