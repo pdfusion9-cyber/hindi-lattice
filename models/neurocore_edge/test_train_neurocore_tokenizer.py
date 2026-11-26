@@ -7,7 +7,7 @@ def valid_source(**overrides):
       "license_id":"MIT","license_terms_url":"https://example.org/license","approval_id":"APP-1",
       "reviewer":"dataset-reviewer","reviewed_at":"2026-11-25T10:00:00Z",
       "approved":True,"commercial_training_allowed":True,"pii_reviewed":True,
-      "consent_reviewed":True,"schema_reviewed":True,"split_reviewed":True,"text_columns":["text"]}
+      "consent_reviewed":True,"schema_reviewed":True,"split_reviewed":True,"source_provenance_reviewed":True,"public_redistribution_allowed":True,"derived_artifact_distribution_allowed":True,"text_columns":["text"]}
     row.update(overrides)
     return row
 
