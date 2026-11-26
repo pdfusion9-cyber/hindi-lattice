@@ -7,11 +7,11 @@ from __future__ import annotations
 import argparse, collections, json, re
 from typing import Any
 
-PHONE_RE=re.compile(r"(?<!\\w)(?:\\+?91[- .]?)?[6-9]\\d{9}(?!\\w)")
-EMAIL_RE=re.compile(r"(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b")
-URL_RE=re.compile(r"(?i)\\bhttps?://")
-AADHAAR_RE=re.compile(r"(?<!\\d)\\d{4}[- ]?\\d{4}[- ]?\\d{4}(?!\\d)")
-DEVANAGARI_RE=re.compile(r"[\\u0900-\\u097F]")
+PHONE_RE=re.compile(r"(?<!\w)(?:\+?91[- .]?)?[6-9]\d{9}(?!\w)")
+EMAIL_RE=re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
+URL_RE=re.compile(r"(?i)\bhttps?://")
+AADHAAR_RE=re.compile(r"(?<!\d)\d{4}[- ]?\d{4}[- ]?\d{4}(?!\d)")
+DEVANAGARI_RE=re.compile(r"[\u0900-\u097F]")
 LATIN_RE=re.compile(r"[A-Za-z]")
 
 def audit_rows(rows, max_rows: int) -> dict[str, Any]:
