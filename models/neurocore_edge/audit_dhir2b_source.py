@@ -69,7 +69,7 @@ def main():
         source_path=Path(hf_hub_download(REPO_ID,filename=name,revision=revision))
         content=source_path.read_text(encoding="utf-8",errors="replace")
         python_sources.append({"name":name,"size_bytes":source_path.stat().st_size,
-          "sha256":sha256(source_path),"source_preview":content[:4000],
+          "sha256":sha256(source_path),"source_code":content,
           "executed":False,"review_status":"REQUIRES_MANUAL_REVIEW"})
 
     optional_hashes={}
