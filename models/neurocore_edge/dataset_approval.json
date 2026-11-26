@@ -556,31 +556,57 @@
       "split_reviewed",
       "text_columns"
     ],
-    "policy": "No tokenizer corpus may be streamed until every source has a pinned immutable commit SHA, exact config/split/text columns, legal and privacy review, and an explicit human approval record."
+    "policy": "No tokenizer corpus may be streamed until every source has a pinned immutable commit SHA, exact config/split/text columns, legal and privacy review, and an explicit human approval record.",
+    "candidate_decision": "SANGRAHA_VERIFIED_PINNED_BUT_NOT_APPROVED",
+    "review_note": "The official card declares CC-BY-4.0 and the verified config exposes text with language-specific splits. The official curation description includes website, PDF OCR and audiovisual sources; source-level rights remain unresolved. No training or tokenizer streaming is permitted."
   },
   "tokenizer_source_candidates": [
     {
       "dataset_id": "ai4bharat/sangraha",
-      "revision": null,
-      "revision_status": "NOT_PINNED",
+      "revision": "8b813c3f62d37b2fa174d68c31e8b35ae2fe85e8",
+      "revision_status": "PINNED_TO_OFFICIAL_HUGGING_FACE_ROOT_COMMIT",
       "config_name": "verified",
       "proposed_splits": [
-        "train"
+        "asm",
+        "ben",
+        "brx",
+        "doi",
+        "eng",
+        "gom",
+        "guj",
+        "hin",
+        "kan",
+        "kas",
+        "mai",
+        "mal",
+        "mar",
+        "mni",
+        "nep",
+        "ori",
+        "pan",
+        "san",
+        "sat",
+        "snd",
+        "tam",
+        "tel",
+        "urd"
       ],
       "text_columns": [
         "text"
       ],
-      "stated_license": "CC-BY-4.0",
+      "stated_license": "CC-BY-4.0 (declared by the Hugging Face dataset card)",
       "stated_language_coverage": "Indic language subsets; verify exact per-config language availability before sampling",
-      "role": "primary Indic tokenizer candidate",
+      "role": "primary Indic tokenizer candidate; verified subset only",
       "approval_status": "PENDING_REVIEW",
       "unresolved": [
-        "Resolve the exact immutable commit SHA from the official dataset API before any use",
-        "Review underlying source rights and attribution obligations",
-        "Review commercial training and redistribution rights",
-        "Review PII, consent, provenance and text extraction rights",
-        "Record human reviewer and approval ID"
-      ]
+        "Human rights reviewer must validate source-level permissions for website-scraped text, OCR-extracted PDFs, and audiovisual transcripts",
+        "Confirm all original source terms and attribution obligations; dataset-level CC-BY declaration alone is not sufficient for this review",
+        "Confirm permission for commercial model training and public distribution of derived tokenizer artifacts",
+        "Perform PII, consent and sensitive-data review on sampled rows and dataset provenance",
+        "Approve exact language splits and text column after schema/sample inspection",
+        "Create approval_id, reviewer, reviewed_at and explicit approval booleans only after the preceding reviews"
+      ],
+      "license_review_status": "DECLARED_LICENSE_FOUND_SOURCE_RIGHTS_NOT_CLEARED"
     },
     {
       "dataset_id": "ai4bharat/IndicCorpV2",
