@@ -168,10 +168,34 @@ class Dhir2BNeuroCore(nn.Module):
           "status":"IMPORTED_BASE_UNTRAINED_EXPERTS","base_model_id":self.base_model_id,
           "base_revision":self.base_revision,"config":self.facts,"vocab_size":self.vocab_size,
           "num_hidden_layers":28,"num_experts":self.num_experts,"adapter_rank":self.rank,
+          "experts_per_token":self.adapter_layers[0].top_k,
           "base_trainable_during_expert_training":False,
           "router_status":"UNTRAINED_REQUIRES_CALIBRATION"}
         (root/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+"\n")
         return manifest
+    @classmethod
+    def load_checkpoint(cls,directory:str):
+        root=Path(directory)
+        manifest=json.loads((root/"manifest.json").read_text())
+        if manifest.get("architecture_version")!=ARCHITECTURE_VERSION or manifest.get("schema_version")!=1:
+            raise ValueError("unsupported Dhīr NeuroCore checkpoint")
+        try:
+            from transformers import AutoModelForCausalLM,AutoTokenizer
+        except ImportError as exc:
+            raise RuntimeError("install requirements-dhir2b.txt") from exc
+        backbone=AutoModelForCausalLM.from_pretrained(str(root/"backbone"),local_files_only=True)
+        tokenizer=AutoTokenizer.from_pretrained(str(root/"tokenizer"),local_files_only=True)
+        facts=validate_dhir_config(backbone.config,tokenizer)
+        for key,value in manifest["config"].items():
+            if facts.get(key)!=value:
+                raise ValueError("checkpoint config/tokenizer provenance mismatch: "+key)
+        model=cls(backbone,manifest["base_model_id"],manifest["base_revision"],
+                  num_experts=int(manifest["num_experts"]),
+                  top_k=int(manifest["experts_per_token"]),
+                  rank=int(manifest["adapter_rank"]),source_facts=facts)
+        state=torch.load(root/"adapters.pt",map_location="cpu",weights_only=True)
+        model.adapter_layers.load_state_dict(state,strict=True)
+        return model,tokenizer,manifest
     @classmethod
     def import_pretrained(cls,model_id=DEFAULT_MODEL_ID,revision=None,rank=8,dtype=torch.bfloat16):
         if not revision or not COMMIT_RE.fullmatch(revision):
