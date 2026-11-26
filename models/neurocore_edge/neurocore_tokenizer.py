@@ -437,7 +437,8 @@ class NeuroCoreTokenizer:
         if not manifest_path.is_file():
             raise FileNotFoundError(f"NeuroCore tokenizer manifest missing: {manifest_path}")
         saved_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if saved_manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+        saved_schema = saved_manifest.get("schema_version")
+        if saved_schema not in (1, MANIFEST_SCHEMA_VERSION):
             raise ValueError("unsupported NeuroCore tokenizer manifest schema")
         tokenizer = PreTrainedTokenizerFast.from_pretrained(
             str(root), local_files_only=True
@@ -448,14 +449,21 @@ class NeuroCoreTokenizer:
             base_model_id=base_model_id,
             base_revision=base_revision,
         )
-        for key in (
+        common_keys = (
             "base_model_id", "base_revision", "vocab_size",
             "tokenizer_vocab_sha256", "chat_template_sha256",
-            "token_id_mapping", "control_ids", "language_metadata",
-            "routing_metadata",
-        ):
+            "token_id_mapping",
+        )
+        for key in common_keys:
             if saved_manifest.get(key) != current[key]:
                 raise ValueError(f"NeuroCore tokenizer manifest mismatch: {key}")
+        # Schema 1 checkpoints predate NeuroCore language/routing metadata.
+        # Validate their original Dhīr lexical identity and file hash, then
+        # expose the current schema-2 metadata facade without changing IDs.
+        if saved_schema == MANIFEST_SCHEMA_VERSION:
+            for key in ("control_ids", "language_metadata", "routing_metadata"):
+                if saved_manifest.get(key) != current[key]:
+                    raise ValueError(f"NeuroCore tokenizer manifest mismatch: {key}")
         observed_files_sha = tokenizer_files_sha256(root)
         if saved_manifest.get("tokenizer_files_sha256") != observed_files_sha:
             raise ValueError("NeuroCore tokenizer files SHA-256 mismatch")
