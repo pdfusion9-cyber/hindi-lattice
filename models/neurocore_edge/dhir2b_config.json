@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "architecture_version": "0.4.0-dhir2b-adapters",
-  "status": "SOURCE_METADATA_VERIFIED_IMPORT_PENDING",
+  "status": "REAL_DHIR_WEIGHTS_IMPORTED_CHECKPOINT_ROUNDTRIP_VERIFIED",
   "base_model_id": "zenteiq-ai/Dhir-2B",
   "base_revision": "7cbe444cd1e45e25197cfa0f683b2cb575858169",
   "base_architecture": {
@@ -26,17 +26,50 @@
     "adapter_placement": "after_each_of_28_decoder_blocks",
     "base_backbone_trainable_during_expert_stage": false,
     "fixed_expert_training": true,
-    "router_status": "UNTRAINED_REQUIRES_CALIBRATION"
+    "router_status": "UNTRAINED_REQUIRES_CALIBRATION",
+    "first_training_target": {
+      "expert_id": 11,
+      "expert_name": "hindi_indic_docs",
+      "dataset_id": "ai4bharat/IndicCorpV2",
+      "dataset_revision": "2d7285e6ce14fdb3fb2449c9f89427b9f582ac3f",
+      "data_sha256_approval": "PENDING",
+      "local_tokenizer_directory_sha256_approval": "PENDING",
+      "training_steps_initial_pilot": 100,
+      "status": "PREPARATION_ONLY_NOT_STARTED"
+    }
   },
   "runtime": {
     "device": "cpu",
     "gpu_required": false,
-    "training_status": "BLOCKED_UNTIL_IMPORT_AND_DATA_APPROVAL",
+    "training_status": "BLOCKED_PENDING_EXPERT11_CORPUS_AND_TOKENIZER_SHA256_APPROVAL",
     "revision_must_be_40_character_commit_sha": true
   },
   "legacy_architecture": {
     "config": "config.json",
     "status": "PRESERVED_UNTRAINED_V0.3.2_REFERENCE",
     "note": "The 24-effective-layer/8-unique-block model is not directly Dhīr-weight-compatible."
+  },
+  "verified_import_checkpoint": {
+    "status": "CHECKPOINT_SAVE_RELOAD_VERIFIED_AND_PERSISTED_AS_ACTION_ARTIFACT",
+    "workflow_run_id": 45780741273,
+    "workflow_run_url": "https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45780741273",
+    "artifact_id": 15098526765,
+    "artifact_name": "dhir2b-neurocore-cpu-checkpoint",
+    "artifact_zip_sha256": "720ffdf4f59c95b1ee1b3265a5e3f857173c2058d20c787f13ffff1dce819b33",
+    "checkpoint_tree_sha256": "90c3b46d38f52f03a41ed6d5b07a530dd864f107176d3c98e64c808452710148",
+    "checkpoint_total_bytes": 4150375510,
+    "base_model_id": "zenteiq-ai/Dhir-2B",
+    "base_revision": "7cbe444cd1e45e25197cfa0f683b2cb575858169",
+    "device": "cpu",
+    "gpu_used": false,
+    "loading_info_clean": true,
+    "num_hidden_layers": 28,
+    "num_experts": 20,
+    "vocab_size": 131072,
+    "tokenizer_length": 131072,
+    "logits_identical_after_reload": true,
+    "expert_training_performed": false,
+    "artifact_expires_at": "2026-12-26T08:10:31Z",
+    "warning": "Public repository Actions artifact; do not treat as private model storage."
   }
 }
