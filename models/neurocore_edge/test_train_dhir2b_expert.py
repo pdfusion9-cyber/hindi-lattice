@@ -1,0 +1,152 @@
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from train_dhir2b_expert import (
+    DEFAULT_DATASET_ID,
+    DEFAULT_DATASET_REVISION,
+    contains_pii_pattern,
+    read_rows,
+    require_approval,
+)
+
+
+def approved_document(data_sha, tokenizer_sha):
+    return {
+        "datasets": [{
+            "expert_id": 11,
+            "dataset_id": DEFAULT_DATASET_ID,
+            "revision": DEFAULT_DATASET_REVISION,
+            "license_id": "CC0-1.0",
+            "license_terms_url": "https://example.org/license",
+            "commercial_training_allowed": True,
+            "pii_reviewed": True,
+            "consent_reviewed": True,
+            "schema_reviewed": True,
+            "split_reviewed": True,
+            "approved": True,
+            "approval_id": "DATASET-APPROVAL-001",
+            "reviewer": "human-reviewer",
+            "reviewed_at": "2026-11-26T00:00:00Z",
+        }],
+        "approved_training_artifacts": [{
+            "stage": "dhir2b_expert",
+            "expert_id": 11,
+            "dataset_id": DEFAULT_DATASET_ID,
+            "dataset_revision": DEFAULT_DATASET_REVISION,
+            "sha256": data_sha,
+            "approved": True,
+            "approval_id": "CORPUS-APPROVAL-001",
+            "reviewer": "human-reviewer",
+            "reviewed_at": "2026-11-26T00:00:00Z",
+        }],
+        "approved_tokenizers": [{
+            "sha256": tokenizer_sha,
+            "approved": True,
+            "approval_id": "TOKENIZER-APPROVAL-001",
+            "reviewer": "human-reviewer",
+            "reviewed_at": "2026-11-26T00:00:00Z",
+        }],
+    }
+
+
+class FakeTokenizer:
+    pad_token_id = 0
+    eos_token_id = 2
+
+    def __len__(self):
+        return 32
+
+    def __call__(self, text, **kwargs):
+        return {"input_ids": [1, 5, 2]}
+
+
+class TrainingApprovalGateTests(unittest.TestCase):
+    def write_doc(self, path, document):
+        path.write_text(json.dumps(document), encoding="utf-8")
+
+    def test_current_repository_default_deny_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            self.write_doc(path, {
+                "status": "ALL_DATASETS_PENDING_REVIEW",
+                "datasets": [],
+                "approved_training_artifacts": [],
+                "approved_tokenizers": [],
+            })
+            with self.assertRaisesRegex(PermissionError, "dataset ID/revision"):
+                require_approval(path, 11, "a" * 64, "b" * 64)
+
+    def test_exact_all_level_approvals_are_required(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            self.write_doc(path, approved_document("a" * 64, "b" * 64))
+            result = require_approval(path, 11, "a" * 64, "b" * 64)
+            self.assertIn("datasets", result)
+
+    def test_wrong_dataset_revision_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            document = approved_document("a" * 64, "b" * 64)
+            document["datasets"][0]["revision"] = "f" * 40
+            self.write_doc(path, document)
+            with self.assertRaisesRegex(PermissionError, "dataset ID/revision"):
+                require_approval(path, 11, "a" * 64, "b" * 64)
+
+    def test_incomplete_privacy_or_license_review_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            document = approved_document("a" * 64, "b" * 64)
+            document["datasets"][0]["pii_reviewed"] = False
+            self.write_doc(path, document)
+            with self.assertRaisesRegex(PermissionError, "pii_reviewed"):
+                require_approval(path, 11, "a" * 64, "b" * 64)
+
+    def test_unapproved_or_mismatched_corpus_hash_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            self.write_doc(path, approved_document("a" * 64, "b" * 64))
+            with self.assertRaisesRegex(PermissionError, "corpus SHA-256"):
+                require_approval(path, 11, "c" * 64, "b" * 64)
+
+    def test_unapproved_or_mismatched_tokenizer_hash_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            self.write_doc(path, approved_document("a" * 64, "b" * 64))
+            with self.assertRaisesRegex(PermissionError, "tokenizer SHA-256"):
+                require_approval(path, 11, "a" * 64, "c" * 64)
+
+    def test_training_corpus_pii_filter(self):
+        self.assertTrue(contains_pii_pattern("फोन 9876543210"))
+        self.assertTrue(contains_pii_pattern("test@example.org"))
+        self.assertTrue(contains_pii_pattern("आधार 1234 5678 9012"))
+        self.assertTrue(contains_pii_pattern("PAN ABCDE1234F"))
+        self.assertFalse(contains_pii_pattern("भारत की भाषाई विविधता"))
+
+    def test_training_rows_are_bounded_and_pii_filtered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "training.jsonl"
+            rows = [
+                {"text": "भारत की भाषाई विविधता"},
+                {"text": "फोन 9876543210"},
+                {"text": "हिंदी भाषा का अध्ययन"},
+                {"text": "गणित और विज्ञान"},
+            ]
+            path.write_text(
+                "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+                encoding="utf-8",
+            )
+            result = read_rows(path, FakeTokenizer(), max_length=8, max_rows=2)
+            self.assertEqual(result, [[1, 5, 2], [1, 5, 2]])
+
+    def test_invalid_row_limit_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "training.jsonl"
+            path.write_text('{"text":"भारत"}\n', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "max_length"):
+                read_rows(path, FakeTokenizer(), max_length=1, max_rows=10)
+
+
+if __name__ == "__main__":
+    unittest.main()
