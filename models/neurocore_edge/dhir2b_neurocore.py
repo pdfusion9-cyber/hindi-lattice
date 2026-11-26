@@ -202,6 +202,14 @@ class Dhir2BNeuroCore(nn.Module):
         root=Path(directory); root.mkdir(parents=True,exist_ok=True)
         self.backbone.save_pretrained(str(root/"backbone"),safe_serialization=True,max_shard_size="2GB")
         upstream_hashes=verify_upstream_code(self.base_model_id,self.base_revision,root/"backbone")
+        from neurocore_tokenizer import NeuroCoreTokenizer
+        if not isinstance(tokenizer, NeuroCoreTokenizer):
+            tokenizer = NeuroCoreTokenizer.from_tokenizer(
+                tokenizer,
+                base_model_id=self.base_model_id,
+                base_revision=self.base_revision,
+                expected_vocab_size=self.vocab_size,
+            )
         tokenizer.save_pretrained(str(root/"tokenizer"))
         torch.save(self.adapter_layers.state_dict(),root/"adapters.pt")
         backbone_dtype=str(next(self.backbone.parameters()).dtype)
@@ -226,7 +234,7 @@ class Dhir2BNeuroCore(nn.Module):
         if manifest.get("architecture_version")!=ARCHITECTURE_VERSION or manifest.get("schema_version")!=1:
             raise ValueError("unsupported Dhīr NeuroCore checkpoint")
         try:
-            from transformers import PreTrainedTokenizerFast
+            from neurocore_tokenizer import NeuroCoreTokenizer
             from dhir_vendor.configuration_dhir import DhirConfig
             from dhir_vendor.modeling_dhir import DhirForCausalLM
         except ImportError as exc:
@@ -249,8 +257,11 @@ class Dhir2BNeuroCore(nn.Module):
             str(local_backbone),config=config,local_files_only=True,
             torch_dtype=dtype_map[dtype_name]
         )
-        tokenizer=PreTrainedTokenizerFast.from_pretrained(
-            str(root/"tokenizer"),local_files_only=True
+        tokenizer=NeuroCoreTokenizer.from_pretrained(
+            root/"tokenizer",
+            base_model_id=manifest["base_model_id"],
+            base_revision=manifest["base_revision"],
+            expected_vocab_size=int(manifest["vocab_size"]),
         )
         facts=validate_dhir_config(backbone.config,tokenizer)
         for key,value in manifest["config"].items():
@@ -272,16 +283,22 @@ class Dhir2BNeuroCore(nn.Module):
         if not revision or not COMMIT_RE.fullmatch(revision):
             raise ValueError("pin model revision to a 40-character commit SHA")
         try:
-            from transformers import PreTrainedTokenizerFast
+            from neurocore_tokenizer import NeuroCoreTokenizer
             from dhir_vendor.configuration_dhir import DhirConfig
             from dhir_vendor.modeling_dhir import DhirForCausalLM
         except ImportError as exc: raise RuntimeError("install requirements-dhir2b.txt and ensure models/neurocore_edge is on PYTHONPATH") from exc
         code_hashes=verify_upstream_code(model_id,revision)
         config=DhirConfig.from_pretrained(model_id,revision=revision,trust_remote_code=False)
-        tokenizer=PreTrainedTokenizerFast.from_pretrained(
+        raw_tokenizer=__import__("transformers").PreTrainedTokenizerFast.from_pretrained(
             model_id,revision=revision,trust_remote_code=False
         )
-        facts=validate_dhir_config(config,tokenizer)
+        facts=validate_dhir_config(config,raw_tokenizer)
+        tokenizer=NeuroCoreTokenizer.from_tokenizer(
+            raw_tokenizer,
+            base_model_id=model_id,
+            base_revision=revision,
+            expected_vocab_size=int(facts["vocab_size"]),
+        )
         loaded=DhirForCausalLM.from_pretrained(
             model_id,revision=revision,config=config,
             torch_dtype=dtype,low_cpu_mem_usage=True,
