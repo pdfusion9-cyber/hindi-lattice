@@ -28,7 +28,12 @@ class FakeModel:
         self.backbone = self
 
     def generate(self, input_ids, max_new_tokens, do_sample, expert_id=None):
-        self.calls.append({"expert_id": expert_id, "max_new_tokens": max_new_tokens})
+        self.calls.append({"expert_id": expert_id, "max_new_tokens": max_new_tokens, "method": "neurocore"})
+        extra = torch.tensor([[4, 5]])
+        return torch.cat([input_ids, extra], dim=1)
+
+    def generate_base(self, input_ids, max_new_tokens, do_sample):
+        self.calls.append({"expert_id": None, "max_new_tokens": max_new_tokens, "method": "base_dhir"})
         extra = torch.tensor([[4, 5]])
         return torch.cat([input_ids, extra], dim=1)
 
@@ -67,6 +72,7 @@ class NeuroCoreInferenceRunnerTests(unittest.TestCase):
             mode="base_dhir",
         )
         self.assertIsNone(model.calls[-1]["expert_id"])
+        self.assertEqual(model.calls[-1]["method"], "base_dhir")
         self.assertEqual(result["mode"], "base_dhir")
 
     def test_unknown_mode_rejected(self):
