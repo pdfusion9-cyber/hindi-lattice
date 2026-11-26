@@ -54,6 +54,13 @@ jobs:
         run: |
           python -m py_compile train_dhir2b_expert.py test_train_dhir2b_expert.py
           python -m unittest -v test_train_dhir2b_expert
+      - name: Compile and test private Hindi corpus preparation gate
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m py_compile prepare_dhir2b_expert_corpus.py test_prepare_dhir2b_expert_corpus.py
+          python -m unittest -v test_prepare_dhir2b_expert_corpus
       - name: Compile canonical teacher assimilation entrypoints
         run: python -m py_compile models/neurocore_edge/teacher_weight_assimilation.py models/neurocore_edge/train_teacher_assimilated_expert.py models/neurocore_edge/test_teacher_weight_assimilation.py
       - name: Run base distillation resume and provenance tests
