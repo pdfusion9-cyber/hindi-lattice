@@ -557,34 +557,33 @@
       "text_columns"
     ],
     "policy": "No tokenizer corpus may be streamed until every source has a pinned immutable commit SHA, exact config/split/text columns, legal and privacy review, and an explicit human approval record.",
-    "candidate_decision": "SANGRAHA_VERIFIED_HIN_CANDIDATE_PINNED_NOT_APPROVED",
-    "review_note": "The official README documents loading the verified subset with data_dir and language-specific directories. The candidate uses verified/hin as a proposed first Hindi slice; its source-level rights and the immutable revision still require human/API confirmation. No training is authorized."
+    "candidate_decision": "SANGRAHA_VERIFIED_HIN_PINNED_FOR_REVIEW_ONLY_SAMPLE",
+    "review_note": "Immutable commit was taken from the official Hugging Face verified/hin tree. Bounded review-only sampling is not training approval. The 37.3 GB source will be read with streaming and the audit must not persist or print sample text."
   },
   "tokenizer_source_candidates": [
     {
       "dataset_id": "ai4bharat/sangraha",
-      "revision": "d77237060ee203f746bac925d7acd4efc7a8b46b",
-      "revision_status": "OFFICIAL_HUGGING_FACE_DATASET_TREE_COMMIT_PINNED",
-      "config_name": null,
+      "revision": "654c02de6fa4cff1e3ade4e5c9242bedc7ad7629",
+      "revision_status": "PINNED_TO_OFFICIAL_HUGGING_FACE_COMMIT_VISIBLE_ON_VERIFIED_HIN_TREE",
+      "config_name": "verified",
       "proposed_splits": [
-        "train"
+        "hin"
       ],
       "text_columns": [
         "text"
       ],
       "stated_license": "CC-BY-4.0 (declared by the Hugging Face dataset card)",
       "stated_language_coverage": "Indic language subsets; verify exact per-config language availability before sampling",
-      "role": "primary Indic tokenizer candidate; verified subset only",
+      "role": "primary Indic tokenizer candidate; bounded review-only sample",
       "approval_status": "PENDING_REVIEW",
       "unresolved": [
-        "Confirm this repository commit SHA against the Hugging Face dataset API before execution",
-        "Review source-level permissions for scraped websites, OCR-extracted PDFs, and audiovisual transcripts",
-        "Confirm CC-BY-4.0 attribution compliance and commercial training/derived-artifact distribution rights",
-        "Perform PII, consent, provenance and schema review on sampled rows",
-        "Approve exact language data_dir values and train split with a human reviewer"
+        "Dataset card declares CC-BY-4.0; confirm underlying scraped website, PDF OCR, and audiovisual source rights individually",
+        "Confirm commercial training and public distribution of derived tokenizer artifact under applicable source terms",
+        "Human reviewer must inspect sample aggregates and source metadata for PII, consent and provenance concerns",
+        "Record formal approval ID, reviewer and reviewed date before any tokenizer training"
       ],
       "license_review_status": "DECLARED_LICENSE_FOUND_SOURCE_RIGHTS_NOT_CLEARED",
-      "data_dir": "verified/hin",
+      "data_dir": null,
       "proposed_language_configs": [
         "verified/hin",
         "verified/ben",
@@ -595,7 +594,18 @@
         "verified/nep",
         "verified/ori",
         "verified/eng"
-      ]
+      ],
+      "candidate_data_size": "37.3 GB on official tree",
+      "schema_observed": [
+        "doc_id:string",
+        "type:string",
+        "text:string"
+      ],
+      "source_evidence": {
+        "dataset_card": "https://huggingface.co/datasets/ai4bharat/sangraha",
+        "hindi_tree": "https://huggingface.co/datasets/ai4bharat/sangraha/tree/654c02de6fa4cff1e3ade4e5c9242bedc7ad7629/verified/hin",
+        "card_commit": "8b813c3f62d37b2fa174d68c31e8b35ae2fe85e8"
+      }
     },
     {
       "dataset_id": "ai4bharat/IndicCorpV2",
