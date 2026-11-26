@@ -209,6 +209,24 @@ class TrainingApprovalGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "max_length"):
                 read_rows(path, FakeTokenizer(), max_length=1, max_rows=10)
 
+    def test_pending_synthetic_expert_datasets_are_rejected(self):
+        approval_path = Path(__file__).parent / "dataset_approval.json"
+        for expert_id, dataset_id in (
+            (16, "local/neurocore_synthetic_sft/expert16_self_correction"),
+            (17, "local/neurocore_synthetic_sft/expert17_planning"),
+        ):
+            with self.subTest(expert_id=expert_id):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "approval.json"
+                    document = json.loads(approval_path.read_text(encoding="utf-8"))
+                    self.write_doc(path, document)
+                    with self.assertRaisesRegex(PermissionError, "approval/review fields"):
+                        require_approval(
+                            path, expert_id, "a" * 64, "b" * 64,
+                            dataset_id=dataset_id,
+                            dataset_revision="412e4479c2317f3afeb9758ef95f94822e7169ff",
+                        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,3 +19,7 @@ This remains a small development seed, not a representative or production-ready 
 
 ## Expansion notes
 The new Expert 16 training rows explicitly include a prior assistant answer and a correction, while its new validation rows use unseen arithmetic/unit-conversion prompts. The new Expert 17 rows use consistent rubric fields for roles, resources/dependencies, indicators, risks, and fallback actions. The expanded examples are still synthetic drafts and require independent human review.
+
+
+## Approval registry linkage
+The pending synthetic datasets are registered in `dataset_approval.json` against the immutable repository commit that introduced the examples. This is provenance bookkeeping only: all human/legal/privacy approval flags remain false, license evidence remains unresolved, and no approved training artifact or tokenizer hash has been added. The trainer's approval gate must reject both entries until explicit human review and exact SHA-256 approvals are recorded.
