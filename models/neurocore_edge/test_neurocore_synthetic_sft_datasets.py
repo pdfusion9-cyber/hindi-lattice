@@ -14,22 +14,24 @@ PII = (
     re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b"),
     re.compile(r"(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}(?!\d)"),
     re.compile(r"(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)"),
+    re.compile(r"(?i)\b[A-Z]{5}\d{4}[A-Z]\b"),
 )
+RUBRIC = ("लक्ष्य:", "अवधि:", "जिम्मेदार भूमिका:", "संसाधन/निर्भरता:", "सूचक:", "जोखिम:", "वैकल्पिक कदम:")
 
 def load_rows(name):
     return [json.loads(line) for line in (ROOT / name).read_text(encoding="utf-8").splitlines() if line.strip()]
 
 class SyntheticHindiSFTTests(unittest.TestCase):
-    def test_schema_and_nonempty_splits(self):
+    def test_schema_inventory_and_text_lengths(self):
         for name in FILES:
             for row in load_rows(name):
                 self.assertEqual(set(row), {"prompt", "response"})
                 self.assertGreater(len(row["prompt"]), 20)
                 self.assertGreater(len(row["response"]), 60)
-        self.assertGreaterEqual(len(load_rows(FILES[0])), 14)
-        self.assertGreaterEqual(len(load_rows(FILES[1])), 4)
-        self.assertGreaterEqual(len(load_rows(FILES[2])), 15)
-        self.assertGreaterEqual(len(load_rows(FILES[3])), 4)
+        self.assertEqual(len(load_rows(FILES[0])), 14)
+        self.assertEqual(len(load_rows(FILES[1])), 4)
+        self.assertEqual(len(load_rows(FILES[2])), 15)
+        self.assertEqual(len(load_rows(FILES[3])), 4)
 
     def test_hindi_and_common_pii_patterns(self):
         for name in FILES:
@@ -40,7 +42,7 @@ class SyntheticHindiSFTTests(unittest.TestCase):
                     self.assertIsNone(pattern.search(joined))
 
     def test_pii_detectors_match_representative_values(self):
-        samples = ("contact@example.com", "9876543210", "+91 9876543210", "1234 5678 9012")
+        samples = ("contact@example.com", "9876543210", "+91 9876543210", "1234 5678 9012", "ABCDE1234F")
         for sample in samples:
             self.assertTrue(any(pattern.search(sample) for pattern in PII), sample)
 
@@ -52,20 +54,31 @@ class SyntheticHindiSFTTests(unittest.TestCase):
             self.assertTrue(validation)
             self.assertFalse(train & validation)
 
-    def test_expert16_contains_explicit_prior_answer_revision(self):
+    def test_expert16_every_training_example_is_explicitly_prior_answer_based(self):
         rows = load_rows("expert16_self_correction_train.jsonl")
-        prior_answer_rows = [r for r in rows if "पिछले उत्तर" in r["prompt"]]
-        revised_rows = [r for r in prior_answer_rows if "पिछला उत्तर सुधारना चाहिए" in r["response"]]
-        self.assertGreaterEqual(len(prior_answer_rows), 6)
-        self.assertGreaterEqual(len(revised_rows), 6)
+        self.assertEqual(len([r for r in rows if "पिछले उत्तर" in r["prompt"]]), 14)
+        self.assertTrue(all(any(term in r["response"] for term in ("मुझे", "पिछला", "मेरा")) for r in rows))
 
-    def test_expert17_advanced_plans_cover_rubric_fields(self):
-        rows = [r for r in load_rows("expert17_planning_train.jsonl") if "उन्नत योजना अभ्यास" in r["prompt"]]
-        self.assertGreaterEqual(len(rows), 6)
-        required = ("जिम्मेदार भूमिका:", "संसाधन/निर्भरता:", "सूचक:", "जोखिम:", "वैकल्पिक कदम:")
-        for row in rows:
-            for field in required:
-                self.assertIn(field, row["response"])
+    def test_expert16_validation_tests_correction_calibration(self):
+        rows = load_rows("expert16_self_correction_validation.jsonl")
+        joined = "\n".join(r["prompt"] + " " + r["response"] for r in rows)
+        self.assertIn("पिछला उत्तर सही है", joined)
+        self.assertIn("जानकारी से वास्तविक दूरी तय नहीं की जा सकती", joined)
+        self.assertIn("36", joined)
+        self.assertIn("2500 मिलीलीटर", joined)
+
+    def test_expert17_all_plans_cover_full_planning_rubric(self):
+        for name in ("expert17_planning_train.jsonl", "expert17_planning_validation.jsonl"):
+            for row in load_rows(name):
+                for field in RUBRIC:
+                    self.assertIn(field, row["response"], (name, row["prompt"], field))
+
+    def test_expert17_planting_schedule_measurements_fit_90_days(self):
+        rows = load_rows("expert17_planning_train.jsonl")
+        planting = next(r for r in rows if "200 पौधों" in r["prompt"])
+        self.assertIn("दिन 11–15", planting["response"])
+        self.assertIn("रोपाई के 30 और 60 दिन बाद", planting["response"])
+        self.assertNotIn("90 दिन बाद", planting["response"])
 
 if __name__ == "__main__":
     unittest.main()

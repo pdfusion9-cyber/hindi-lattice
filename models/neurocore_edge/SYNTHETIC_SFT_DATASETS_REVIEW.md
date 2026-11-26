@@ -1,4 +1,4 @@
-# Synthetic Hindi SFT pilot datasets — pending review
+# Synthetic Hindi SFT pilot datasets — pending independent review
 
 ## Inventory
 - Expert 16 (self-correction): 14 training and 4 held-out validation examples.
@@ -6,20 +6,29 @@
 - Total: 29 training and 8 held-out validation examples.
 
 ## Origin and format
-These examples are newly authored synthetic Hindi prompt/response pairs for the NeuroCore Dhīr-2B adapter project. They are not copied from IndicCorpV2, Sangraha, or another third-party corpus. Each JSONL row has exactly two fields: prompt and response. Use the pinned Dhīr native chat template and supervise assistant-completion tokens only.
+These are newly authored synthetic Hindi prompt/response pairs for the NeuroCore Dhīr-2B adapter project. They are not copied from IndicCorpV2, Sangraha, or another third-party corpus. Each JSONL row has exactly two fields: prompt and response. Training uses the pinned Dhīr native chat template and assistant-completion-only supervision.
 
-This remains a small development seed, not a representative or production-ready corpus. Keep validation rows out of training.
+This is a small development seed, not a representative or production-ready corpus. Validation rows must remain outside training.
 
-## Mandatory review
-**PENDING HUMAN REVIEW — NO TRAINING AUTHORIZED.** Review factual accuracy, Hindi quality, task fit, duplication, safety, bias, completeness, and planning assumptions. Approve exact source-file SHA-256, prepared corpus SHA-256, and saved tokenizer SHA-256 separately. Human reviewer identity, review date, and rights/licensing decisions are required. Synthetic origin does not automatically approve commercial training or public redistribution.
+## Changes from the previous draft
+- Expert 16's 14 training prompts now explicitly refer to a previous assistant answer. The four held-out prompts test retaining a correct prior answer, admitting an unsupported claim without the required map scale, and two arithmetic/unit corrections.
+- Expert 17's nine foundational training plans and two foundational validation plans now use a common structure: goal, duration, accountable role, resources/dependencies, steps, indicator, risk and fallback.
+- The planting plan schedules planting on days 11–15 and measures survival 30 and 60 days after planting, within the 90-day project window.
+- No dataset approval, license, privacy, consent, corpus-hash or tokenizer-hash fields were changed.
+
+## Review requirements
+**PENDING INDEPENDENT HUMAN REVIEW — NO TRAINING AUTHORIZED.** A reviewer must inspect every row for factual correctness, Hindi quality, task fit, duplication, safety, bias, completeness and planning assumptions. Exact source-file SHA-256, prepared corpus SHA-256 and saved tokenizer SHA-256 need separate review and approval. Reviewer identity/date and rights-holder licensing decisions must be recorded. Synthetic authorship alone does not establish commercial-training or public-redistribution permission.
 
 ## Rubric
-- Expert 16: identifies its own prior error, shows the corrected reasoning, gives an accurate result, and avoids introducing a new misconception.
+- Expert 16: checks what was previously said, re-evaluates it, corrects a real error with steps, retains a correct answer when warranted, and states when available information is insufficient.
 - Expert 17: states a goal and time bounds, names accountable roles and dependencies, measures outcomes, and includes realistic risks and fallback actions.
 
-## Expansion notes
-The new Expert 16 training rows explicitly include a prior assistant answer and a correction, while its new validation rows use unseen arithmetic/unit-conversion prompts. The new Expert 17 rows use consistent rubric fields for roles, resources/dependencies, indicators, risks, and fallback actions. The expanded examples are still synthetic drafts and require independent human review.
-
+## Known limits
+- The validation set is only four examples per expert and cannot provide a statistically reliable quality estimate.
+- The examples are authored seed material and can overfit rapidly if repeatedly optimized.
+- Pattern-based PII scans do not constitute comprehensive privacy review.
+- The repository has no root LICENSE file; the synthetic registry entries still have no license ID or license terms URL. Commercial-training and public-redistribution permissions must remain false until the rights holder makes and records an explicit decision.
+- A model-assisted review is not the independent human approval required by the training gate.
 
 ## Approval registry linkage
-The pending synthetic datasets are registered in `dataset_approval.json` against the immutable repository commit that introduced the examples. This is provenance bookkeeping only: all human/legal/privacy approval flags remain false, license evidence remains unresolved, and no approved training artifact or tokenizer hash has been added. The trainer's approval gate must reject both entries until explicit human review and exact SHA-256 approvals are recorded.
+The two synthetic datasets remain registered against their source-data commit for provenance only. Their approval/review flags remain false, and no approved training artifact or tokenizer hash has been added. The trainer must continue to reject both entries until all required human and exact-hash approvals are separately recorded.
