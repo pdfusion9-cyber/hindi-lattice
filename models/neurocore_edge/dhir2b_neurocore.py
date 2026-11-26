@@ -7,7 +7,7 @@ import torch
 from torch import nn
 
 ARCHITECTURE_VERSION = "0.4.0-dhir2b-adapters"
-DEFAULT_MODEL_ID = "zenteiq-ai/Dhir-2B"
+DEFAULT_MODEL_ID = "zenteiq/Dhir-2B"
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 
 def cfg_value(config: Any, key: str, default=None):
