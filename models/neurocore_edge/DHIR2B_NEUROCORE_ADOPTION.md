@@ -36,3 +36,8 @@ Output checkpoints remain provisional: EXPERT_ADAPTER_TRAINED_UNVALIDATED. They 
 ## Scope of CI
 
 CI uses a tiny synthetic 28-layer backbone. It checks layer attachment, exact vocabulary validation, initial output preservation and fixed-expert gradient isolation. It does not download, import or train the real 2B checkpoint. The v0.3.2 reference files and parameter audit remain unchanged.
+
+
+## Resuming a CPU expert run
+
+A provisional expert checkpoint can be resumed with \`--resume-from\`. The trainer verifies the exact model ID, immutable base revision, expert ID, architecture, tokenizer SHA-256 and dataset SHA-256 before restoring expert weights, optimizer state and PyTorch RNG state. A mismatch aborts the resume.
