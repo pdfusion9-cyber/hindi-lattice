@@ -44,6 +44,24 @@ jobs:
               model_id=model_id, revision=revision, rank=8, dtype=torch.bfloat16
           )
           model.eval()
+          # Exercise raw Dhīr and all 20 fixed expert paths independently.
+          probe = tokenizer("भारत की भाषा और विज्ञान", return_tensors="pt")
+          expert_reports = []
+          with torch.inference_mode():
+              raw = model.backbone.generate(**probe, max_new_tokens=4, do_sample=False)
+              for expert_id in range(20):
+                  generated = model.generate(**probe, max_new_tokens=4, do_sample=False,
+                                             expert_id=expert_id)
+                  logits = model(input_ids=probe["input_ids"],
+                                 attention_mask=probe.get("attention_mask"),
+                                 use_cache=False, expert_id=expert_id).logits
+                  expert_reports.append({
+                      "expert_id": expert_id,
+                      "generated_tokens": int(generated.shape[-1] - probe["input_ids"].shape[-1]),
+                      "finite": bool(torch.isfinite(logits).all())
+                  })
+          assert len(expert_reports) == 20
+          assert all(x["generated_tokens"] == 4 and x["finite"] for x in expert_reports)
           token_id = tokenizer.bos_token_id if tokenizer.bos_token_id is not None else 2
           ids = torch.tensor([[token_id, token_id]], dtype=torch.long)
           mask = torch.ones_like(ids)
