@@ -17,7 +17,7 @@ class IndicCorpHindiAuditTests(unittest.TestCase):
         report=audit_rows(rows,7,20)
         self.assertEqual(report["rows_seen"],9)
         self.assertEqual(report["nonempty_text"],7)
-        self.assertEqual(report["empty_text"],1)
+        self.assertEqual(report["empty_text"],2)
         self.assertEqual(report["duplicate_text_rows"],1)
         self.assertEqual(report["phone_like_rows"],1)
         self.assertEqual(report["email_like_rows"],1)
@@ -63,6 +63,8 @@ class IndicCorpHindiAuditTests(unittest.TestCase):
             audit_rows([],5001,10000)
         with self.assertRaises(ValueError):
             audit_rows([],5,4)
+        with self.assertRaises(ValueError):
+            audit_rows([],1,1000001)
 
 if __name__=="__main__":
     unittest.main()
