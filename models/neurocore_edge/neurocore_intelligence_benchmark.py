@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 from pathlib import Path
 from typing import Any
@@ -152,15 +153,133 @@ BENCHMARK_CASES: list[dict[str, Any]] = [
 ]
 
 
+def heuristic_diagnostics(
+    case_id: str,
+    prompt: str,
+    answer: str,
+    *,
+    generation_limit_reached: bool = False,
+) -> list[dict[str, Any]]:
+    """Return transparent, case-specific diagnostics, not a quality score."""
+    normalized = " ".join(answer.casefold().split())
+    checks: list[dict[str, Any]] = []
+
+    def add(name: str, status: str, detail: str) -> None:
+        checks.append({"name": name, "status": status, "detail": detail})
+
+    incomplete = "incomplete_or_not_observed" if generation_limit_reached else "fail"
+
+    if case_id == "hi_detailed_01":
+        prompt_text = " ".join(prompt.casefold().split())
+        repeats = normalized.count(prompt_text) if len(prompt_text) >= 30 else 0
+        add(
+            "prompt_echo",
+            "flag" if repeats else "not_detected",
+            f"Exact normalized prompt occurrences in answer: {repeats}",
+        )
+        point_count = len(re.findall(r"(?m)^\s*[1-5][.)]", answer))
+        add(
+            "five_numbered_points",
+            "pass" if point_count >= 5 else incomplete,
+            f"Numbered points detected: {point_count}",
+        )
+    elif case_id == "science_en_01":
+        has_core_steps = (
+            "thylakoid" in normalized
+            and "calvin cycle" in normalized
+            and "atp" in normalized
+            and "nadph" in normalized
+        )
+        add(
+            "photosynthesis_core_terms",
+            "pass" if has_core_steps else incomplete,
+            "Checks thylakoid, Calvin cycle, ATP and NADPH mentions only.",
+        )
+        has_oxygen_source = (
+            ("water splitting" in normalized or "photolysis" in normalized or "splitting of water" in normalized)
+            and ("oxygen" in normalized or "o2" in normalized)
+        )
+        add(
+            "oxygen_source_from_water",
+            "pass" if has_oxygen_source else incomplete,
+            "Checks whether oxygen is linked to water splitting; not a full science review.",
+        )
+    elif case_id == "math_hi_01":
+        has_final = bool(re.search(r"(?<!\d)315\s*(?:लीटर|litres?|liters?)?", normalized))
+        add(
+            "final_answer_315",
+            "pass" if has_final else incomplete,
+            "Checks for the expected numeric result 315; steps still require review.",
+        )
+        has_subtraction = bool(re.search(r"75", normalized)) and (
+            "315" in normalized or "घट" in normalized or "निकाल" in normalized
+        )
+        add(
+            "accounts_for_75_litre_removal",
+            "pass" if has_subtraction else incomplete,
+            "Checks for an explicit trace of the 75-litre removal.",
+        )
+    elif case_id == "logic_hi_01":
+        conclusion = normalized.rsplit("निष्कर्ष:", 1)[-1]
+        if "नहीं निकलता" in conclusion or "नहीं निकलता कि" in conclusion:
+            status = "fail"
+        elif "रवि अशिक्षित नहीं" in conclusion or conclusion.startswith("हाँ"):
+            status = "pass"
+        else:
+            status = incomplete
+        add(
+            "logical_conclusion",
+            status,
+            "Expected conclusion: Ravi is not illiterate under the supplied premises.",
+        )
+    elif case_id == "self_correction_hi_01":
+        corrected = normalized.rsplit("सही वैज्ञानिक स्थिति:", 1)[-1]
+        corrected = corrected.split("पृथ्वी के अपने अक्ष पर", 1)[0]
+        false_claim = (
+            "सूर्य पृथ्वी के चारों ओर" in corrected
+            and "घूमता" in corrected
+            and "नहीं" not in corrected
+        )
+        correct_orbit = (
+            "पृथ्वी सूर्य की परिक्रमा" in normalized
+            and "365.25" in normalized
+        )
+        add(
+            "rejects_geocentric_orbit_claim",
+            "fail" if false_claim else ("pass" if correct_orbit else incomplete),
+            "Flags a positive claim that the Sun orbits Earth in the corrected-status section.",
+        )
+        add(
+            "earth_orbits_sun_in_about_365_days",
+            "pass" if correct_orbit else incomplete,
+            "Checks for an Earth-around-Sun orbit statement and an approximately 365.25-day period.",
+        )
+    elif case_id == "planning_hi_01":
+        later_stages = len(set(re.findall(r"चरण\s*[2-9]", normalized)))
+        add(
+            "multiple_planning_stages",
+            "pass" if later_stages >= 2 else incomplete,
+            f"Distinct later-stage labels detected: {later_stages}",
+        )
+        measurable = bool(re.search(r"\d+\s*(?:लीटर|मीटर|प्रतिशत|%|दिन)", normalized))
+        add(
+            "quantified_success_indicator",
+            "pass" if measurable else incomplete,
+            "Checks for at least one numeric target with a simple unit.",
+        )
+
+    return checks
+
+
 def run_benchmark(
     model: Any,
     tokenizer: Any,
     *,
-    max_new_tokens: int = 128,
+    max_new_tokens: int = 256,
     do_sample: bool = False,
 ) -> dict[str, Any]:
-    if not 1 <= max_new_tokens <= 128:
-        raise ValueError("max_new_tokens must be between 1 and 128")
+    if not 1 <= max_new_tokens <= 256:
+        raise ValueError("max_new_tokens must be between 1 and 256")
 
     rows: list[dict[str, Any]] = []
     mode_totals: dict[str, list[float]] = {}
@@ -205,6 +324,12 @@ def run_benchmark(
                 "prompt_tokens": result["prompt_tokens"],
                 "generated_tokens": result["generated_tokens"],
                 "generation_limit_reached": result["generated_tokens"] >= max_new_tokens,
+                "heuristic_diagnostics": heuristic_diagnostics(
+                    case["id"],
+                    case["prompt"],
+                    result["answer"],
+                    generation_limit_reached=result["generated_tokens"] >= max_new_tokens,
+                ),
                 "elapsed_seconds": result["elapsed_seconds"],
                 "tokens_per_second": result["tokens_per_second"],
                 "answer": result["answer"],
@@ -220,7 +345,7 @@ def run_benchmark(
 
     return {
         "status": "COMPLETED_UNTRAINED_PAIRED_BASELINE",
-        "benchmark_version": 2,
+        "benchmark_version": 3,
         "base_model_id": MODEL_ID,
         "base_model_revision": MODEL_REVISION,
         "device": "cpu",
@@ -256,7 +381,7 @@ def run_benchmark(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--max-new-tokens", type=int, default=128)
+    parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

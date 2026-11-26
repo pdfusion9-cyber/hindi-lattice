@@ -28,8 +28,8 @@ def run_neurocore_inference(
         raise ValueError("prompt must be a non-empty string")
     if mode not in VALID_MODES:
         raise ValueError(f"mode must be one of {sorted(VALID_MODES)}")
-    if not 1 <= int(max_new_tokens) <= 128:
-        raise ValueError("max_new_tokens must be between 1 and 128")
+    if not 1 <= int(max_new_tokens) <= 256:
+        raise ValueError("max_new_tokens must be between 1 and 256")
 
     encoded = tokenizer.encode_with_metadata(
         prompt,
