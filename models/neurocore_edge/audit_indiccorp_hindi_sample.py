@@ -14,14 +14,15 @@ URL_RE=re.compile(r"(?i)\bhttps?://")
 
 def audit_rows(rows, max_nonempty_rows: int, max_scan_rows: int = 10000) -> dict[str, Any]:
     """Count up to N non-empty rows while never scanning more than M raw rows."""
-    if not 1 <= max_nonempty_rows <= 500:
-        raise ValueError("max_nonempty_rows must be between 1 and 500")
+    if not 1 <= max_nonempty_rows <= 5000:
+        raise ValueError("max_nonempty_rows must be between 1 and 5000")
     if max_scan_rows < max_nonempty_rows or max_scan_rows > 100000:
         raise ValueError("max_scan_rows must be >= max_nonempty_rows and <= 100000")
 
     counts=collections.Counter()
     seen_hashes=set()
     duplicate_rows=0
+    pii_pattern_rows=0
     for row in rows:
         if counts["rows_seen"] >= max_scan_rows:
             break
@@ -48,14 +49,20 @@ def audit_rows(rows, max_nonempty_rows: int, max_scan_rows: int = 10000) -> dict
             counts["contains_devanagari"] += 1
         if LATIN_RE.search(text):
             counts["contains_latin"] += 1
-        if PHONE_RE.search(text):
+        phone_match = bool(PHONE_RE.search(text))
+        email_match = bool(EMAIL_RE.search(text))
+        aadhaar_match = bool(AADHAAR_RE.search(text))
+        pan_match = bool(PAN_RE.search(text))
+        if phone_match:
             counts["phone_like_rows"] += 1
-        if EMAIL_RE.search(text):
+        if email_match:
             counts["email_like_rows"] += 1
-        if AADHAAR_RE.search(text):
+        if aadhaar_match:
             counts["aadhaar_like_rows"] += 1
-        if PAN_RE.search(text):
+        if pan_match:
             counts["pan_like_rows"] += 1
+        if phone_match or email_match or aadhaar_match or pan_match:
+            pii_pattern_rows += 1
         if URL_RE.search(text):
             counts["url_like_rows"] += 1
         digest=hashlib.sha256(text.encode("utf-8")).digest()
@@ -92,6 +99,7 @@ def audit_rows(rows, max_nonempty_rows: int, max_scan_rows: int = 10000) -> dict
         "email_like_rows":counts["email_like_rows"],
         "aadhaar_like_rows":counts["aadhaar_like_rows"],
         "pan_like_rows":counts["pan_like_rows"],
+        "potential_pii_pattern_rows_unique":pii_pattern_rows,
         "url_like_rows":counts["url_like_rows"],
         "average_chars_nonempty":round(counts["chars_total"]/n,2) if n else 0,
         "nonempty_target_reached":target_reached,
@@ -104,7 +112,7 @@ def audit_rows(rows, max_nonempty_rows: int, max_scan_rows: int = 10000) -> dict
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("--revision",required=True)
-    parser.add_argument("--max-rows",type=int,default=500,
+    parser.add_argument("--max-rows",type=int,default=5000,
                         help="maximum number of non-empty text records")
     parser.add_argument("--max-scan-rows",type=int,default=10000,
                         help="hard upper bound on raw lines, including empty separators")
@@ -116,10 +124,10 @@ def main():
         raise SystemExit("Refusing to access corpus: pass --confirm-review-only; this is not a training path")
     if len(args.revision)!=40 or any(c not in "0123456789abcdef" for c in args.revision):
         raise SystemExit("--revision must be an immutable 40-character SHA")
-    if not 1<=args.max_rows<=500:
-        raise SystemExit("--max-rows must be between 1 and 500 non-empty records")
-    if not args.max_rows<=args.max_scan_rows<=100000:
-        raise SystemExit("--max-scan-rows must be >= max-rows and <= 100000")
+    if not 1<=args.max_rows<=5000:
+        raise SystemExit("--max-rows must be between 1 and 5000 non-empty records")
+    if not args.max_rows<=args.max_scan_rows<=1000000:
+        raise SystemExit("--max-scan-rows must be >= max-rows and <= 1000000")
     from datasets import load_dataset
     url=f"https://huggingface.co/datasets/ai4bharat/IndicCorpV2/resolve/{args.revision}/data/hi-1.txt"
     ds=load_dataset("text",data_files={"train":url},split="train",streaming=True)
