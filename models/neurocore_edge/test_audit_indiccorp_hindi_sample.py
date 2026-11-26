@@ -23,6 +23,7 @@ class IndicCorpHindiAuditTests(unittest.TestCase):
         self.assertEqual(report["email_like_rows"],1)
         self.assertEqual(report["aadhaar_like_rows"],1)
         self.assertEqual(report["pan_like_rows"],1)
+        self.assertEqual(report["potential_pii_pattern_rows_unique"],4)
         self.assertEqual(report["url_like_rows"],1)
         self.assertTrue(report["nonempty_target_reached"])
         self.assertFalse(report["scan_budget_exhausted"])
@@ -59,7 +60,7 @@ class IndicCorpHindiAuditTests(unittest.TestCase):
 
     def test_invalid_bounds_are_rejected(self):
         with self.assertRaises(ValueError):
-            audit_rows([],501,1000)
+            audit_rows([],5001,10000)
         with self.assertRaises(ValueError):
             audit_rows([],5,4)
 
