@@ -41,3 +41,16 @@ CI uses a tiny synthetic 28-layer backbone. It checks layer attachment, exact vo
 ## Resuming a CPU expert run
 
 A provisional expert checkpoint can be resumed with \`--resume-from\`. The trainer verifies the exact model ID, immutable base revision, expert ID, architecture, tokenizer SHA-256 and dataset SHA-256 before restoring expert weights, optimizer state and PyTorch RNG state. A mismatch aborts the resume.
+
+
+## Verified source and controlled custom-code loading
+
+The metadata audit passed at immutable revision \`7cbe444cd1e45e25197cfa0f683b2cb575858169\`. Exact config: 28 layers, width 2,048, intermediate width 8,192, 16 query heads, 8 KV heads, head dimension 128, vocabulary 131,072, context 16,384, RoPE theta 1,000,000, RMSNorm epsilon 1e-6, SiLU, tied embeddings.
+
+The upstream repository uses \`auto_map\` custom Transformers code. Static source was inspected and SHA-256 pinned:
+- \`configuration_dhir.py\`: \`9ddceca88e4d7780ccab5d194d93bb1bf557238e4f71b5b7abe4d2b540ba5cee\`
+- \`modeling_dhir.py\`: \`9836ca6d3996428bbcd7dc768e885268707dbb7d3dc04ca21df494db893bfc45\`
+
+The importer verifies both files against these exact hashes before using Transformers' custom-code loading at the immutable model revision. When saving a local NeuroCore checkpoint, the verified source files are copied alongside the backbone; local reload verifies the hashes again before enabling custom code. No unpinned remote code is accepted. This is a pinned-source control, not a claim that arbitrary custom code is generally safe.
+
+The metadata audit does not download the two model weight shards (approximately 4.06 GB combined). Real weight import and CPU pilot training remain pending.
