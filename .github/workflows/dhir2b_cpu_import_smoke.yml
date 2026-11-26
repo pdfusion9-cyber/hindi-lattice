@@ -58,10 +58,17 @@ jobs:
                   expert_reports.append({
                       "expert_id": expert_id,
                       "generated_tokens": int(generated.shape[-1] - probe["input_ids"].shape[-1]),
-                      "finite": bool(torch.isfinite(logits).all())
+                      "finite": bool(torch.isfinite(logits).all()),
+                      "exact_match_to_base_dhir": bool(torch.equal(generated, raw))
                   })
+              top2_logits = model(input_ids=probe["input_ids"],
+                                  attention_mask=probe.get("attention_mask"),
+                                  use_cache=False).logits
+              top2_router_finite = bool(torch.isfinite(top2_logits).all())
           assert len(expert_reports) == 20
-          assert all(x["generated_tokens"] == 4 and x["finite"] for x in expert_reports)
+          assert all(x["generated_tokens"] == 4 and x["finite"]
+                     and x["exact_match_to_base_dhir"] for x in expert_reports)
+          assert top2_router_finite
           token_id = tokenizer.bos_token_id if tokenizer.bos_token_id is not None else 2
           ids = torch.tensor([[token_id, token_id]], dtype=torch.long)
           mask = torch.ones_like(ids)
@@ -83,7 +90,16 @@ jobs:
               "logits_finite": bool(torch.isfinite(output.logits).all()),
               "loading_info_clean": not any(loading_info.get(k) for k in ("missing_keys", "unexpected_keys", "mismatched_keys", "error_msgs")),
               "weights_persisted": False,
-              "training_performed": False
+              "training_performed": False,
+              "fixed_expert_generation_smoke": {
+                  "experts_tested": len(expert_reports),
+                  "all_20_generated_four_tokens": all(x["generated_tokens"] == 4 for x in expert_reports),
+                  "all_20_logits_finite": all(x["finite"] for x in expert_reports),
+                  "all_20_exact_match_to_base_dhir_before_training": all(x["exact_match_to_base_dhir"] for x in expert_reports),
+                  "top2_router_path_finite": top2_router_finite,
+                  "router_status": "UNTRAINED_NOT_QUALITY_VALIDATED",
+                  "expert_reports": expert_reports
+              }
           }
           print(json.dumps(report, indent=2))
           assert report["num_hidden_layers"] == 28
