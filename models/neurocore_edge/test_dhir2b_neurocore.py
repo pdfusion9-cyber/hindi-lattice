@@ -25,13 +25,25 @@ class Backbone(nn.Module):
         for layer in self.model.layers: x=layer(x)[0]
         return types.SimpleNamespace(logits=self.lm_head(x))
 class Tests(unittest.TestCase):
-    def make(self): return Dhir2BNeuroCore(Backbone(),"test/dhir","a"*40,rank=4)
+    def make(self):
+        facts={"hidden_size":16,"vocab_size":32,"num_hidden_layers":28}
+        return Dhir2BNeuroCore(Backbone(),"test/dhir","a"*40,rank=4,source_facts=facts)
     def test_config_and_tokenizer_vocab(self):
-        self.assertEqual(validate_dhir_config(Cfg(),Tok())["vocab_size"],32)
+        class RealCfg:
+            vocab_size=32; hidden_size=2048; intermediate_size=4096
+            num_hidden_layers=28; num_attention_heads=16; num_key_value_heads=8
+            max_position_embeddings=16384; rope_theta=1_000_000.
+            tie_word_embeddings=True; hidden_act="silu"
+        self.assertEqual(validate_dhir_config(RealCfg(),Tok())["vocab_size"],32)
     def test_vocab_mismatch(self):
+        class RealCfg:
+            vocab_size=32; hidden_size=2048; intermediate_size=4096
+            num_hidden_layers=28; num_attention_heads=16; num_key_value_heads=8
+            max_position_embeddings=16384; rope_theta=1_000_000.
+            tie_word_embeddings=True; hidden_act="silu"
         class Bad(Tok):
             def __len__(self): return 31
-        with self.assertRaisesRegex(ValueError,"vocabulary mismatch"): validate_dhir_config(Cfg(),Bad())
+        with self.assertRaisesRegex(ValueError,"vocabulary mismatch"): validate_dhir_config(RealCfg(),Bad())
     def test_28_layers_and_zero_init_preserves_logits(self):
         torch.manual_seed(1); model=self.make(); ids=torch.randint(0,32,(1,4))
         a=model.backbone(input_ids=ids).logits
