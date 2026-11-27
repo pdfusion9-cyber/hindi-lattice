@@ -1,6 +1,10 @@
 import json
 import tempfile
 import unittest
+import sys
+from unittest.mock import patch
+
+import train_dhir2b_expert as trainer
 from pathlib import Path
 
 from train_dhir2b_expert import (
@@ -65,6 +69,40 @@ class FakeTokenizer:
 class TrainingApprovalGateTests(unittest.TestCase):
     def write_doc(self, path, document):
         path.write_text(json.dumps(document), encoding="utf-8")
+
+    def test_pending_approval_stops_before_checkpoint_load_and_optimizer_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            model_dir = root / "model"
+            (model_dir / "tokenizer").mkdir(parents=True)
+            data_path = root / "expert16.jsonl"
+            data_path.write_text('{"prompt":"test","response":"test"}\\n', encoding="utf-8")
+            approval_path = root / "approval.json"
+            self.write_doc(approval_path, {
+                "status": "ALL_DATASETS_PENDING_REVIEW",
+                "datasets": [],
+                "approved_training_artifacts": [],
+                "approved_tokenizers": [],
+            })
+            argv = [
+                "train_dhir2b_expert.py",
+                "--model-dir", str(model_dir),
+                "--data", str(data_path),
+                "--approval", str(approval_path),
+                "--dataset-id", "local/neurocore_synthetic_sft/expert16_self_correction",
+                "--dataset-revision", "e1b7824cccdc32004f4cfcd5acf91a2c76acfec9",
+                "--expert-id", "16",
+                "--steps", "10",
+                "--output", str(root / "adapter.pt"),
+            ]
+            with patch.object(sys, "argv", argv), \\
+                 patch.object(trainer.torch, "set_num_threads"), \\
+                 patch.object(trainer.Dhir2BNeuroCore, "load_checkpoint") as load_model, \\
+                 patch.object(trainer.torch.optim, "AdamW") as make_optimizer:
+                with self.assertRaisesRegex(PermissionError, "dataset ID/revision"):
+                    trainer.main()
+            load_model.assert_not_called()
+            make_optimizer.assert_not_called()
 
     def test_current_repository_default_deny_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
