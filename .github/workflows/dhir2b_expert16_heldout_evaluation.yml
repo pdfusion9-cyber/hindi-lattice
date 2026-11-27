@@ -32,9 +32,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dhir2b-neurocore-cpu-checkpoint
-          run-id: \${{ inputs.checkpoint_run_id || '45780741273' }}
-          github-token: \${{ github.token }}
-          path: \${{ runner.temp }}/dhir2b-checkpoint-artifact
+          run-id: ${{ inputs.checkpoint_run_id || '45780741273' }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/dhir2b-checkpoint-artifact
       - name: Install CPU-only Dhīr runtime
         run: |
           python -m pip install --upgrade pip
@@ -49,20 +49,20 @@ jobs:
           HF_HUB_OFFLINE: '1'
           TRANSFORMERS_OFFLINE: '1'
         run: |
-          CHECKPOINT_MANIFEST="$(find "\${{ runner.temp }}/dhir2b-checkpoint-artifact" -name manifest.json -type f -print -quit)"
+          CHECKPOINT_MANIFEST="$(find "${{ runner.temp }}/dhir2b-checkpoint-artifact" -name manifest.json -type f -print -quit)"
           test -n "$CHECKPOINT_MANIFEST"
           MODEL_DIR="$(dirname "$CHECKPOINT_MANIFEST")"
           python -m py_compile evaluate_dhir2b_expert.py
           python evaluate_dhir2b_expert.py \
             --model-dir "$MODEL_DIR" \
             --validation-data synthetic_sft/expert16_self_correction_validation.jsonl \
-            --output "\${{ runner.temp }}/dhir2b-expert16-heldout/report.json" \
+            --output "${{ runner.temp }}/dhir2b-expert16-heldout/report.json" \
             --threads 2
       - name: Upload read-only evaluation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dhir2b-expert16-heldout-evaluation
-          path: \${{ runner.temp }}/dhir2b-expert16-heldout/report.json
+          path: ${{ runner.temp }}/dhir2b-expert16-heldout/report.json
           if-no-files-found: ignore
           retention-days: 30
