@@ -96,12 +96,13 @@ class TrainingApprovalGateTests(unittest.TestCase):
                 "--output", str(root / "adapter.pt"),
             ]
             with patch.object(sys, "argv", argv):
-                with patch.object(trainer.torch, "set_num_threads"):
-                    with patch.object(trainer.Dhir2BNeuroCore, "load_checkpoint") as load_model:
-                        with patch.object(trainer.torch.optim, "AdamW") as make_optimizer:
-                            with self.assertRaisesRegex(PermissionError, "dataset ID/revision"):
-                                trainer.main()
-            load_model.assert_not_called()
+                with patch.object(trainer, "sha_dir", return_value="b" * 64):
+                    with patch.object(trainer.torch, "set_num_threads"):
+                        with patch.object(trainer.Dhir2BNeuroCore, "load_checkpoint") as load_model:
+                            with patch.object(trainer.torch.optim, "AdamW") as make_optimizer:
+                                with self.assertRaisesRegex(PermissionError, "dataset ID/revision"):
+                                    trainer.main()
+                load_model.assert_not_called()
             make_optimizer.assert_not_called()
 
     def test_current_repository_default_deny_is_rejected(self):
