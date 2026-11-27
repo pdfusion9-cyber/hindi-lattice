@@ -29,6 +29,20 @@ class TinyModel:
         self.num_experts = 2
 
 
+class FakeTokenizer:
+    neurocore_manifest = {
+        "base_model_id": "zenteiq-ai/Dhīr-2B",
+        "base_revision": "7cbe444cd1e45e25197cfa0f683b2cb575858169",
+        "vocab_size": 131072,
+        "tokenizer_vocab_sha256": "cff9e969e05108763f796df6dafd614ee8159ebbf3cc165594265fa0ea02ee9c",
+        "chat_template_sha256": "4bc9a0aac3faabc9a7399b1df253929f73d0448329f55d6700a73a0fff7c2305",
+        "tokenizer_files_sha256": "cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056",
+        "token_id_mapping": "IDENTICAL_TO_PINNED_DHIR_BASE",
+        "base_embedding_rows_reassigned": False,
+        "vocabulary_expansion": False,
+    }
+
+
 class PreflightGateTests(unittest.TestCase):
     def make_registry(self, **overrides):
         row = {
@@ -50,6 +64,19 @@ class PreflightGateTests(unittest.TestCase):
             "approved_training_artifacts": [],
             "approved_tokenizers": [],
         }
+
+    def test_tokenizer_validation_uses_semantic_file_hash_not_directory_hash(self):
+        from preflight_dhir2b_expert import verify_checkpoint_tokenizer
+        result = verify_checkpoint_tokenizer(
+            FakeTokenizer(),
+            "zenteiq-ai/Dhīr-2B",
+            "7cbe444cd1e45e25197cfa0f683b2cb575858169",
+        )
+        self.assertEqual(
+            result["files_sha256"],
+            "cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056",
+        )
+        self.assertTrue(result["file_integrity_verified_by_checkpoint_loader"])
 
     def test_pending_registry_allows_only_non_training_preflight(self):
         with tempfile.TemporaryDirectory() as directory:
