@@ -94,6 +94,16 @@ jobs:
         run: |
           python -m py_compile prepare_dhir2b_expert_corpus.py test_prepare_dhir2b_expert_corpus.py
           python -m unittest -v test_prepare_dhir2b_expert_corpus
+      - name: Compile and test read-only Dhīr Expert 16 held-out evaluator
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+        run: |
+          python -m py_compile evaluate_dhir2b_expert.py test_evaluate_dhir2b_expert.py
+          python -m unittest -v test_evaluate_dhir2b_expert
+
       - name: Compile and test Dhīr-2B Expert 16 no-update preflight gates
         working-directory: models/neurocore_edge
         env:
