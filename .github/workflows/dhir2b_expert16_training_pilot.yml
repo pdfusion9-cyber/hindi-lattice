@@ -33,6 +33,12 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install CPU-only runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install -r models/neurocore_edge/requirements-dhir2b.txt
+
       - name: Verify exact approval scope and run gate tests
         working-directory: models/neurocore_edge
         env:
@@ -63,12 +69,6 @@ jobs:
           run-id: '45991002019'
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/dhir2b-base-artifact
-
-      - name: Install CPU-only runtime
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
-          python -m pip install -r models/neurocore_edge/requirements-dhir2b.txt
 
       - name: Locate verified base model and run baseline held-out evaluation
         working-directory: models/neurocore_edge
