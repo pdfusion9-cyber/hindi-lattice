@@ -76,6 +76,67 @@ def inspect_split(tokenizer,path,split):
         "assistant_only_loss_mask_verified":True,
     }
 
+def verify_registry_for_review_dry_run(registry, tokenizer_sha):
+    """Allow only the explicitly scoped Expert 16 internal pilot approval in a no-training dry-run."""
+    expected_status = "PARTIAL_APPROVAL_EXPERT16_INTERNAL_RESEARCH_ONLY"
+    if registry.get("status") != expected_status:
+        raise PermissionError("dataset registry status does not match the scoped Expert 16 review state")
+    e16_id = "local/neurocore_synthetic_sft/expert16_self_correction"
+    e17_id = "local/neurocore_synthetic_sft/expert17_planning"
+    e16 = next((x for x in registry.get("datasets", [])
+                if x.get("expert_id") == 16 and x.get("dataset_id") == e16_id), None)
+    e17 = next((x for x in registry.get("datasets", [])
+                if x.get("expert_id") == 17 and x.get("dataset_id") == e17_id), None)
+    if not e16 or e16.get("revision") != DATA_REVISION:
+        raise PermissionError("Expert 16 exact dataset revision is missing")
+    for field in ("approved", "internal_research_allowed", "pii_reviewed",
+                  "consent_reviewed", "schema_reviewed", "split_reviewed"):
+        if e16.get(field) is not True:
+            raise PermissionError(f"Expert 16 approval requires {field}=true")
+    if e16.get("approval_scope") != "internal_research_only":
+        raise PermissionError("Expert 16 approval scope must be internal research only")
+    if e16.get("commercial_training_allowed") is not False or e16.get("public_redistribution_allowed") is not False:
+        raise PermissionError("Expert 16 commercial training and public redistribution must remain denied")
+    if not all(e16.get(k) for k in ("approval_id", "reviewer", "reviewed_at")):
+        raise PermissionError("Expert 16 owner-attested approval provenance is incomplete")
+    if not e17 or e17.get("revision") != DATA_REVISION or e17.get("approved") is not False:
+        raise PermissionError("Expert 17 must remain pending review")
+    if any(e17.get(k) is not False for k in
+           ("commercial_training_allowed", "pii_reviewed", "consent_reviewed", "schema_reviewed", "split_reviewed")):
+        raise PermissionError("Expert 17 review flags must remain pending")
+    artifacts = registry.get("approved_training_artifacts", [])
+    if len(artifacts) != 1:
+        raise PermissionError("only one approved training corpus artifact is expected")
+    artifact = artifacts[0]
+    if (artifact.get("expert_id") != 16 or artifact.get("dataset_id") != e16_id
+            or artifact.get("dataset_revision") != DATA_REVISION
+            or artifact.get("sha256") != "ce148fd31b2850b18f0b398dd55cda12f30a33844b315c98dc8a16847ed23e66"
+            or artifact.get("approved") is not True
+            or artifact.get("approval_scope") != "internal_research_only"
+            or artifact.get("commercial_training_allowed") is not False
+            or artifact.get("public_redistribution_allowed") is not False):
+        raise PermissionError("Expert 16 corpus approval does not match exact scoped provenance")
+    tokenizers = registry.get("approved_tokenizers", [])
+    if len(tokenizers) != 1:
+        raise PermissionError("only the pinned Dhīr tokenizer may be approved")
+    tok = tokenizers[0]
+    if (tok.get("sha256") != tokenizer_sha or tok.get("approved") is not True
+            or tok.get("approval_scope") != "internal_research_only"
+            or tok.get("commercial_training_allowed") is not False
+            or tok.get("public_redistribution_allowed") is not False):
+        raise PermissionError("tokenizer approval does not match exact internal-only hash")
+    if not all(tok.get(k) for k in ("approval_id", "reviewer", "reviewed_at")):
+        raise PermissionError("tokenizer approval provenance is incomplete")
+    return {
+        "registry_status": expected_status,
+        "expert16_approved_internal_only": True,
+        "expert17_approved": False,
+        "approved_training_artifacts": 1,
+        "approved_tokenizers": 1,
+        "approval_gate_bypassed": False,
+    }
+
+
 def main():
     ap=argparse.ArgumentParser()
     ap.add_argument("--tokenizer-dir",type=Path,required=True)
@@ -83,18 +144,9 @@ def main():
     args=ap.parse_args()
     root=Path(__file__).resolve().parent
     registry=json.loads((root/"dataset_approval.json").read_text(encoding="utf-8"))
-    if registry.get("status")!="ALL_DATASETS_PENDING_REVIEW":
-        raise PermissionError("dataset registry is not default-deny")
-    if registry.get("approved_training_artifacts") or registry.get("approved_tokenizers"):
-        raise PermissionError("expected zero approved artifacts/tokenizers")
-    pending={}
-    for eid,name,did,_,_ in SPECS:
-        row=next((x for x in registry["datasets"] if x.get("expert_id")==eid and x.get("dataset_id")==did),None)
-        if not row or row.get("revision")!=DATA_REVISION or row.get("approved") is not False:
-            raise PermissionError(f"expert {eid} provenance or pending status mismatch")
-        for key in ("commercial_training_allowed","pii_reviewed","consent_reviewed","schema_reviewed","split_reviewed"):
-            if row.get(key) is not False: raise PermissionError(f"expert {eid}: expected {key}=false")
-        pending[str(eid)]={"dataset_id":did,"dataset_revision":row["revision"],"approved":False}
+    # This is a measurement-only tokenizer/parser dry-run. Expert 16 has
+    # a narrowly scoped internal pilot approval; Expert 17 and every other
+    # dataset remain denied. Exact hashes are checked after tokenizer save.
     from transformers import PreTrainedTokenizerFast
     raw=PreTrainedTokenizerFast.from_pretrained(MODEL,revision=REVISION,trust_remote_code=False)
     wrapped=NeuroCoreTokenizer.from_tokenizer(raw,base_model_id=MODEL,base_revision=REVISION,expected_vocab_size=VOCAB_SIZE)
@@ -115,6 +167,7 @@ def main():
         experts[str(eid)]={"expert_name":name,"training":train,"validation":val,"validation_used_for_training":False}
         train_total+=train["source_rows"]; val_total+=val["source_rows"]
     tokdir_sha=sha_dir(args.tokenizer_dir)
+    approval_status=verify_registry_for_review_dry_run(registry,tokdir_sha)
     report={
       "status":"SYNTHETIC_SFT_TOKENIZER_DRY_RUN_PASSED_NO_TRAINING",
       "training_performed":False,"optimizer_steps":0,"model_weights_loaded":False,
@@ -128,9 +181,7 @@ def main():
       "totals":{"training_examples":train_total,"held_out_validation_examples":val_total,
         "all_training_rows_retained":True,"all_validation_rows_retained":True,
         "validation_used_for_training":False,"training_source_files_combined_sha256":combined.hexdigest()},
-      "approval_status":{"registry_status":"ALL_DATASETS_PENDING_REVIEW",
-        "expert_16_and_17_approved":False,"approved_training_artifacts":0,
-        "approved_tokenizers":0,"approval_gate_bypassed":False},
+      "approval_status":approval_status,
       "interpretation":"Real pinned Dhīr tokenizer and production trainer parser exercised; measurement only, not approval or training."
     }
     args.output.parent.mkdir(parents=True,exist_ok=True)
