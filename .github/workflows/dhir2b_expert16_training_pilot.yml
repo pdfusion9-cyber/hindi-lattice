@@ -1,0 +1,161 @@
+name: Dhīr-2B Expert 16 Internal Research Training Pilot
+
+on:
+  push:
+    branches: [neurocore-v0.3.2-canonical-20261122]
+    paths:
+      - '.github/workflows/dhir2b_expert16_training_pilot.yml'
+      - 'models/neurocore_edge/train_dhir2b_expert.py'
+      - 'models/neurocore_edge/test_train_dhir2b_expert.py'
+      - 'models/neurocore_edge/dataset_approval.json'
+      - 'models/neurocore_edge/synthetic_sft/expert16_self_correction_train.jsonl'
+      - 'models/neurocore_edge/synthetic_sft/expert16_self_correction_validation.jsonl'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: dhir2b-expert16-internal-pilot
+  cancel-in-progress: false
+
+jobs:
+  expert16-training-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: neurocore-v0.3.2-canonical-20261122
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify exact approval scope and run gate tests
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m py_compile train_dhir2b_expert.py test_train_dhir2b_expert.py evaluate_dhir2b_expert.py
+          python -m unittest -v test_train_dhir2b_expert
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path("dataset_approval.json").read_text())
+          rows = [r for r in p["datasets"] if r.get("expert_id") == 16 and r.get("dataset_id") == "local/neurocore_synthetic_sft/expert16_self_correction"]
+          assert len(rows) == 1
+          r = rows[0]
+          assert r["approved"] is True and r["internal_research_allowed"] is True
+          assert r["approval_scope"] == "internal_research_only"
+          assert r["commercial_training_allowed"] is False
+          assert r["public_redistribution_allowed"] is False
+          assert len([x for x in p["approved_training_artifacts"] if x.get("expert_id") == 16 and x.get("sha256") == "ce148fd31b2850b18f0b398dd55cda12f30a33844b315c98dc8a16847ed23e66" and x.get("approved") is True]) == 1
+          assert len([x for x in p["approved_tokenizers"] if x.get("sha256") == "84dba4df7e54dddadd907939abbee248b181753ae97523a5407b48db7eabf990" and x.get("approved") is True]) == 1
+          print("EXPERT16_INTERNAL_RESEARCH_ONLY_APPROVAL_VERIFIED")
+          PY
+
+      - name: Download verified Dhīr-2B base checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: dhir2b-neurocore-cpu-checkpoint
+          run-id: '45991002019'
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/dhir2b-base-artifact
+
+      - name: Install CPU-only runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install -r models/neurocore_edge/requirements-dhir2b.txt
+
+      - name: Locate verified base model and run baseline held-out evaluation
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+          HF_HUB_OFFLINE: '1'
+          TRANSFORMERS_OFFLINE: '1'
+        run: |
+          MANIFEST="$(find "${{ runner.temp }}/dhir2b-base-artifact" -name manifest.json -type f -print -quit)"
+          test -n "$MANIFEST"
+          MODEL_DIR="$(dirname "$MANIFEST")"
+          mkdir -p "${{ runner.temp }}/expert16-pilot"
+          python evaluate_dhir2b_expert.py \
+            --model-dir "$MODEL_DIR" \
+            --validation-data synthetic_sft/expert16_self_correction_validation.jsonl \
+            --output "${{ runner.temp }}/expert16-pilot/baseline.json" \
+            --threads 2
+
+      - name: Run approved 10-step Expert 16 adapter training
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+          HF_HUB_OFFLINE: '1'
+          TRANSFORMERS_OFFLINE: '1'
+        run: |
+          MANIFEST="$(find "${{ runner.temp }}/dhir2b-base-artifact" -name manifest.json -type f -print -quit)"
+          test -n "$MANIFEST"
+          MODEL_DIR="$(dirname "$MANIFEST")"
+          python train_dhir2b_expert.py \
+            --model-dir "$MODEL_DIR" \
+            --data synthetic_sft/expert16_self_correction_train.jsonl \
+            --approval dataset_approval.json \
+            --dataset-id local/neurocore_synthetic_sft/expert16_self_correction \
+            --dataset-revision e1b7824cccdc32004f4cfcd5acf91a2c76acfec9 \
+            --expert-id 16 \
+            --steps 10 \
+            --batch-size 2 \
+            --max-length 256 \
+            --lr 0.0002 \
+            --output "${{ runner.temp }}/expert16-pilot/expert16-adapter.pt" \
+            --threads 2
+
+      - name: Evaluate trained adapter on untouched held-out rows
+        working-directory: models/neurocore_edge
+        env:
+          PYTHONPATH: .
+          OMP_NUM_THREADS: '2'
+          MKL_NUM_THREADS: '2'
+          HF_HUB_OFFLINE: '1'
+          TRANSFORMERS_OFFLINE: '1'
+        run: |
+          MANIFEST="$(find "${{ runner.temp }}/dhir2b-base-artifact" -name manifest.json -type f -print -quit)"
+          test -n "$MANIFEST"
+          MODEL_DIR="$(dirname "$MANIFEST")"
+          python evaluate_dhir2b_expert.py \
+            --model-dir "$MODEL_DIR" \
+            --validation-data synthetic_sft/expert16_self_correction_validation.jsonl \
+            --expert-checkpoint "${{ runner.temp }}/expert16-pilot/expert16-adapter.pt" \
+            --output "${{ runner.temp }}/expert16-pilot/trained-evaluation.json" \
+            --threads 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path("${{ runner.temp }}/expert16-pilot/trained-evaluation.json").read_text())
+          assert p["evaluation_mode"] == "trained_expert16_vs_base_dhir"
+          assert p["trained_adapter_provenance"]["steps_completed"] == 10
+          assert p["optimizer_steps"] == 0 and p["validation_used_for_training"] is False
+          print(json.dumps({"status": p["status"], "metrics": p["metrics"], "trained_adapter_provenance": p["trained_adapter_provenance"]}, indent=2))
+          PY
+
+      - name: Retain metrics and provenance only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhir2b-expert16-internal-pilot-report
+          path: |
+            ${{ runner.temp }}/expert16-pilot/baseline.json
+            ${{ runner.temp }}/expert16-pilot/trained-evaluation.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Delete local model and trained adapter weights
+        if: always()
+        run: |
+          rm -rf "${{ runner.temp }}/dhir2b-base-artifact"
+          rm -rf "${{ runner.temp }}/expert16-pilot"
