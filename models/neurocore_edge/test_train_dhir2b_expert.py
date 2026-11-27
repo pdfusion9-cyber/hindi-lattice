@@ -22,9 +22,10 @@ def approved_document(data_sha, tokenizer_sha):
             "expert_id": 11,
             "dataset_id": DEFAULT_DATASET_ID,
             "revision": DEFAULT_DATASET_REVISION,
-            "license_id": "CC0-1.0",
-            "license_terms_url": "https://example.org/license",
-            "commercial_training_allowed": True,
+            "internal_research_allowed": True,
+            "approval_scope": "internal_research_only",
+            "commercial_training_allowed": False,
+            "public_redistribution_allowed": False,
             "pii_reviewed": True,
             "consent_reviewed": True,
             "schema_reviewed": True,
@@ -132,6 +133,21 @@ class TrainingApprovalGateTests(unittest.TestCase):
             self.write_doc(path, document)
             with self.assertRaisesRegex(PermissionError, "dataset ID/revision"):
                 require_approval(path, 11, "a" * 64, "b" * 64)
+
+    def test_internal_research_approval_cannot_enable_commercial_or_public_use(self):
+        for field, value in (
+            ("internal_research_allowed", False),
+            ("approval_scope", "commercial"),
+            ("commercial_training_allowed", True),
+            ("public_redistribution_allowed", True),
+        ):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "approval.json"
+                document = approved_document("a" * 64, "b" * 64)
+                document["datasets"][0][field] = value
+                self.write_doc(path, document)
+                with self.assertRaises(PermissionError):
+                    require_approval(path, 11, "a" * 64, "b" * 64)
 
     def test_incomplete_privacy_or_license_review_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
