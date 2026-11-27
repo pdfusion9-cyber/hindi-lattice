@@ -11,7 +11,7 @@ REVISION = "7cbe444cd1e45e25197cfa0f683b2cb575858169"
 VOCAB_SIZE = 131072
 VOCAB_SHA = "cff9e969e05108763f796df6dafd614ee8159ebbf3cc165594265fa0ea02ee9c"
 MAX_LENGTH = 256
-DATA_REVISION = "0e3c5c9a19490e6736888c8742b9397a6146ccbb"
+DATA_REVISION = "e1b7824cccdc32004f4cfcd5acf91a2c76acfec9"
 SPECS = (
     (16, "self_correction_mnl", "local/neurocore_synthetic_sft/expert16_self_correction",
      "synthetic_sft/expert16_self_correction_train.jsonl",
