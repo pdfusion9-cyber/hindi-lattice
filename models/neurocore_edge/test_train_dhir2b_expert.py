@@ -211,20 +211,45 @@ class TrainingApprovalGateTests(unittest.TestCase):
 
     def test_pending_synthetic_expert_datasets_are_rejected(self):
         approval_path = Path(__file__).parent / "dataset_approval.json"
+        document = json.loads(approval_path.read_text(encoding="utf-8"))
         for expert_id, dataset_id in (
             (16, "local/neurocore_synthetic_sft/expert16_self_correction"),
             (17, "local/neurocore_synthetic_sft/expert17_planning"),
         ):
             with self.subTest(expert_id=expert_id):
+                registered = next(
+                    (
+                        row for row in document.get("datasets", [])
+                        if row.get("expert_id") == expert_id
+                        and row.get("dataset_id") == dataset_id
+                    ),
+                    None,
+                )
+                self.assertIsNotNone(
+                    registered, f"pending synthetic dataset is not registered: {dataset_id}"
+                )
+                self.assertTrue(registered.get("revision"))
+                for field in (
+                    "commercial_training_allowed",
+                    "pii_reviewed",
+                    "consent_reviewed",
+                    "schema_reviewed",
+                    "split_reviewed",
+                    "approved",
+                ):
+                    self.assertIs(
+                        registered.get(field), False,
+                        f"{dataset_id} must keep {field}=false until review",
+                    )
+
                 with tempfile.TemporaryDirectory() as tmp:
                     path = Path(tmp) / "approval.json"
-                    document = json.loads(approval_path.read_text(encoding="utf-8"))
                     self.write_doc(path, document)
                     with self.assertRaisesRegex(PermissionError, "approval/review fields"):
                         require_approval(
                             path, expert_id, "a" * 64, "b" * 64,
                             dataset_id=dataset_id,
-                            dataset_revision="412e4479c2317f3afeb9758ef95f94822e7169ff",
+                            dataset_revision=registered["revision"],
                         )
 
 
