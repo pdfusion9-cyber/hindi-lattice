@@ -73,7 +73,7 @@ class SyntheticHindiSFTTests(unittest.TestCase):
         self.assertEqual(len(retention), 2)
         self.assertTrue(all("पिछला उत्तर सही था" in r["response"] for r in retention))
         self.assertEqual(len(uncertainty), 2)
-        self.assertTrue(all(any(term in r["response"] for term in ("पर्याप्त जानकारी", "तय नहीं किया जा सकता")) for r in uncertainty))
+        self.assertTrue(all(any(term in r["response"] for term in ("पर्याप्त जानकारी", "तय नहीं किया जा सकता", "तय नहीं की जा सकती")) for r in uncertainty))
         self.assertEqual(len(partial), 2)
         rectangle = next(r for r in partial if "कौन-सा भाग सही है" in r["prompt"])
         journey = next(r for r in partial if "90 किलोमीटर" in r["prompt"])
