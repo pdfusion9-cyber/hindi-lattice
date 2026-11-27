@@ -39,6 +39,7 @@ jobs:
           import hashlib, json, shutil, torch
           from pathlib import Path
           from dhir2b_neurocore import Dhir2BNeuroCore
+          from train_dhir2b_expert import sha_dir, sha_file
           torch.set_num_threads(4)
           model_id = "zenteiq-ai/Dhir-2B"
           revision = "7cbe444cd1e45e25197cfa0f683b2cb575858169"
@@ -90,6 +91,8 @@ jobs:
               "checkpoint_files": files,
               "checkpoint_total_bytes": sum(sizes.values()),
               "checkpoint_tree_sha256": digest.hexdigest(),
+              "tokenizer_directory_sha256_for_training_approval": sha_dir(checkpoint_dir / "tokenizer"),
+              "expert16_training_source_sha256": sha_file(Path("synthetic_sft/expert16_self_correction_train.jsonl")),
               "checkpoint_path": str(checkpoint_dir),
               "expert_training_performed": False
           }
