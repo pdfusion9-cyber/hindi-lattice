@@ -116,7 +116,7 @@ def ensure_checkpoint_tokenizer_manifest(tokenizer_dir: str | Path, model_id: st
         manifest = wrapped.neurocore_manifest
         manifest["tokenizer_files_sha256"] = observed_files_sha
         manifest_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n",
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
         rebuilt = True
