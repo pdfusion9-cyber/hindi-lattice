@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from neurocore_tokenizer import (
@@ -164,6 +165,36 @@ class NeuroCoreTokenizerTests(unittest.TestCase):
             self.assertEqual(data["base_revision"], "a" * 40)
             self.assertIn("language_metadata", data)
             self.assertIn("routing_metadata", data)
+
+    def test_missing_manifest_rebuilt_only_with_pinned_file_hash(self):
+        from unittest.mock import patch
+        expected_files_sha = "cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056"
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("neurocore_tokenizer.tokenizer_files_sha256", return_value=expected_files_sha):
+                with patch("transformers.PreTrainedTokenizerFast.from_pretrained", return_value=FakeTokenizer()):
+                    tokenizer = NeuroCoreTokenizer.from_pretrained(
+                        tmp,
+                        base_model_id="zenteiq-ai/Dhir-2B",
+                        base_revision="a" * 40,
+                        expected_vocab_size=32,
+                        expected_tokenizer_files_sha256=expected_files_sha,
+                    )
+            manifest_path = Path(tmp) / MANIFEST_NAME
+            self.assertTrue(manifest_path.is_file())
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["tokenizer_files_sha256"], expected_files_sha)
+            self.assertEqual(tokenizer.get_vocab(), FakeTokenizer().get_vocab())
+
+    def test_missing_manifest_without_pinned_hash_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("neurocore_tokenizer.tokenizer_files_sha256", return_value="unreviewed"):
+                with self.assertRaises(FileNotFoundError):
+                    NeuroCoreTokenizer.from_pretrained(
+                        tmp,
+                        base_model_id="zenteiq-ai/Dhir-2B",
+                        base_revision="a" * 40,
+                        expected_vocab_size=32,
+                    )
 
     def test_token_id_gaps_are_rejected(self):
         raw = FakeTokenizer()
