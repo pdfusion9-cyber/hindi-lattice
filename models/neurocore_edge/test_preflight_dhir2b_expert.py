@@ -29,6 +29,15 @@ class TinyModel:
         self.num_experts = 2
 
 
+class FakeRawTokenizer:
+    def __init__(self):
+        self.chat_template = "pinned chat template"
+    def __len__(self):
+        return 131072
+    def get_vocab(self):
+        return {f"token_{i}": i for i in range(131072)}
+
+
 class FakeTokenizer:
     neurocore_manifest = {
         "base_model_id": "zenteiq-ai/Dhīr-2B",
@@ -64,6 +73,39 @@ class PreflightGateTests(unittest.TestCase):
             "approved_training_artifacts": [],
             "approved_tokenizers": [],
         }
+
+    def test_missing_manifest_is_rebuilt_only_after_raw_file_hash_match(self):
+        from unittest.mock import patch
+        from preflight_dhir2b_expert import ensure_checkpoint_tokenizer_manifest
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("preflight_dhir2b_expert.tokenizer_files_sha256",
+                       return_value="cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056"):
+                with patch("transformers.PreTrainedTokenizerFast.from_pretrained",
+                           return_value=FakeRawTokenizer()):
+                    with patch("neurocore_tokenizer.NeuroCoreTokenizer.from_tokenizer") as wrap:
+                        wrap.return_value.neurocore_manifest = dict(FakeTokenizer.neurocore_manifest)
+                        result = ensure_checkpoint_tokenizer_manifest(
+                            directory,
+                            "zenteiq-ai/Dhīr-2B",
+                            "7cbe444cd1e45e25197cfa0f683b2cb575858169",
+                        )
+            self.assertTrue(result["manifest_rebuilt_from_verified_local_tokenizer"])
+            self.assertTrue((Path(directory) / "neurocore_tokenizer_manifest.json").is_file())
+
+    def test_missing_manifest_rejects_unrecognized_raw_tokenizer_files(self):
+        from unittest.mock import patch
+        from preflight_dhir2b_expert import ensure_checkpoint_tokenizer_manifest
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("preflight_dhir2b_expert.tokenizer_files_sha256",
+                       return_value="not-the-reviewed-hash"):
+                with self.assertRaises(ValueError):
+                    ensure_checkpoint_tokenizer_manifest(
+                        directory,
+                        "zenteiq-ai/Dhīr-2B",
+                        "7cbe444cd1e45e25197cfa0f683b2cb575858169",
+                    )
 
     def test_tokenizer_validation_uses_semantic_file_hash_not_directory_hash(self):
         from preflight_dhir2b_expert import verify_checkpoint_tokenizer
