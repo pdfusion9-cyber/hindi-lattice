@@ -28,7 +28,7 @@ class SyntheticHindiSFTTests(unittest.TestCase):
                 self.assertEqual(set(row), {"prompt", "response"})
                 self.assertGreater(len(row["prompt"]), 20)
                 self.assertGreater(len(row["response"]), 60)
-        self.assertEqual(len(load_rows(FILES[0])), 14)
+        self.assertEqual(len(load_rows(FILES[0])), 20)
         self.assertEqual(len(load_rows(FILES[1])), 4)
         self.assertEqual(len(load_rows(FILES[2])), 15)
         self.assertEqual(len(load_rows(FILES[3])), 4)
@@ -56,8 +56,18 @@ class SyntheticHindiSFTTests(unittest.TestCase):
 
     def test_expert16_every_training_example_is_explicitly_prior_answer_based(self):
         rows = load_rows("expert16_self_correction_train.jsonl")
-        self.assertEqual(len([r for r in rows if "पिछले उत्तर" in r["prompt"]]), 14)
+        self.assertEqual(len([r for r in rows if "पिछले उत्तर" in r["prompt"]]), 20)
         self.assertTrue(all(any(term in r["response"] for term in ("मुझे", "पिछला", "मेरा")) for r in rows))
+
+    def test_expert16_training_covers_retention_uncertainty_and_partial_correction(self):
+        rows = load_rows("expert16_self_correction_train.jsonl")
+        prompts = "\\n".join(row["prompt"] for row in rows)
+        responses = "\\n".join(row["response"] for row in rows)
+        self.assertIn("पिछला उत्तर सही था", responses)
+        self.assertIn("पर्याप्त जानकारी", responses)
+        self.assertIn("सही था और क्या सुधारना", prompts)
+        self.assertIn("कौन-सा भाग सही है", prompts)
+        self.assertIn("केवल क्षेत्रफल", responses)
 
     def test_expert16_validation_tests_correction_calibration(self):
         rows = load_rows("expert16_self_correction_validation.jsonl")
