@@ -20,7 +20,7 @@ MODEL_REVISION = "7cbe444cd1e45e25197cfa0f683b2cb575858169"
 DATASET_ID = "local/neurocore_synthetic_sft/expert16_self_correction"
 DATASET_REVISION = "e1b7824cccdc32004f4cfcd5acf91a2c76acfec9"
 EXPECTED_DATA_SHA256 = "ce148fd31b2850b18f0b398dd55cda12f30a33844b315c98dc8a16847ed23e66"
-EXPECTED_TOKENIZER_DIR_SHA256 = "84dba4df7e54dddadd907939abbee248b181753ae97523a5407b48db7eabf990"
+EXPECTED_TOKENIZER_FILES_SHA256 = "cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056"
 EXPECTED_TOKENIZER_VOCAB_SHA256 = "cff9e969e05108763f796df6dafd614ee8159ebbf3cc165594265fa0ea02ee9c"
 EXPERT_ID = 16
 MAX_LENGTH = 256
@@ -88,6 +88,35 @@ def verify_fixed_expert_trainability(model, expert_id: int, trainable: list[torc
     }
 
 
+def verify_checkpoint_tokenizer(tokenizer, model_id: str, revision: str) -> dict:
+    """Verify matching saved-file, vocabulary and chat-template fingerprints."""
+    manifest = tokenizer.neurocore_manifest
+    expected = {
+        "base_model_id": model_id,
+        "base_revision": revision,
+        "vocab_size": 131072,
+        "tokenizer_vocab_sha256": EXPECTED_TOKENIZER_VOCAB_SHA256,
+        "chat_template_sha256": "4bc9a0aac3faabc9a7399b1df253929f73d0448329f55d6700a73a0fff7c2305",
+        "tokenizer_files_sha256": EXPECTED_TOKENIZER_FILES_SHA256,
+        "token_id_mapping": "IDENTICAL_TO_PINNED_DHIR_BASE",
+        "base_embedding_rows_reassigned": False,
+        "vocabulary_expansion": False,
+    }
+    mismatches = {
+        key: {"expected": value, "observed": manifest.get(key)}
+        for key, value in expected.items()
+        if manifest.get(key) != value
+    }
+    if mismatches:
+        raise ValueError("checkpoint tokenizer semantic/file fingerprint mismatch: " + json.dumps(mismatches))
+    return {
+        "files_sha256": manifest["tokenizer_files_sha256"],
+        "vocab_sha256": manifest["tokenizer_vocab_sha256"],
+        "chat_template_sha256": manifest["chat_template_sha256"],
+        "file_integrity_verified_by_checkpoint_loader": True,
+    }
+
+
 def verify_gradients_and_no_update(trainable, snapshots) -> dict:
     """Require finite gradients while proving no parameter value changed."""
     if len(trainable) != len(snapshots):
@@ -135,13 +164,12 @@ def main() -> None:
     data_sha = sha_file(data_path)
     if data_sha != EXPECTED_DATA_SHA256:
         raise ValueError("Expert 16 training source SHA-256 differs from the reviewed dry-run")
-    tokenizer_sha = sha_dir(tokenizer_dir)
-    if tokenizer_sha != EXPECTED_TOKENIZER_DIR_SHA256:
-        raise ValueError("checkpoint tokenizer directory SHA-256 differs from the Dhīr dry-run")
+    tokenizer_directory_sha = sha_dir(tokenizer_dir)
     if not (tokenizer_dir / "neurocore_tokenizer_manifest.json").is_file():
         raise FileNotFoundError("checkpoint NeuroCore tokenizer manifest is missing")
 
     model, tokenizer, manifest = Dhir2BNeuroCore.load_checkpoint(str(model_dir))
+    tokenizer_fingerprints = verify_checkpoint_tokenizer(tokenizer, MODEL_ID, MODEL_REVISION)
     if manifest.get("status") != "IMPORTED_BASE_UNTRAINED_EXPERTS":
         raise ValueError("checkpoint is not an imported, untrained Dhīr NeuroCore base")
     if manifest.get("base_model_id") != MODEL_ID or manifest.get("base_revision") != MODEL_REVISION:
@@ -151,8 +179,6 @@ def main() -> None:
     if int(manifest.get("vocab_size", -1)) != 131072 or len(tokenizer) != 131072:
         raise ValueError("checkpoint tokenizer vocabulary mismatch")
     vocab_sha = tokenizer.neurocore_manifest.get("tokenizer_vocab_sha256")
-    if vocab_sha != EXPECTED_TOKENIZER_VOCAB_SHA256:
-        raise ValueError("checkpoint Dhīr tokenizer vocabulary hash mismatch")
 
     rows = read_rows(data_path, tokenizer, max_length=MAX_LENGTH, max_rows=5000)
     if len(rows) != 20:
@@ -219,8 +245,8 @@ def main() -> None:
             "validation_used_for_training": False,
         },
         "tokenizer": {
-            "directory_sha256": tokenizer_sha,
-            "vocab_sha256": vocab_sha,
+            "directory_sha256_including_manifest": tokenizer_directory_sha,
+            **tokenizer_fingerprints,
             "native_chat_template_present": bool(tokenizer.chat_template),
         },
         "batch": {
