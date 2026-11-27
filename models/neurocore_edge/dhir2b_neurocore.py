@@ -266,7 +266,7 @@ class Dhir2BNeuroCore(nn.Module):
         if manifest.get("architecture_version")!=ARCHITECTURE_VERSION or manifest.get("schema_version")!=1:
             raise ValueError("unsupported Dhīr NeuroCore checkpoint")
         try:
-            from neurocore_tokenizer import NeuroCoreTokenizer
+            from neurocore_tokenizer import NeuroCoreTokenizer, REVIEWED_DHIR2B_TOKENIZER_FILES_SHA256
             from dhir_vendor.configuration_dhir import DhirConfig
             from dhir_vendor.modeling_dhir import DhirForCausalLM
         except ImportError as exc:
@@ -294,6 +294,7 @@ class Dhir2BNeuroCore(nn.Module):
             base_model_id=manifest["base_model_id"],
             base_revision=manifest["base_revision"],
             expected_vocab_size=int(manifest["vocab_size"]),
+            expected_tokenizer_files_sha256=REVIEWED_DHIR2B_TOKENIZER_FILES_SHA256,
         )
         facts=validate_dhir_config(backbone.config,tokenizer)
         for key,value in manifest["config"].items():
