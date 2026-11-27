@@ -66,8 +66,10 @@ def require_approval(
     ), None)
     if dataset_row is None:
         raise PermissionError("training blocked: exact dataset ID/revision is not registered")
+    # Owner-attested internal research is a separate, narrower scope than
+    # commercial training. Never infer commercial or redistribution rights.
     required_dataset_checks = (
-        "commercial_training_allowed",
+        "internal_research_allowed",
         "pii_reviewed",
         "consent_reviewed",
         "schema_reviewed",
@@ -81,8 +83,12 @@ def require_approval(
             "training blocked: dataset approval/review fields are incomplete: "
             + ", ".join(missing_checks)
         )
-    if not dataset_row.get("license_id") or not dataset_row.get("license_terms_url"):
-        raise PermissionError("training blocked: dataset license evidence is missing")
+    if dataset_row.get("commercial_training_allowed") is not False:
+        raise PermissionError("training blocked: this pilot must remain non-commercial")
+    if dataset_row.get("public_redistribution_allowed") is not False:
+        raise PermissionError("training blocked: public redistribution must remain disabled")
+    if dataset_row.get("approval_scope") != "internal_research_only":
+        raise PermissionError("training blocked: approval scope must be internal research only")
     if not all(dataset_row.get(field) for field in ("approval_id", "reviewer", "reviewed_at")):
         raise PermissionError("training blocked: dataset approval ID/reviewer/date is missing")
 
