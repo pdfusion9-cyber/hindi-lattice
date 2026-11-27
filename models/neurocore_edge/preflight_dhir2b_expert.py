@@ -14,6 +14,7 @@ import torch.nn.functional as F
 
 from dhir2b_neurocore import Dhir2BNeuroCore
 from train_dhir2b_expert import batch_rows, read_rows, sha_dir, sha_file
+from neurocore_tokenizer import MANIFEST_NAME, NeuroCoreTokenizer, tokenizer_files_sha256
 
 MODEL_ID = "zenteiq-ai/Dhir-2B"
 MODEL_REVISION = "7cbe444cd1e45e25197cfa0f683b2cb575858169"
@@ -85,6 +86,45 @@ def verify_fixed_expert_trainability(model, expert_id: int, trainable: list[torc
         "base_backbone_frozen": True,
         "all_routers_frozen": True,
         "all_other_experts_frozen": True,
+    }
+
+
+def ensure_checkpoint_tokenizer_manifest(tokenizer_dir: str | Path, model_id: str, revision: str) -> dict:
+    """Rebuild only missing metadata after verifying unchanged raw Dhīr tokenizer files."""
+    root = Path(tokenizer_dir)
+    manifest_path = root / MANIFEST_NAME
+    observed_files_sha = tokenizer_files_sha256(root)
+    if observed_files_sha != EXPECTED_TOKENIZER_FILES_SHA256:
+        raise ValueError(
+            "checkpoint raw tokenizer files SHA-256 mismatch: "
+            f"{observed_files_sha} != {EXPECTED_TOKENIZER_FILES_SHA256}"
+        )
+
+    rebuilt = False
+    if not manifest_path.is_file():
+        from transformers import PreTrainedTokenizerFast
+
+        raw_tokenizer = PreTrainedTokenizerFast.from_pretrained(
+            str(root), local_files_only=True
+        )
+        wrapped = NeuroCoreTokenizer.from_tokenizer(
+            raw_tokenizer,
+            base_model_id=model_id,
+            base_revision=revision,
+            expected_vocab_size=131072,
+        )
+        manifest = wrapped.neurocore_manifest
+        manifest["tokenizer_files_sha256"] = observed_files_sha
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2) + "\\n",
+            encoding="utf-8",
+        )
+        rebuilt = True
+
+    return {
+        "manifest_rebuilt_from_verified_local_tokenizer": rebuilt,
+        "tokenizer_files_sha256": observed_files_sha,
+        "manifest_path": str(manifest_path),
     }
 
 
@@ -164,9 +204,10 @@ def main() -> None:
     data_sha = sha_file(data_path)
     if data_sha != EXPECTED_DATA_SHA256:
         raise ValueError("Expert 16 training source SHA-256 differs from the reviewed dry-run")
+    tokenizer_manifest_info = ensure_checkpoint_tokenizer_manifest(
+        tokenizer_dir, MODEL_ID, MODEL_REVISION
+    )
     tokenizer_directory_sha = sha_dir(tokenizer_dir)
-    if not (tokenizer_dir / "neurocore_tokenizer_manifest.json").is_file():
-        raise FileNotFoundError("checkpoint NeuroCore tokenizer manifest is missing")
 
     model, tokenizer, manifest = Dhir2BNeuroCore.load_checkpoint(str(model_dir))
     tokenizer_fingerprints = verify_checkpoint_tokenizer(tokenizer, MODEL_ID, MODEL_REVISION)
@@ -246,6 +287,7 @@ def main() -> None:
         },
         "tokenizer": {
             "directory_sha256_including_manifest": tokenizer_directory_sha,
+            **tokenizer_manifest_info,
             **tokenizer_fingerprints,
             "native_chat_template_present": bool(tokenizer.chat_template),
         },
