@@ -5,27 +5,26 @@
 Audit basis: all four synthetic JSONL files were re-reviewed row-by-row after the latest content revision.
 
 ## Inventory
-- Expert 16 / self-correction: 14 train, 4 held-out validation.
+- Expert 16 / self-correction: 20 train, 4 held-out validation.
 - Expert 17 / planning: 15 train, 4 held-out validation.
-- Total: 29 training and 8 held-out validation examples.
+- Total: 35 training and 8 held-out validation examples.
 - Exact train/validation prompt strings are disjoint.
 - Every row uses the two-field \`prompt\` / \`response\` schema.
 
 ## Expert 16 — self-correction
-- All 14 training prompts now explicitly refer to a previous assistant answer, rather than merely asking to fix an unrelated statement.
+- All 20 training prompts now explicitly refer to a previous assistant answer, rather than merely asking to fix an unrelated statement.
 - Training topics include arithmetic order, rectangle area, discount, weather versus climate, seasons, photosynthesis, magnetism, common-denominator addition, speed/time, mass conversion, successive percentage change, mean/median and triangle area.
 - Validation includes two correction cases, one case where the earlier answer is correct and should be retained, and one case where the earlier answer is unsupported because the map scale is missing.
 - This improves task identity and calibration, but four validation examples remain too few for a reliable generalization estimate. The held-out skills still overlap broad training concepts.
 
-## Expert 17 — planning
 ## Machine-assisted content review — 2026-11-27 (not independent sign-off)
 
-All 37 JSONL records were inspected at the pinned data revision. The review is limited to the visible examples and repository checks; it is not a factual/legal/privacy certification.
+All 43 JSONL records were inspected at the source revision before the six calibration rows were appended; the six new rows received schema/PII-pattern checks in the updated CI, but still require human review. The review is limited to the visible examples and repository checks; it is not a factual/legal/privacy certification.
 
 ### Expert 16 calibration gap
-- All 14 current training prompts contain an earlier answer that needs correction. The training split therefore shows correction, but does not directly teach the complementary behavior of retaining a correct prior answer.
+- The expanded 20-row training split now includes examples that retain a correct prior answer, reject unsupported claims when information is missing, and preserve a correct part while correcting only the faulty part. The earlier 14 correction examples remain intact.
 - One of the four held-out validation examples asks the model to retain a correct average. That is useful as an evaluation case, but it is not training exposure.
-- **Recommended before any Expert 16 training:** add several new training examples with a correct earlier answer, an insufficient-information case, and a partly-correct answer. Keep all four existing validation prompts held out. This is a dataset-quality recommendation, not an approval.
+- The calibration gap identified in the earlier review has been addressed at the example-design level by six new training rows (two correct-answer retention, two insufficient-information, and two partial-correction examples). The four existing validation prompts remain held out. This is a design update, not a human quality or training approval.
 - The remaining correction examples cover arithmetic, geometry, discount, weather/climate, seasons, photosynthesis, magnetism, fractions, speed/time, unit conversion, percentages, mean/median and triangle area. Their answers include correction steps and an explanation of the prior mistake.
 
 ### Expert 17 planning quality
@@ -45,28 +44,33 @@ For each expert, a reviewer must inspect every training row and every held-out r
 - Pond-cleaning outcome is a logged quantity of waste removed and lawfully disposed; ecological work remains subject to expert review and approval.
 - Four validation examples are still a small smoke-test set, not a sound statistical evaluation.
 
+
+## Expanded Expert 16 calibration — 2026-11-27
+
+Six repository-authored training examples were added: two examples retaining a correct prior answer, two declining to assert unsupported information, and two preserving a correct part while correcting only the faulty part. The Expert 16 training split is now 20 rows; the existing four validation rows remain unchanged and held out. The Expert 17 split remains 15 train / 4 validation. Dataset registry and dry-run provenance pins were updated to source commit `e1b7824cccdc32004f4cfcd5acf91a2c76acfec9`; registry approvals remain false. A fresh Dhīr tokenizer dry-run is required because prior run #290 hashes apply to the old data.
+
 ## Automated checks and limits
-CI checks JSONL schema and exact inventories, Devanagari presence, email/phone/Aadhaar/PAN-like patterns, train/validation prompt disjointness, all training prompts referencing prior answers, validation retention/uncertainty calibration examples, all planning rubric fields and the planting timeline. These checks do not prove factual correctness, comprehensive PII absence, rights, consent, bias, local feasibility or production readiness.
+CI checks JSONL schema and exact inventories (20/4 and 15/4), Devanagari presence, email/phone/Aadhaar/PAN-like patterns, train/validation prompt disjointness, all 20 Expert 16 training prompts referencing prior answers, calibration coverage, validation retention/uncertainty calibration examples, all planning rubric fields and the planting timeline. These checks do not prove factual correctness, comprehensive PII absence, rights, consent, bias, local feasibility or production readiness.
 
 The fresh dry-run did not load model weights, execute a model forward pass, compute model loss or perform training. It verified the native Dhīr chat-template prefix, completion-only labels, and that every source row was retained without truncation.
 
 ## Fresh Dhīr tokenizer dry-run — 2026-11-27
 
-The revised four-file dataset was re-run through the pinned Dhīr tokenizer and the production trainer parser in GitHub Actions run [#290](https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45934026261).
+Run #290 was a historical tokenizer dry-run for the earlier 14/4 + 15/4 dataset revision. After adding six Expert 16 training examples, the dry-run must be repeated against the new pinned revision before its hashes and token counts can be used for approval.
 
 - Result: `SYNTHETIC_SFT_TOKENIZER_DRY_RUN_PASSED_NO_TRAINING`.
-- Training / held-out validation rows: 29 / 8.
+- Historical training / held-out validation rows: 29 / 8 (before Expert 16 expansion).
 - Dhīr vocabulary size: 131,072.
 - Tokenizer vocabulary SHA-256: `cff9e969e05108763f796df6dafd614ee8159ebbf3cc165594265fa0ea02ee9c`.
 - Trainer-compatible tokenizer directory SHA-256: `84dba4df7e54dddadd907939abbee248b181753ae97523a5407b48db7eabf990`.
 - Tokenizer saved-file SHA-256: `cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056`.
 - Native chat-template SHA-256: `4bc9a0aac3faabc9a7399b1df253929f73d0448329f55d6700a73a0fff7c2305`.
-- Combined hash of the two Expert 16/17 training source files: `9dfc9d7dc5edb903a7f7002625221d14e7dafadf213f146eda1c5c09b6cce704`.
-- Pinned source-data commit for all four JSONL files: `0e3c5c9a19490e6736888c8742b9397a6146ccbb`.
+- The historical combined source hash above applies only to the pre-expansion corpus and is not valid for the new 35-row training corpus.
+- New source-data commit for the expanded Expert 16 train file: `e1b7824cccdc32004f4cfcd5acf91a2c76acfec9`; both synthetic dataset registry entries now point to this revision for provenance.
 
 | Dataset split | Rows retained | Source-file SHA-256 | Max / mean sequence length | Assistant target tokens |
 |---|---:|---|---:|---:|
-| Expert 16 train | 14 / 14 | `4990d5b46093ccd2d04afda1dfe76b5eee023f904aeb640945ca114ae4d0ae5c` | 106 / 90.500 | 801 |
+| Expert 16 train (historical run #290) | 14 / 14 | `4990d5b46093ccd2d04afda1dfe76b5eee023f904aeb640945ca114ae4d0ae5c` | 106 / 90.500 | 801 |
 | Expert 16 validation | 4 / 4 | `86e4ded58b5f97381843f15fe68cd74765de3f0b5c6a8206d73c5a966867244b` | 102 / 83.250 | 206 |
 | Expert 17 train | 15 / 15 | `0ad7f459e02ff5fa43c26b66db973dde3a5fdab31353876e18cb07f508c7954d` | 239 / 190.867 | 2,422 |
 | Expert 17 validation | 4 / 4 | `7595b4b6946bb34a818d7b31d67b01adb9db0c730b7d976fc820bc40b318c2c4` | 214 / 179.000 | 609 |
