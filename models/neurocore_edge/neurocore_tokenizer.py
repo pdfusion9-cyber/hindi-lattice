@@ -16,6 +16,7 @@ from typing import Any
 MANIFEST_NAME = "neurocore_tokenizer_manifest.json"
 TOKENIZER_NAME = "neurocore-dhir-compatible"
 MANIFEST_SCHEMA_VERSION = 2
+REVIEWED_DHIR2B_TOKENIZER_FILES_SHA256 = "cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056"
 CONTROL_ID_COUNT = 127
 CONTROL_ID_POLICY = "out_of_band_metadata_no_vocabulary_expansion"
 
@@ -429,14 +430,35 @@ class NeuroCoreTokenizer:
         base_model_id: str,
         base_revision: str,
         expected_vocab_size: int,
+        expected_tokenizer_files_sha256: str | None = None,
     ) -> "NeuroCoreTokenizer":
         from transformers import PreTrainedTokenizerFast
 
         root = Path(directory)
         manifest_path = root / MANIFEST_NAME
-        if not manifest_path.is_file():
-            raise FileNotFoundError(f"NeuroCore tokenizer manifest missing: {manifest_path}")
-        saved_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        observed_files_sha = tokenizer_files_sha256(root)
+        if expected_tokenizer_files_sha256 is not None and observed_files_sha != expected_tokenizer_files_sha256:
+            raise ValueError("NeuroCore tokenizer files do not match the required pinned SHA-256")
+
+        if manifest_path.is_file():
+            saved_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        else:
+            if expected_tokenizer_files_sha256 is None:
+                raise FileNotFoundError(f"NeuroCore tokenizer manifest missing: {manifest_path}")
+            tokenizer = PreTrainedTokenizerFast.from_pretrained(
+                str(root), local_files_only=True
+            )
+            saved_manifest = validate_neurocore_tokenizer(
+                tokenizer,
+                expected_vocab_size=expected_vocab_size,
+                base_model_id=base_model_id,
+                base_revision=base_revision,
+            )
+            saved_manifest["tokenizer_files_sha256"] = observed_files_sha
+            manifest_path.write_text(
+                json.dumps(saved_manifest, ensure_ascii=False, indent=2) + "\\n",
+                encoding="utf-8",
+            )
         saved_schema = saved_manifest.get("schema_version")
         if saved_schema not in (1, MANIFEST_SCHEMA_VERSION):
             raise ValueError("unsupported NeuroCore tokenizer manifest schema")
@@ -464,9 +486,10 @@ class NeuroCoreTokenizer:
             for key in ("control_ids", "language_metadata", "routing_metadata"):
                 if saved_manifest.get(key) != current[key]:
                     raise ValueError(f"NeuroCore tokenizer manifest mismatch: {key}")
-        observed_files_sha = tokenizer_files_sha256(root)
         if saved_manifest.get("tokenizer_files_sha256") != observed_files_sha:
             raise ValueError("NeuroCore tokenizer files SHA-256 mismatch")
+        if expected_tokenizer_files_sha256 is not None and current["tokenizer_files_sha256"] != expected_tokenizer_files_sha256:
+            raise ValueError("loaded NeuroCore tokenizer file hash differs from required pinned SHA-256")
         current["tokenizer_files_sha256"] = observed_files_sha
         return cls(tokenizer, current)
 
