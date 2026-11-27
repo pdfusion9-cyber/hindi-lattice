@@ -108,7 +108,6 @@ class PreflightGateTests(unittest.TestCase):
                     parameter.requires_grad_(index == 1)
                     if index == 1:
                         selected.append(parameter)
-        result = verify_fixed_expert_trainability(model, 1, selected)
         with self.assertRaises(RuntimeError):
             verify_fixed_expert_trainability(model, 1, selected)
         for parameter in model.backbone.parameters():
