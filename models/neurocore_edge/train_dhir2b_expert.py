@@ -332,11 +332,10 @@ def main():
         parser.error("max-length must be >= 2 and learning rate positive")
 
     torch.set_num_threads(args.threads)
-    model, tokenizer, manifest = Dhir2BNeuroCore.load_checkpoint(args.model_dir)
     data_sha = sha_file(args.data)
     tokenizer_sha = sha_dir(Path(args.model_dir) / "tokenizer")
 
-    # Fail closed before tokenizing or training if any human approval is absent.
+    # Fail closed before loading the 2B model, tokenizing data or creating an optimizer.
     require_approval(
         args.approval,
         args.expert_id,
@@ -346,6 +345,7 @@ def main():
         dataset_revision=args.dataset_revision,
     )
 
+    model, tokenizer, manifest = Dhir2BNeuroCore.load_checkpoint(args.model_dir)
     rows = read_rows(args.data, tokenizer, args.max_length, args.max_rows)
     supervision_modes = sorted({row["supervision"] for row in rows})
     training_objective = "+".join(supervision_modes)
