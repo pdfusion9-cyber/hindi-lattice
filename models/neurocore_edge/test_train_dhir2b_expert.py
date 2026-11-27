@@ -22,10 +22,9 @@ def approved_document(data_sha, tokenizer_sha):
             "expert_id": 11,
             "dataset_id": DEFAULT_DATASET_ID,
             "revision": DEFAULT_DATASET_REVISION,
-            "internal_research_allowed": True,
-            "approval_scope": "internal_research_only",
-            "commercial_training_allowed": False,
-            "public_redistribution_allowed": False,
+            "license_id": "CC0-1.0",
+            "license_terms_url": "https://example.org/license",
+            "commercial_training_allowed": True,
             "pii_reviewed": True,
             "consent_reviewed": True,
             "schema_reviewed": True,
@@ -133,6 +132,44 @@ class TrainingApprovalGateTests(unittest.TestCase):
             self.write_doc(path, document)
             with self.assertRaisesRegex(PermissionError, "dataset ID/revision"):
                 require_approval(path, 11, "a" * 64, "b" * 64)
+
+    def test_expert16_internal_research_approval_is_narrowly_scoped(self):
+        dataset_id = "local/neurocore_synthetic_sft/expert16_self_correction"
+        revision = "e1b7824cccdc32004f4cfcd5acf91a2c76acfec9"
+        data_sha = "ce148fd31b2850b18f0b398dd55cda12f30a33844b315c98dc8a16847ed23e66"
+        tokenizer_sha = "84dba4df7e54dddadd907939abbee248b181753ae97523a5407b48db7eabf990"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            self.write_doc(path, {
+                "datasets": [{
+                    "expert_id": 16, "dataset_id": dataset_id, "revision": revision,
+                    "internal_research_allowed": True,
+                    "approval_scope": "internal_research_only",
+                    "commercial_training_allowed": False,
+                    "public_redistribution_allowed": False,
+                    "pii_reviewed": True, "consent_reviewed": True,
+                    "schema_reviewed": True, "split_reviewed": True,
+                    "approved": True, "approval_id": "OWNER-ATTESTED-001",
+                    "reviewer": "project-owner", "reviewed_at": "2026-11-27",
+                }],
+                "approved_training_artifacts": [{
+                    "stage": "dhir2b_expert", "expert_id": 16,
+                    "dataset_id": dataset_id, "dataset_revision": revision,
+                    "sha256": data_sha, "approved": True,
+                    "approval_id": "OWNER-ATTESTED-001",
+                    "reviewer": "project-owner", "reviewed_at": "2026-11-27",
+                }],
+                "approved_tokenizers": [{
+                    "sha256": tokenizer_sha, "approved": True,
+                    "approval_id": "OWNER-ATTESTED-001",
+                    "reviewer": "project-owner", "reviewed_at": "2026-11-27",
+                }],
+            })
+            result = require_approval(
+                path, 16, data_sha, tokenizer_sha,
+                dataset_id=dataset_id, dataset_revision=revision,
+            )
+            self.assertTrue(result["datasets"][0]["internal_research_allowed"])
 
     def test_internal_research_approval_cannot_enable_commercial_or_public_use(self):
         for field, value in (
@@ -264,48 +301,29 @@ class TrainingApprovalGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "max_length"):
                 read_rows(path, FakeTokenizer(), max_length=1, max_rows=10)
 
-    def test_pending_synthetic_expert_datasets_are_rejected(self):
+    def test_unapproved_synthetic_expert17_dataset_is_rejected(self):
         approval_path = Path(__file__).parent / "dataset_approval.json"
         document = json.loads(approval_path.read_text(encoding="utf-8"))
-        for expert_id, dataset_id in (
-            (16, "local/neurocore_synthetic_sft/expert16_self_correction"),
-            (17, "local/neurocore_synthetic_sft/expert17_planning"),
+        dataset_id = "local/neurocore_synthetic_sft/expert17_planning"
+        registered = next(
+            row for row in document["datasets"]
+            if row.get("expert_id") == 17 and row.get("dataset_id") == dataset_id
+        )
+        self.assertTrue(registered.get("revision"))
+        for field in (
+            "commercial_training_allowed", "pii_reviewed", "consent_reviewed",
+            "schema_reviewed", "split_reviewed", "approved",
         ):
-            with self.subTest(expert_id=expert_id):
-                registered = next(
-                    (
-                        row for row in document.get("datasets", [])
-                        if row.get("expert_id") == expert_id
-                        and row.get("dataset_id") == dataset_id
-                    ),
-                    None,
+            self.assertIs(registered.get(field), False, f"{dataset_id} must keep {field}=false")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "approval.json"
+            self.write_doc(path, document)
+            with self.assertRaises(PermissionError):
+                require_approval(
+                    path, 17, "a" * 64, "b" * 64,
+                    dataset_id=dataset_id, dataset_revision=registered["revision"],
                 )
-                self.assertIsNotNone(
-                    registered, f"pending synthetic dataset is not registered: {dataset_id}"
-                )
-                self.assertTrue(registered.get("revision"))
-                for field in (
-                    "commercial_training_allowed",
-                    "pii_reviewed",
-                    "consent_reviewed",
-                    "schema_reviewed",
-                    "split_reviewed",
-                    "approved",
-                ):
-                    self.assertIs(
-                        registered.get(field), False,
-                        f"{dataset_id} must keep {field}=false until review",
-                    )
 
-                with tempfile.TemporaryDirectory() as tmp:
-                    path = Path(tmp) / "approval.json"
-                    self.write_doc(path, document)
-                    with self.assertRaisesRegex(PermissionError, "approval/review fields"):
-                        require_approval(
-                            path, expert_id, "a" * 64, "b" * 64,
-                            dataset_id=dataset_id,
-                            dataset_revision=registered["revision"],
-                        )
 
 
 if __name__ == "__main__":
