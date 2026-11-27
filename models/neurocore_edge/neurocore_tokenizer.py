@@ -456,7 +456,7 @@ class NeuroCoreTokenizer:
             )
             saved_manifest["tokenizer_files_sha256"] = observed_files_sha
             manifest_path.write_text(
-                json.dumps(saved_manifest, ensure_ascii=False, indent=2) + "\\n",
+                json.dumps(saved_manifest, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
         saved_schema = saved_manifest.get("schema_version")
