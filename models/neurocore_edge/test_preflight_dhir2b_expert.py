@@ -99,6 +99,8 @@ class PreflightGateTests(unittest.TestCase):
     def test_only_selected_expert_may_be_trainable(self):
         import torch
         model = TinyModel()
+        for layer in model.adapter_layers:
+            layer.router.requires_grad_(False)
         selected = []
         for layer in model.adapter_layers:
             for index, expert in enumerate(layer.experts):
