@@ -66,10 +66,13 @@ def require_approval(
     ), None)
     if dataset_row is None:
         raise PermissionError("training blocked: exact dataset ID/revision is not registered")
-    # Owner-attested internal research is a separate, narrower scope than
-    # commercial training. Never infer commercial or redistribution rights.
-    required_dataset_checks = (
-        "internal_research_allowed",
+    # Expert 16's owner-attested internal pilot is narrower than commercial
+    # use. Preserve the existing commercial-approval contract for every other expert.
+    scope_checks = (
+        ("internal_research_allowed",) if expert_id == 16
+        else ("commercial_training_allowed",)
+    )
+    required_dataset_checks = scope_checks + (
         "pii_reviewed",
         "consent_reviewed",
         "schema_reviewed",
@@ -83,12 +86,15 @@ def require_approval(
             "training blocked: dataset approval/review fields are incomplete: "
             + ", ".join(missing_checks)
         )
-    if dataset_row.get("commercial_training_allowed") is not False:
-        raise PermissionError("training blocked: this pilot must remain non-commercial")
-    if dataset_row.get("public_redistribution_allowed") is not False:
-        raise PermissionError("training blocked: public redistribution must remain disabled")
-    if dataset_row.get("approval_scope") != "internal_research_only":
-        raise PermissionError("training blocked: approval scope must be internal research only")
+    if expert_id == 16:
+        if dataset_row.get("commercial_training_allowed") is not False:
+            raise PermissionError("training blocked: this pilot must remain non-commercial")
+        if dataset_row.get("public_redistribution_allowed") is not False:
+            raise PermissionError("training blocked: public redistribution must remain disabled")
+        if dataset_row.get("approval_scope") != "internal_research_only":
+            raise PermissionError("training blocked: approval scope must be internal research only")
+    elif not dataset_row.get("license_id") or not dataset_row.get("license_terms_url"):
+        raise PermissionError("training blocked: dataset license evidence is missing")
     if not all(dataset_row.get(field) for field in ("approval_id", "reviewer", "reviewed_at")):
         raise PermissionError("training blocked: dataset approval ID/reviewer/date is missing")
 
