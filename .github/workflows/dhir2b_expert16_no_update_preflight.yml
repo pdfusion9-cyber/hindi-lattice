@@ -1,6 +1,12 @@
 name: Dhīr-2B Expert 16 No-Update Gradient Preflight
 
 on:
+  push:
+    branches: [neurocore-v0.3.2-canonical-20261122]
+    paths:
+      - 'models/neurocore_edge/preflight_dhir2b_expert.py'
+      - 'models/neurocore_edge/test_preflight_dhir2b_expert.py'
+      - '.github/workflows/dhir2b_expert16_no_update_preflight.yml'
   workflow_dispatch:
     inputs:
       checkpoint_run_id:
@@ -29,7 +35,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dhir2b-neurocore-cpu-checkpoint
-          run-id: ${{ inputs.checkpoint_run_id }}
+          run-id: ${{ inputs.checkpoint_run_id || '45780741273' }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/dhir2b-checkpoint-artifact
 
