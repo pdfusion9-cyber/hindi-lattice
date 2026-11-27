@@ -556,7 +556,7 @@
       "expert_id": 16,
       "expert_name": "self_correction_mnl",
       "dataset_id": "local/neurocore_synthetic_sft/expert16_self_correction",
-      "revision": "0e3c5c9a19490e6736888c8742b9397a6146ccbb",
+      "revision": "e1b7824cccdc32004f4cfcd5acf91a2c76acfec9",
       "config_name": "repository-authored synthetic JSONL; Dhīr native prompt/response chat format",
       "train_split": "models/neurocore_edge/synthetic_sft/expert16_self_correction_train.jsonl",
       "validation_split": "models/neurocore_edge/synthetic_sft/expert16_self_correction_validation.jsonl",
@@ -570,13 +570,13 @@
       "split_reviewed": false,
       "approved": false,
       "origin": "newly authored synthetic examples committed in the pinned repository revision; not imported from third-party datasets",
-      "review_note": "PENDING HUMAN REVIEW. CI schema/PII-pattern/split checks passed, but no legal, authorship, commercial-use, privacy, factual-quality or human approval is asserted. Exact prepared training-corpus and tokenizer SHA-256 approvals remain required."
+      "review_note": "PENDING HUMAN REVIEW. Expert 16 calibration set expanded in source commit e1b7824cccdc32004f4cfcd5acf91a2c76acfec9; CI schema/PII-pattern/split checks are not legal, authorship, commercial-use, privacy, factual-quality or human approval. Exact prepared training-corpus and tokenizer SHA-256 approvals remain required."
     },
     {
       "expert_id": 17,
       "expert_name": "coconut_planning",
       "dataset_id": "local/neurocore_synthetic_sft/expert17_planning",
-      "revision": "0e3c5c9a19490e6736888c8742b9397a6146ccbb",
+      "revision": "e1b7824cccdc32004f4cfcd5acf91a2c76acfec9",
       "config_name": "repository-authored synthetic JSONL; Dhīr native prompt/response chat format",
       "train_split": "models/neurocore_edge/synthetic_sft/expert17_planning_train.jsonl",
       "validation_split": "models/neurocore_edge/synthetic_sft/expert17_planning_validation.jsonl",
@@ -590,7 +590,7 @@
       "split_reviewed": false,
       "approved": false,
       "origin": "newly authored synthetic examples committed in the pinned repository revision; not imported from third-party datasets",
-      "review_note": "PENDING HUMAN REVIEW. CI schema/PII-pattern/split checks passed, but no legal, authorship, commercial-use, privacy, factual-quality or human approval is asserted. Exact prepared training-corpus and tokenizer SHA-256 approvals remain required."
+      "review_note": "PENDING HUMAN REVIEW. Expert 16 calibration set expanded in source commit e1b7824cccdc32004f4cfcd5acf91a2c76acfec9; CI schema/PII-pattern/split checks are not legal, authorship, commercial-use, privacy, factual-quality or human approval. Exact prepared training-corpus and tokenizer SHA-256 approvals remain required."
     }
   ],
   "approved_training_artifacts": [],
