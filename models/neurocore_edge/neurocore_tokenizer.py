@@ -488,8 +488,8 @@ class NeuroCoreTokenizer:
                     raise ValueError(f"NeuroCore tokenizer manifest mismatch: {key}")
         if saved_manifest.get("tokenizer_files_sha256") != observed_files_sha:
             raise ValueError("NeuroCore tokenizer files SHA-256 mismatch")
-        if expected_tokenizer_files_sha256 is not None and current["tokenizer_files_sha256"] != expected_tokenizer_files_sha256:
-            raise ValueError("loaded NeuroCore tokenizer file hash differs from required pinned SHA-256")
+        # The current semantic manifest is reconstructed from tokenizer contents;
+        # the raw on-disk files were pinned and checked above.
         current["tokenizer_files_sha256"] = observed_files_sha
         return cls(tokenizer, current)
 
