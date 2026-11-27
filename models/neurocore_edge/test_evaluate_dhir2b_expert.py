@@ -66,9 +66,13 @@ class HeldoutEvaluatorTests(unittest.TestCase):
             result = load_trained_expert(
                 model, path, tokenizer_sha="tokenizer-directory-hash"
             )
-        model.load_expert_state_dict.assert_called_once_with(
-            EXPERT_ID, {"layer_0.up.weight": torch.ones((2, 2))}
-        )
+        model.load_expert_state_dict.assert_called_once()
+        called_expert_id, called_state = model.load_expert_state_dict.call_args.args
+        self.assertEqual(called_expert_id, EXPERT_ID)
+        self.assertEqual(set(called_state), {"layer_0.up.weight"})
+        self.assertTrue(torch.equal(
+            called_state["layer_0.up.weight"], torch.ones((2, 2))
+        ))
         self.assertEqual(result["steps_completed"], 1)
         self.assertEqual(result["data_sha256"], TRAIN_SHA256)
 
