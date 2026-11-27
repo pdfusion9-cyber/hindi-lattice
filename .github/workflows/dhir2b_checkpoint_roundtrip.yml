@@ -5,6 +5,7 @@ on:
     branches: [neurocore-v0.3.2-canonical-20261122]
     paths:
       - 'models/neurocore_edge/dhir2b_neurocore.py'
+      - 'models/neurocore_edge/neurocore_tokenizer.py'
       - 'models/neurocore_edge/dhir_vendor/**'
       - '.github/workflows/dhir2b_checkpoint_roundtrip.yml'
   workflow_dispatch:
