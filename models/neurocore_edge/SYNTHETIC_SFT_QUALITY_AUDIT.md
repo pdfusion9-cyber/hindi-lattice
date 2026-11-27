@@ -70,7 +70,7 @@ Run #290 was a historical tokenizer dry-run for the earlier 14/4 + 15/4 dataset 
 
 | Dataset split | Rows retained | Source-file SHA-256 | Max / mean sequence length | Assistant target tokens |
 |---|---:|---|---:|---:|
-| Expert 16 train (historical run #290) | 14 / 14 | `4990d5b46093ccd2d04afda1dfe76b5eee023f904aeb640945ca114ae4d0ae5c` | 106 / 90.500 | 801 |
+| Expert 16 train (run #300) | 20 / 20 | `ce148fd31b2850b18f0b398dd55cda12f30a33844b315c98dc8a16847ed23e66` | 106 / 89.450 | 1,093 |
 | Expert 16 validation | 4 / 4 | `86e4ded58b5f97381843f15fe68cd74765de3f0b5c6a8206d73c5a966867244b` | 102 / 83.250 | 206 |
 | Expert 17 train | 15 / 15 | `0ad7f459e02ff5fa43c26b66db973dde3a5fdab31353876e18cb07f508c7954d` | 239 / 190.867 | 2,422 |
 | Expert 17 validation | 4 / 4 | `7595b4b6946bb34a818d7b31d67b01adb9db0c730b7d976fc820bc40b318c2c4` | 214 / 179.000 | 609 |
@@ -78,6 +78,26 @@ Run #290 was a historical tokenizer dry-run for the earlier 14/4 + 15/4 dataset 
 - `training_performed=false`; `optimizer_steps=0`.
 
 This confirms parsing, native chat-template prefix handling, completion-only masking and tokenizer compatibility for the current pilot rows. It does not load the 4.15 GB Dhīr checkpoint, run a model forward/backward pass, authorize training, or validate answer quality beyond the existing content checks. The exact tokenizer hash is evidence for this dry-run environment; it must still be entered into the approval registry only after the required independent human and rights review.
+
+## Current Dhīr tokenizer dry-run — Run #300 — 2026-11-27
+
+The expanded corpus was tested with the immutable native Dhīr-2B tokenizer and the production SFT parser.
+
+- Result: `SYNTHETIC_SFT_TOKENIZER_DRY_RUN_PASSED_NO_TRAINING`.
+- Training / held-out validation rows: 35 / 8; all 43 rows retained.
+- Expert 16 train: 20/20 rows, 1,093 supervised assistant tokens; max / mean sequence length 106 / 89.450.
+- Expert 17 train: 15/15 rows, 2,422 supervised assistant tokens; max / mean sequence length 239 / 190.867.
+- Expert 16 validation: 4/4 rows, 206 assistant tokens; Expert 17 validation: 4/4 rows, 609 assistant tokens. Neither validation split was used for training.
+- Current Expert 16 training-file SHA-256: `ce148fd31b2850b18f0b398dd55cda12f30a33844b315c98dc8a16847ed23e66`.
+- Expert 17 training-file SHA-256: `0ad7f459e02ff5fa43c26b66db973dde3a5fdab31353876e18cb07f508c7954d`.
+- Combined training-file SHA-256: `4a1c15d5a38c2901a74e44291bd9f879665a73cf02071e51c483169730ecc21c`.
+- Dhīr vocabulary SHA-256: `cff9e969e05108763f796df6dafd614ee8159ebbf3cc165594265fa0ea02ee9c`.
+- Tokenizer native chat-template SHA-256: `4bc9a0aac3faabc9a7399b1df253929f73d0448329f55d6700a73a0fff7c2305`.
+- Tokenizer saved-file SHA-256: `cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056`.
+- Trainer-compatible tokenizer directory SHA-256: `84dba4df7e54dddadd907939abbee248b181753ae97523a5407b48db7eabf990`.
+- Registry/source revision: `e1b7824cccdc32004f4cfcd5acf91a2c76acfec9`.
+
+The run report explicitly records `training_performed=false`, `optimizer_steps=0`, `model_weights_loaded=false`, and `model_forward_pass_performed=false`. This is a tokenizer/parser and loss-mask check, not a real-model training or quality result. Registry approvals remain pending and no approval gate was bypassed.
 
 ## Rights, privacy and approval boundary
 - Synthetic examples are newly authored, but the repository has no root LICENSE file and synthetic registry rows have no license ID or terms URL.
