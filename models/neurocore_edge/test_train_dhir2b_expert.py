@@ -172,6 +172,12 @@ class TrainingApprovalGateTests(unittest.TestCase):
             self.assertTrue(result["datasets"][0]["internal_research_allowed"])
 
     def test_internal_research_approval_cannot_enable_commercial_or_public_use(self):
+        approval_path = Path(__file__).parent / "dataset_approval.json"
+        source = json.loads(approval_path.read_text(encoding="utf-8"))
+        dataset_id = "local/neurocore_synthetic_sft/expert16_self_correction"
+        revision = "e1b7824cccdc32004f4cfcd5acf91a2c76acfec9"
+        data_sha = "ce148fd31b2850b18f0b398dd55cda12f30a33844b315c98dc8a16847ed23e66"
+        tokenizer_sha = "84dba4df7e54dddadd907939abbee248b181753ae97523a5407b48db7eabf990"
         for field, value in (
             ("internal_research_allowed", False),
             ("approval_scope", "commercial"),
@@ -179,12 +185,19 @@ class TrainingApprovalGateTests(unittest.TestCase):
             ("public_redistribution_allowed", True),
         ):
             with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                document = json.loads(json.dumps(source))
+                row = next(
+                    r for r in document["datasets"]
+                    if r.get("expert_id") == 16 and r.get("dataset_id") == dataset_id
+                )
+                row[field] = value
                 path = Path(tmp) / "approval.json"
-                document = approved_document("a" * 64, "b" * 64)
-                document["datasets"][0][field] = value
                 self.write_doc(path, document)
                 with self.assertRaises(PermissionError):
-                    require_approval(path, 11, "a" * 64, "b" * 64)
+                    require_approval(
+                        path, 16, data_sha, tokenizer_sha,
+                        dataset_id=dataset_id, dataset_revision=revision,
+                    )
 
     def test_incomplete_privacy_or_license_review_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
