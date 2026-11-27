@@ -100,14 +100,14 @@ jobs:
           print(json.dumps(report, indent=2))
           assert report["logits_identical_after_reload"] and report["logits_finite"]
           PY
-      - name: Persist full verified checkpoint and report
+      - name: Persist verification report only; never publish model weights
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: dhir2b-neurocore-cpu-checkpoint
-          path: |
-            /tmp/dhir2b-neurocore-checkpoint
-            models/neurocore_edge/dhir2b_checkpoint_roundtrip_report.json
-          retention-days: 30
-          compression-level: 0
+          name: dhir2b-neurocore-cpu-checkpoint-report
+          path: models/neurocore_edge/dhir2b_checkpoint_roundtrip_report.json
+          retention-days: 7
           if-no-files-found: error
+      - name: Remove ephemeral model checkpoint
+        if: always()
+        run: rm -rf /tmp/dhir2b-neurocore-checkpoint
