@@ -99,6 +99,37 @@ The expanded corpus was tested with the immutable native Dhīr-2B tokenizer and 
 
 The run report explicitly records `training_performed=false`, `optimizer_steps=0`, `model_weights_loaded=false`, and `model_forward_pass_performed=false`. This is a tokenizer/parser and loss-mask check, not a real-model training or quality result. Registry approvals remain pending and no approval gate was bypassed.
 
+## Dhīr-2B Expert 16 no-update gradient preflight — 2026-11-27
+
+### Preparation and CI status
+- Preflight entrypoint: `models/neurocore_edge/preflight_dhir2b_expert.py`.
+- Gate tests: `models/neurocore_edge/test_preflight_dhir2b_expert.py`.
+- Manual workflow: `.github/workflows/dhir2b_expert16_no_update_preflight.yml`.
+- The integrated canonical CI run [#306](https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45955972685) passed, including preflight syntax and unit tests.
+- The preflight is intentionally not part of ordinary push CI because it needs to download and load the multi-gigabyte checkpoint.
+
+### Exact checkpoint to select for manual preflight
+- Source workflow run ID: `45780741273`.
+- Artifact ID: `15098526765`.
+- Artifact name: `dhir2b-neurocore-cpu-checkpoint`.
+- Artifact ZIP SHA-256: `720ffdf4f59c95b1ee1b3265a5e3f857173c2058d20c787f13ffff1dce819b33`.
+- Checkpoint tree SHA-256: `90c3b46d38f52f03a41ed6d5b07a530dd864f107176d3c98e64c808452710148`.
+- Checkpoint size: `4,150,375,510` bytes.
+- Artifact was checked on 2026-11-27 and was not expired; listed expiry is 2026-12-26 08:10:31 UTC.
+
+### How to trigger the no-update preflight
+Open the repository Actions page, select **Dhīr-2B Expert 16 No-Update Gradient Preflight**, choose **Run workflow**, and provide checkpoint_run_id `45780741273`.
+
+Expected outcome is one real CPU forward/backward pass on the shortest retained Expert 16 training row, with:
+- finite loss and gradients;
+- gradients reaching only Expert 16 adapter parameters;
+- frozen Dhīr backbone, router weights and all other experts;
+- no optimizer creation, no optimizer step and no parameter value change;
+- no validation rows loaded into training;
+- registry remains `ALL_DATASETS_PENDING_REVIEW`, with zero approved training artifacts/tokenizers.
+
+**Execution status: NOT YET RUN.** The workflow has been committed and its tests passed, but this connector can inspect Actions runs and artifacts only; it does not expose a workflow-dispatch operation. The manual workflow run and actual checkpoint forward/backward result therefore remain pending. No model training has occurred.
+
 ## Rights, privacy and approval boundary
 - Synthetic examples are newly authored, but the repository has no root LICENSE file and synthetic registry rows have no license ID or terms URL.
 - Commercial-training and public-redistribution permissions remain false. A yes in chat does not itself supply the missing rights-holder/license record, reviewer identity/date, or exact-hash approvals.
