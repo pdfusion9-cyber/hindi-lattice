@@ -128,7 +128,20 @@ Expected outcome is one real CPU forward/backward pass on the shortest retained 
 - no validation rows loaded into training;
 - registry remains `ALL_DATASETS_PENDING_REVIEW`, with zero approved training artifacts/tokenizers.
 
-**Execution status: NOT YET RUN.** The workflow has been committed and its tests passed, but this connector can inspect Actions runs and artifacts only; it does not expose a workflow-dispatch operation. The manual workflow run and actual checkpoint forward/backward result therefore remain pending. No model training has occurred.
+### Successful real-checkpoint execution — 2026-11-27
+- Preflight workflow run [#6](https://github.com/pdfusion9-cyber/hindi-lattice/actions/runs/45958672542) completed successfully.
+- Exact checkpoint artifact: source run `45780741273`, artifact `15098526765`; the preflight loaded all three checkpoint shards.
+- Machine report artifact: `dhir2b-expert16-no-update-preflight`, artifact ID `15179744438`, ZIP SHA-256 `8b9d6412453ac53b32917a85afba5f813f7f0a2a06e72594d6dc1e0a6472e32e`.
+- Model identity: `zenteiq-ai/Dhir-2B`, pinned revision `7cbe444cd1e45e25197cfa0f683b2cb575858169`; architecture `0.4.0-dhir2b-adapters`; 28 layers, hidden size 2048, vocab 131072, 20 experts, adapter rank 8.
+- Actual forward logits shape: `[1, 70, 131072]`; 42 supervised next-token targets; finite loss `4.448416709899902`; backward completed.
+- Expert 16 trainable tensors: 56; finite gradient tensors: 56; non-zero gradient tensors: 28.
+- Backbone, all routers and all other experts were frozen; frozen parameters with gradients: 0.
+- Selected expert weights unchanged; all model weights unchanged; optimizer was not created; optimizer steps: 0.
+- Dataset: 20 training rows; validation rows loaded: 0; validation not used for training. Registry remains `ALL_DATASETS_PENDING_REVIEW`; dataset not approved.
+- Tokenizer raw files SHA-256: `cbbca2da083dfc8a5975263bcedf6a580b9db01ba26b5dd622ac7b8f5a5b8056`; vocabulary and chat-template hashes matched; the missing metadata manifest was rebuilt only after raw-file hash verification.
+- `approval_gate_bypassed=false`; `training_performed=false`.
+
+**Interpretation:** The real Dhīr-2B Expert 16 forward/backward gradient path is verified. This is an execution/gradient-path result, not evidence of learning quality, validation improvement, or training completion. No optimizer update or model training has occurred. The human approval gate remains closed.
 
 ## Rights, privacy and approval boundary
 - Synthetic examples are newly authored, but the repository has no root LICENSE file and synthetic registry rows have no license ID or terms URL.
